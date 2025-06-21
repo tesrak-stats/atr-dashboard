@@ -1,9 +1,9 @@
 name: Update Daily ATR Levels
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Manual run trigger
   schedule:
-    - cron: '0 1 * * 1-5'
+    - cron: '0 1 * * 1-5'  # Run at 1:00 UTC Monday–Friday
 
 jobs:
   update-atr:
@@ -26,10 +26,19 @@ jobs:
 
       - name: Commit updated ATR levels
         run: |
+          echo "Configuring Git..."
           git config user.name "tesrak-stats"
           git config user.email "github-actions@github.com"
+
+          echo "Staging changes..."
           git add data/daily_atr_levels.json
+
+          echo "Committing (will skip if no changes)..."
           git commit -m "Update ATR levels automatically" || echo "No changes to commit"
+
+          echo "Setting push URL using GH_PAT..."
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/tesrak-stats/atr-dashboard.git
+
+          echo "Pushing to main branch..."
           git push origin HEAD:main
           
