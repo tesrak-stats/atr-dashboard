@@ -1,34 +1,32 @@
 name: Update Daily ATR Levels
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Run manually from the GitHub UI
 
 jobs:
   update-atr:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Set up Python to
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
 
-    - name: Install dependencies
-      run: |
-        pip install pandas yfinance
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-    - name: Run ATR Level Generator
-      run: python scripts/generate_daily_atr_levels.py
+      - name: Run ATR Level Generator
+        run: python scripts/generate_daily_atr_levels.py
 
-    - name: Commit updated ATR levels
-      env:
-        GH_TOKEN: ${{ secrets.GH_PAT }}
-      run: |
-        git config user.name "tesrak-stats"
-        git config user.email "tesrak@users.noreply.github.com"
-        git add data/daily_atr_levels.json
-        git commit -m "Update ATR levels automatically" || echo "No changes to commit"
-        git push https://x-access-token:${GH_TOKEN}@github.com/tesrak-stats/atr-dashboard.git
+      - name: Commit updated ATR levels
+        run: |
+          git config user.name "tesrak-stats"
+          git config user.email "tesrak@users.noreply.github.com"
+          git add data/daily_atr_levels.json
+          git commit -m "Update ATR levels automatically" || echo "No changes to commit"
+          git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/tesrak-stats/atr-dashboard.git
+          git push origin HEAD:main
