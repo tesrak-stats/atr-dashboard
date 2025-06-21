@@ -1,4 +1,5 @@
-
+import pandas as pd
+df = pd.read_csv("fake_atr_dashboard_data.csv")
 import streamlit as st
 import pandas as pd
 import plotly.express as px
