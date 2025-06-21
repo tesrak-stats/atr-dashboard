@@ -1,58 +1,60 @@
-import pandas as pd
-df = pd.read_csv("fake_atr_dashboard_data.csv")
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-st.set_page_config(layout="wide")
-st.title("ATR Roadmap – Simulated Bubble Chart")
+# Load the simulated data
+df = pd.read_csv("fake_atr_dashboard_data.csv")
 
-# Simulated Data
-hours = ['OPEN'] + [f"{str(h).zfill(2)}00" for h in range(9, 17)]
-goal_levels = [round(x, 3) for x in [round(i, 3) for i in list(pd.Series(range(-1000, 1001, 167)) / 1000)]]
+st.set_page_config(page_title="ATR Roadmap", layout="wide")
+st.title("ATR Levels Roadmap (Simulated Data)")
 
-import numpy as np
-np.random.seed(42)
-data = []
-for level in goal_levels:
-    for hour in hours:
-        count = np.random.randint(5, 120)
-        pct = np.clip(np.random.normal(loc=0.5, scale=0.2), 0, 1)
-        data.append({
-            'ATR Level': level,
-            'Hour': hour,
-            'Trigger Count': count,
-            'Completion %': round(100 * pct, 1)
-        })
-df = pd.DataFrame(data)
+# Sidebar inputs
+st.sidebar.header("🔧 Select Scenario")
+trigger_levels = sorted(df["trigger_level"].unique())
+hours = sorted(df["trigger_hour"].unique())
 
-# Create custom hover text
-df['Hover'] = df.apply(
-    lambda row: f"Hour: {row['Hour']}<br>Level: {row['ATR Level']}<br>Completion: {row['Completion %']}%<br>Triggers: {row['Trigger Count']}" +
-                (" ⚠️ Low sample size" if row['Trigger Count'] < 30 else ""),
-    axis=1
-)
+trigger = st.sidebar.selectbox("Trigger Level", trigger_levels, index=trigger_levels.index(0.0))
+hour = st.sidebar.selectbox("Trigger Time", hours)
+direction = st.sidebar.radio("Price Approached Trigger From", ["Below", "Above"])
 
-# Plotly Chart
-fig = px.scatter(
-    df,
-    x='Hour',
-    y='ATR Level',
-    size='Trigger Count',
-    color='Completion %',
-    color_continuous_scale='RdYlGn',
-    size_max=40,
-    hover_name='Hover',
-)
+# Filter based on selection
+filtered = df[
+    (df["trigger_level"] == trigger) &
+    (df["trigger_hour"] == hour)
+]
 
-fig.update_traces(hovertemplate='%{hovertext}<extra></extra>')
-fig.update_layout(
-    template="plotly_dark",
-    height=700,
-    yaxis=dict(dtick=0.236, title="ATR Level"),
-    xaxis=dict(title="Hour of Day", type='category'),
-    title_font_size=24,
-    title="Simulated ATR Roadmap"
-)
+# Display a warning if nothing is found
+if filtered.empty:
+    st.warning("No data found for this combination.")
+else:
+    # Format display labels
+    filtered["Goal Label"] = filtered["goal_level"].apply(lambda x: f"{x:+.3f}")
+    filtered["Time Label"] = filtered["trigger_hour"]
 
-st.plotly_chart(fig, use_container_width=True)
+    fig = px.scatter(
+        filtered,
+        x="Time Label",
+        y="Goal Label",
+        size="percent_complete",
+        color="direction",
+        hover_data=["percent_complete", "raw_count"],
+        labels={"percent_complete": "% Complete"},
+        title=f"Trigger: {trigger:+.3f} at {hour}"
+    )
+
+    fig.update_traces(marker=dict(line=dict(width=1, color='DarkSlateGrey')))
+    fig.update_layout(height=600)
+
+    # Annotate percentage values
+    for i, row in filtered.iterrows():
+        fig.add_annotation(
+            x=row["Time Label"],
+            y=row["Goal Label"],
+            text=f"{row['percent_complete']}%",
+            showarrow=False,
+            yshift=15,
+            font=dict(size=11, color="black")
+        )
+
+    st.plotly_chart(fig, use_container_width=True)
+  
