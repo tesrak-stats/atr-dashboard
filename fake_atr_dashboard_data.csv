@@ -1,4 +1,4 @@
-trigger_level,trigger_hour,goal_level,goal_hour,percent_complete,raw_count,direction
+trigger_level,trigger_hour,atr_level,goal_hour,percent_complete,raw_count,direction
 -1.0,OPEN,-1.0,OPEN,9.2,152,Above
 -1.0,OPEN,-1.0,OPEN,79.6,167,Below
 -1.0,OPEN,-0.786,OPEN,58.4,105,Above
