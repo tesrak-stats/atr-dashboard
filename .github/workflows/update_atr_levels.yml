@@ -3,7 +3,7 @@ name: Update Daily ATR Levels
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 1 * * 1-5'  # runs at 1:00 UTC every weekday
+    - cron: '0 1 * * 1-5'
 
 jobs:
   update-atr:
@@ -12,8 +12,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.GH_PAT }}
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -34,3 +32,4 @@ jobs:
           git commit -m "Update ATR levels automatically" || echo "No changes to commit"
           git remote set-url origin https://x-access-token:${{ secrets.GH_PAT }}@github.com/tesrak-stats/atr-dashboard.git
           git push origin HEAD:main
+          
