@@ -1,35 +1,58 @@
 
-name: Update Daily ATR Levels
+import yfinance as yf
+import pandas as pd
+import json
+from datetime import datetime, timedelta
 
-on:
-  schedule:
-    - cron: '30 21 * * 1-5'  # 21:30 UTC = 4:30PM ET, Monday–Friday
-  workflow_dispatch:  # optional manual trigger
+# Settings
+ticker = "SPY"  # Proxy for SPX
+lookback_days = 21  # Includes buffer for non-trading days
+atr_window = 14
+output_file = "daily_atr_levels.json"
 
-jobs:
-  update-atr:
-    runs-on: ubuntu-latest
+# Dates
+end_date = datetime.today()
+start_date = end_date - timedelta(days=lookback_days)
 
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+# Download historical data
+df = yf.download(ticker, start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+# Clean and prepare
+df = df[["Open", "High", "Low", "Close"]].dropna()
+df["Prev Close"] = df["Close"].shift(1)
 
-    - name: Install dependencies
-      run: |
-        pip install yfinance pandas
+# True Range
+df["TR"] = df.apply(lambda row: max(
+    row["High"] - row["Low"],
+    abs(row["High"] - row["Prev Close"]),
+    abs(row["Low"] - row["Prev Close"])
+), axis=1)
 
-    - name: Run ATR Level Generator
-      run: python scripts/generate_daily_atr_levels.py
+# ATR Calculation
+df["ATR_14"] = df["TR"].rolling(window=atr_window).mean()
 
-    - name: Commit updated ATR levels
-      run: |
-        git config user.name "github-actions"
-        git config user.email "actions@github.com"
-        git add data/daily_atr_levels.json
-        git commit -m "Update ATR levels automatically"
-        git push
+# Get most recent row (yesterday's close), and latest open (today's open if available)
+latest = df.iloc[-1]
+prior = df.iloc[-2]
+
+# Calculate ATR-based levels from prior day's close
+fibs = [+1.0, +0.786, +0.618, +0.5, +0.382, +0.236, 0.0,
+        -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+
+levels = {f"{fib:+.3f}": round(prior["Close"] + fib * latest["ATR_14"], 2) for fib in fibs}
+
+# Prepare output
+result = {
+    "date_generated": datetime.today().strftime("%Y-%m-%d"),
+    "ticker": ticker,
+    "atr": round(latest["ATR_14"], 2),
+    "prev_close": round(prior["Close"], 2),
+    "latest_open": round(latest["Open"], 2),
+    "levels": levels
+}
+
+# Save to JSON
+with open(output_file, "w") as f:
+    json.dump(result, f, indent=2)
+
+print(f"Daily ATR levels saved to {output_file}")
