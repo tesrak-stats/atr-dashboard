@@ -3,7 +3,7 @@ name: Update Daily ATR Levels
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 1 * * 1-5'  # runs at 1:00 UTC every weekday (after US market close)
+    - cron: ' 16 21 * * 1-5'  # runs at 1:00 UTC every weekday (after US market close)
 
 jobs:
   update-atr:
