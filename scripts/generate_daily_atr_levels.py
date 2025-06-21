@@ -3,6 +3,10 @@ import yfinance as yf
 import pandas as pd
 import json
 from datetime import datetime
+import os
+
+# Ensure the output directory exists
+os.makedirs("data", exist_ok=True)
 
 # Parameters
 ticker = "^GSPC"
