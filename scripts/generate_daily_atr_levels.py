@@ -2,57 +2,47 @@
 import yfinance as yf
 import pandas as pd
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
-# Settings
-ticker = "SPY"  # Proxy for SPX
-lookback_days = 21  # Includes buffer for non-trading days
-atr_window = 14
-output_file = "daily_atr_levels.json"
+# Parameters
+ticker = "^GSPC"
+lookback_days = 14
+output_file = "data/daily_atr_levels.json"
 
-# Dates
-end_date = datetime.today()
-start_date = end_date - timedelta(days=lookback_days)
+# 1. Fetch 100 days to ensure we get 14 full closes
+data = yf.download(ticker, period="100d", interval="1d", auto_adjust=True)
 
-# Download historical data
-df = yf.download(ticker, start=start_date.strftime('%Y-%m-%d'), end=end_date.strftime('%Y-%m-%d'))
+# 2. Keep only required columns
+data = data[["Open", "High", "Low", "Close"]]
 
-# Clean and prepare
-df = df[["Open", "High", "Low", "Close"]].dropna()
-df["Prev Close"] = df["Close"].shift(1)
+# 3. Calculate True Range and ATR
+data["H-L"] = data["High"] - data["Low"]
+data["H-PC"] = abs(data["High"] - data["Close"].shift(1))
+data["L-PC"] = abs(data["Low"] - data["Close"].shift(1))
+data["TR"] = data[["H-L", "H-PC", "L-PC"]].max(axis=1)
+data["ATR"] = data["TR"].rolling(window=lookback_days).mean()
 
-# True Range
-df["TR"] = df.apply(lambda row: max(
-    row["High"] - row["Low"],
-    abs(row["High"] - row["Prev Close"]),
-    abs(row["Low"] - row["Prev Close"])
-), axis=1)
+# 4. Get latest day's ATR and close
+latest = data.dropna().iloc[-1]
+atr = latest["ATR"]
+close = latest["Close"]
 
-# ATR Calculation
-df["ATR_14"] = df["TR"].rolling(window=atr_window).mean()
+# 5. Calculate ATR-based levels
+fib_levels = [-1.000, -0.786, -0.618, -0.500, -0.382, -0.236, 0.000,
+               0.236, 0.382, 0.500, 0.618, 0.786, 1.000]
 
-# Get most recent row (yesterday's close), and latest open (today's open if available)
-latest = df.iloc[-1]
-prior = df.iloc[-2]
+levels = {f"{f:+.3f}": round(close + (f * atr), 2) for f in fib_levels}
 
-# Calculate ATR-based levels from prior day's close
-fibs = [+1.0, +0.786, +0.618, +0.5, +0.382, +0.236, 0.0,
-        -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
-
-levels = {f"{fib:+.3f}": round(prior["Close"] + fib * latest["ATR_14"], 2) for fib in fibs}
-
-# Prepare output
-result = {
-    "date_generated": datetime.today().strftime("%Y-%m-%d"),
+# 6. Save to JSON
+output = {
+    "date_generated": datetime.utcnow().isoformat(),
     "ticker": ticker,
-    "atr": round(latest["ATR_14"], 2),
-    "prev_close": round(prior["Close"], 2),
-    "latest_open": round(latest["Open"], 2),
+    "close": round(close, 2),
+    "atr": round(atr, 2),
     "levels": levels
 }
 
-# Save to JSON
 with open(output_file, "w") as f:
-    json.dump(result, f, indent=2)
+    json.dump(output, f, indent=2)
 
-print(f"Daily ATR levels saved to {output_file}")
+print("✅ ATR levels generated and saved.")
