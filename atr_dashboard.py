@@ -8,7 +8,17 @@ def render_atr_chart(df, trigger_level, trigger_hour):
     goal_levels = sorted(df["goal_level"].unique(), reverse=True)
     time_blocks = ["OPEN"] + [f"{h:02d}00" for h in range(9, 17)]
     level_spacing = 55
-    filtered = df[(df["trigger_level"] == trigger_level) & (df["trigger_hour"] == trigger_hour)]
+
+    # Filter: all completions for the rest of the day after trigger hour
+    filtered = df[
+        (df["trigger_level"] == trigger_level) &
+        (df["trigger_hour"] == trigger_hour) &
+        (df["goal_hour"].isin(time_blocks)) &
+        (df["goal_hour"].apply(lambda x: time_blocks.index(x) >= time_blocks.index(trigger_hour)))
+    ]
+
+    # Compute total completions per goal level
+    totals = df[df["trigger_level"] == trigger_level].groupby("goal_level")["percent_complete"].mean().to_dict()
 
     fig, ax = plt.subplots(figsize=(14, 10))
     fig.patch.set_facecolor('black')
@@ -23,10 +33,15 @@ def render_atr_chart(df, trigger_level, trigger_hour):
         color = "cyan" if level == 0.236 else "yellow" if level == -0.236 else "white"
         ax.hlines(y=y, xmin=-0.15, xmax=len(time_blocks) - 0.5, color=color, linewidth=lw)
         ax.text(-0.6, y, f"{level:+.3f}", color="white", ha="right", va="center", fontsize=10)
-        ax.text(len(time_blocks) + 0.2, y, f"{4000 + level * 100:.1f}", color="gray", ha="left", va="center", fontsize=10)
+
+        # Add right-side total
+        total = totals.get(level, 0)
+        ax.text(len(time_blocks) + 0.2, y, f"{total:.1f}%", color="white", ha="left", va="center", fontsize=10)
 
     for _, row in filtered.iterrows():
-        x = time_blocks.index(row["trigger_hour"])
+        if row["goal_hour"] not in time_blocks or row["goal_level"] not in goal_levels:
+            continue
+        x = time_blocks.index(row["goal_hour"])
         y = (len(goal_levels) - 1 - goal_levels.index(row["goal_level"])) * level_spacing
         size = max(row["percent_complete"], 1)
         ax.scatter(x, y, s=size * 4, color="cyan", edgecolors="white", linewidth=0.6, zorder=3, marker='o')
@@ -65,8 +80,15 @@ trigger = st.sidebar.selectbox("Trigger Level", trigger_levels, index=trigger_le
 hour = st.sidebar.selectbox("Trigger Time", trigger_hours)
 _ = st.sidebar.radio("Price Approached Trigger From", ["Below", "Above"])  # placeholder
 
+# TODO: semi-live default view if nothing selected
+
 # Chart rendering
-filtered = df[(df["trigger_level"] == trigger) & (df["trigger_hour"] == hour)]
+filtered = df[
+    (df["trigger_level"] == trigger) &
+    (df["trigger_hour"] == hour) &
+    (df["goal_hour"].isin(["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"])) &
+    (df["goal_hour"].apply(lambda x: ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"].index(x) >= ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"].index(hour)))
+]
 
 if filtered.empty:
     st.warning("No data found for this combination.")
