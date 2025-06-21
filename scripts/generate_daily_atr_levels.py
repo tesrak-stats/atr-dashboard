@@ -28,8 +28,8 @@ data["ATR"] = data["TR"].rolling(window=lookback_days).mean()
 
 # 4. Get latest day's ATR and close
 latest = data.dropna().iloc[-1]
-atr = latest["ATR"]
-close = latest["Close"]
+atr = float(round(latest["ATR"], 2))
+close = float(round(latest["Close"], 2))
 
 # 5. Calculate ATR-based levels
 fib_levels = [-1.000, -0.786, -0.618, -0.500, -0.382, -0.236, 0.000,
@@ -41,8 +41,8 @@ levels = {f"{f:+.3f}": round(close + (f * atr), 2) for f in fib_levels}
 output = {
     "date_generated": datetime.utcnow().isoformat(),
     "ticker": ticker,
-    "close": round(close, 2),
-    "atr": round(atr, 2),
+    "close": close,
+    "atr": atr,
     "levels": levels
 }
 
