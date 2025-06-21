@@ -4,7 +4,7 @@ def render_atr_chart(df):
     # Expect columns: 'hour', 'atr_level', 'percent'
     fig = go.Figure()
 
-    levels = sorted(df['atr_level'].unique(), reverse=True)
+    levels = sorted(df['goal_level'].unique(), reverse=True)
     hours = df['hour'].unique()
 
     # Plot lines for each level
