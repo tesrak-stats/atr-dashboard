@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import itertools
 
 # --- Load and prepare data ---
 df = pd.read_csv("combined_trigger_goal_results.csv")
@@ -11,11 +12,9 @@ df["GoalTime"] = df["GoalTime"].astype(str)
 st.sidebar.title("ATR Roadmap Matrix")
 direction = st.sidebar.selectbox("Select Direction", sorted(df["Direction"].unique()))
 trigger_level = st.sidebar.selectbox("Select Trigger Level", sorted(df["TriggerLevel"].unique()))
-
-# Fixed time order
 time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
 
-# Restrict time options to those that exist for selection
+# Sort available trigger times for the selected scenario
 available_times = df[
     (df["Direction"] == direction) & (df["TriggerLevel"] == trigger_level)
 ]["TriggerTime"].unique()
@@ -29,50 +28,73 @@ filtered = df[
     (df["TriggerTime"] == trigger_time)
 ].copy()
 
-# --- Aggregate data ---
-grouped = (
-    filtered.groupby(["GoalLevel", "GoalTime"])
-    .agg(
-        NumHits=("GoalHit", lambda x: (x == "Yes").sum()),
-        NumTriggers=("GoalHit", "count")
-    )
-    .reset_index()
+# --- Grouping logic to preserve misses ---
+# Count total triggers per GoalLevel (regardless of goal time)
+attempts = (
+    filtered.groupby("GoalLevel")
+    .size()
+    .reset_index(name="NumTriggers")
 )
-grouped["PctCompletion"] = (grouped["NumHits"] / grouped["NumTriggers"]) * 100
 
-# --- Define goal levels from +1 to -1 (top to bottom) ---
+# Count hits per GoalLevel + GoalTime
+hits = (
+    filtered[filtered["GoalHit"] == "Yes"]
+    .groupby(["GoalLevel", "GoalTime"])
+    .size()
+    .reset_index(name="NumHits")
+)
+
+# Full grid: every GoalLevel x GoalTime
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+
+all_combos = pd.DataFrame(
+    list(itertools.product(fib_levels, time_order)),
+    columns=["GoalLevel", "GoalTime"]
+)
+
+# Merge hits and trigger attempts
+grouped = all_combos.merge(hits, on=["GoalLevel", "GoalTime"], how="left")
+grouped = grouped.merge(attempts, on="GoalLevel", how="left")
+
+# Define time index to blank earlier times
+time_index = {t: i for i, t in enumerate(time_order)}
+trigger_index = time_index[trigger_time]
+
+# Compute percent completions — show 0.0% when NumHits=0
+def compute_pct(row):
+    if time_index[row["GoalTime"]] < trigger_index:
+        return None
+    if pd.isna(row["NumTriggers"]) or row["NumTriggers"] == 0:
+        return 0.0
+    return (row["NumHits"] or 0) / row["NumTriggers"] * 100
+
+grouped["PctCompletion"] = grouped.apply(compute_pct, axis=1)
 
 # --- Plotly figure setup ---
 fig = go.Figure()
 
-# --- Add percentage text cells ---
-for level in fib_levels:
-    for t in time_order:
-        match = grouped[
-            (grouped["GoalLevel"] == level) &
-            (grouped["GoalTime"] == t)
-        ]
-        if not match.empty:
-            row = match.iloc[0]
-            pct = row["PctCompletion"]
-            hits = row["NumHits"]
-            total = row["NumTriggers"]
-            warn = " ⚠️" if total < 30 else ""
-            hover = f"{pct:.1f}% ({hits}/{total}){warn}"
-            fig.add_trace(go.Scatter(
-                x=[t],
-                y=[level],
-                mode="text",
-                text=[f"{pct:.1f}%"],
-                hovertext=[hover],
-                hoverinfo="text",
-                textfont=dict(color="white", size=12),
-                showlegend=False
-            ))
+for _, row in grouped.iterrows():
+    level = row["GoalLevel"]
+    time_label = row["GoalTime"]
+    pct = row["PctCompletion"]
+    hits = int(row["NumHits"] or 0)
+    total = int(row["NumTriggers"] or 0)
+    warn = " ⚠️" if total < 30 else ""
+    
+    if pd.notna(pct):
+        fig.add_trace(go.Scatter(
+            x=[time_label],
+            y=[level],
+            mode="text",
+            text=[f"{pct:.1f}%"],
+            hovertext=[f"{pct:.1f}% ({hits}/{total}){warn}"],
+            hoverinfo="text",
+            textfont=dict(color="white", size=12),
+            showlegend=False
+        ))
 
-# --- Add horizontal fib level guide lines ---
+# --- Add horizontal fib lines ---
 fibo_styles = {
     1.0: ("white", 2),
     0.786: ("white", 1),
@@ -112,7 +134,7 @@ fig.update_layout(
     yaxis=dict(
         title="Goal Level",
         categoryorder="array",
-        categoryarray=fib_levels,  # 🔥 forces 1.0 at top, -1.0 at bottom
+        categoryarray=fib_levels,
         tickmode="array",
         tickvals=fib_levels,
         tickfont=dict(color="white")
