@@ -324,7 +324,6 @@ fig.update_layout(
     title=f"{direction} | Trigger {trigger_level} at {trigger_time}",
     width=1000,
     
-    width=1000,
     height=720,
     margin=dict(l=40, r=40, t=60, b=40)
 )
