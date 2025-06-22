@@ -127,6 +127,7 @@ fig.update_layout(
         categoryarray=time_order,
         tickmode="array",
         tickvals=time_order,
+        tickangle=0,
         tickfont=dict(color="white"),
         showgrid=False
     ),
@@ -142,9 +143,11 @@ fig.update_layout(
     paper_bgcolor="black",
     font=dict(color="white"),
     height=800,
-    width=1000,
+    width=1200,
     margin=dict(l=60, r=60, t=60, b=60)
 )
 
-# --- Display ---
-st.plotly_chart(fig)
+# --- Scrollable container ---
+st.markdown("<div style='overflow-x:auto;'>", unsafe_allow_html=True)
+st.plotly_chart(fig, use_container_width=False)
+st.markdown("</div>", unsafe_allow_html=True)
