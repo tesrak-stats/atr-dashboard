@@ -221,9 +221,109 @@ fig.add_shape(
     layer="below"
 )
 
+fig.add_shape(
+    type="line",
+    x0="OPEN", x1="OPEN",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="0900", x1="0900",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="1000", x1="1000",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="1100", x1="1100",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="1200", x1="1200",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="1300", x1="1300",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="1400", x1="1400",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="1500", x1="1500",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+
+
+# --- Highlight both trigger zones regardless of direction ---
+if trigger_level in fib_levels:
+    idx = fib_levels.index(trigger_level)
+
+    # Green: UPWARD zone → next higher price level = lower index
+    if idx - 1 >= 0:
+        y0_up = fib_levels[idx]
+        y1_up = fib_levels[idx - 1]
+        fig.add_shape(
+            type="rect",
+            xref="paper", x0=0, x1=1,
+            yref="y", y0=min(y0_up, y1_up), y1=max(y0_up, y1_up),
+            fillcolor="rgba(0,255,0,0.3)",  # green zone above trigger
+            layer="below",
+            line_width=0,
+        )
+
+    # Yellow: DOWNWARD zone → next lower price level = higher index
+    if idx + 1 < len(fib_levels):
+        y0_down = fib_levels[idx]
+        y1_down = fib_levels[idx + 1]
+        fig.add_shape(
+            type="rect",
+            xref="paper", x0=0, x1=1,
+            yref="y", y0=min(y0_down, y1_down), y1=max(y0_down, y1_down),
+            fillcolor="rgba(255,255,0,0.3)",  # yellow zone below trigger
+            layer="below",
+            line_width=0,
+        )
+
+
 # --- Layout ---
 fig.update_layout(
+
     title=f"{direction} | Trigger {trigger_level} at {trigger_time}",
+    width=1000,
+    
     width=1000,
     height=720,
     margin=dict(l=40, r=40, t=60, b=40)
