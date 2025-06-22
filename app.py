@@ -15,19 +15,23 @@ df = load_data()
 st.title("ATR Roadmap Dashboard")
 direction = st.radio("Direction", sorted(df["Direction"].unique()), index=1, horizontal=True)
 trigger_level = st.selectbox("Trigger Level", sorted(df["TriggerLevel"].unique()), index=sorted(df["TriggerLevel"].unique()).index(0.0))
-# Added padding columns for visual space
-time_order = ["_PAD_LEFT", "OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600", "_PAD_RIGHT"]
-visible_time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
 
+# Define visible time blocks and padding for spacing
+visible_time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+time_order = ["_PAD_LEFT"] + visible_time_order + ["1600", "_PAD_RIGHT"]
+
+# Dropdown only shows real values
 trigger_times_sorted = [t for t in visible_time_order if t in df["TriggerTime"].unique()]
 trigger_time = st.selectbox("Trigger Time", trigger_times_sorted, index=0)
 
+# Filter to selected scenario
 filtered = df[
     (df["Direction"] == direction) &
     (df["TriggerLevel"] == trigger_level) &
     (df["TriggerTime"] == trigger_time)
 ].copy()
 
+# Group by goal results
 grouped = filtered.groupby(["GoalLevel", "GoalTime"]).agg(
     NumHits=("GoalHit", lambda x: (x == "Yes").sum()),
     NumTriggers=("GoalHit", "count")
@@ -39,16 +43,17 @@ fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
 
 fig = go.Figure()
 
-# Spacing dummy trace
+# Dummy trace for forcing spacing using time_order (including padding)
 fig.add_trace(go.Scatter(
     x=time_order,
-    y=[None]*len(time_order),
+    y=[None] * len(time_order),
     mode="lines",
     line=dict(color="rgba(0,0,0,0)"),
     hoverinfo="skip",
     showlegend=False
 ))
 
+# Text label rendering only for visible_time_order
 for level in fib_levels:
     for t in visible_time_order:
         if visible_time_order.index(t) < visible_time_order.index(trigger_time):
@@ -121,7 +126,7 @@ fig.update_layout(
                categoryarray=time_order,
                tickmode="array",
                tickvals=time_order,
-               ticktext=[""] + visible_time_order + [""],  # hide labels on padding
+               ticktext=[""] + visible_time_order + ["1600", ""],
                tickangle=0,
                tickfont=dict(color="white")),
     yaxis=dict(title="Goal Level",
