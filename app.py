@@ -16,15 +16,24 @@ st.title("ATR Roadmap Dashboard")
 direction = st.radio("Direction", sorted(df["Direction"].unique()), index=1, horizontal=True)
 trigger_level = st.selectbox("Trigger Level", sorted(df["TriggerLevel"].unique()), index=sorted(df["TriggerLevel"].unique()).index(0.0))
 
-# Add padded spacing on both ends (invisible columns) + center full range of hours
-visible_time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
-time_order = ["_PAD_LEFT", "", *visible_time_order, "1600", "_PAD_RIGHT", ""]  # padding + explicit empty ticks
+# Base hour blocks
+real_times = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+interleaved_times = []
+for i, t in enumerate(real_times):
+    interleaved_times.append(t)
+    if i < len(real_times) - 1:
+        h1 = int(t[:2]) if t != "OPEN" else 9
+        h_half = f"{h1:02d}30"
+        interleaved_times.append(h_half)
 
-# Limit dropdown to actual event times
-trigger_times_sorted = [t for t in visible_time_order if t in df["TriggerTime"].unique()]
+# Category axis uses all
+time_order = ["_PAD_LEFT", *interleaved_times, "_PAD_RIGHT"]
+# Tick labels only for real times, empty string for half-hours
+tick_labels = [t if t in real_times else "" for t in interleaved_times]
+
+trigger_times_sorted = [t for t in real_times if t in df["TriggerTime"].unique()]
 trigger_time = st.selectbox("Trigger Time", trigger_times_sorted, index=0)
 
-# Filter for selected subset
 filtered = df[
     (df["Direction"] == direction) &
     (df["TriggerLevel"] == trigger_level) &
@@ -42,7 +51,7 @@ fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
 
 fig = go.Figure()
 
-# Force grid layout using invisible trace (with extra spacing on left and right)
+# Placeholder invisible trace to set structure
 fig.add_trace(go.Scatter(
     x=time_order,
     y=[None] * len(time_order),
@@ -52,10 +61,10 @@ fig.add_trace(go.Scatter(
     showlegend=False
 ))
 
-# Add visible completion % annotations only for real hours
+# Completion % annotations (real times only)
 for level in fib_levels:
-    for t in visible_time_order:
-        if visible_time_order.index(t) < visible_time_order.index(trigger_time):
+    for t in real_times:
+        if real_times.index(t) < real_times.index(trigger_time):
             continue
         match = grouped[(grouped["GoalLevel"] == level) & (grouped["GoalTime"] == t)]
         if not match.empty:
@@ -78,7 +87,7 @@ for level in fib_levels:
             text=[text],
             hovertext=[hover],
             hoverinfo="text",
-            textfont=dict(color="white", size=12),
+            textfont=dict(color="white", size=14),
             showlegend=False
         ))
 
@@ -113,7 +122,8 @@ for level, (color, width) in fibo_styles.items():
                   line=dict(color=color, width=width),
                   layer="below")
 
-for t in visible_time_order:
+# Add grid lines only for real time ticks
+for t in real_times:
     fig.add_shape(type="line", x0=t, x1=t, xref="x",
                   y0=min(fib_levels), y1=max(fib_levels), yref="y",
                   line=dict(color="gray", width=1, dash="dot"), layer="below")
@@ -124,8 +134,9 @@ fig.update_layout(
                categoryorder="array",
                categoryarray=time_order,
                tickmode="array",
-               tickvals=time_order,
-               ticktext=[""] + [""] + visible_time_order + ["1600", "", ""],
+               tickvals=interleaved_times,
+               ticktext=[""] + tick_labels + [""],
+               showgrid=False,
                tickangle=0,
                tickfont=dict(color="white")),
     yaxis=dict(title="Goal Level",
@@ -138,8 +149,8 @@ fig.update_layout(
     paper_bgcolor="black",
     font=dict(color="white"),
     height=720,
-    width=2000,  # more room for spacing
-    margin=dict(l=60, r=60, t=60, b=60)  # extra margin so left-side doesn't clip
+    width=2400,
+    margin=dict(l=60, r=60, t=60, b=60)
 )
 
 st.plotly_chart(fig, use_container_width=False)
