@@ -2,7 +2,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-import itertools
 
 # --- Load and prepare data ---
 df = pd.read_csv("combined_trigger_goal_results.csv")
@@ -15,12 +14,11 @@ direction = st.sidebar.selectbox("Select Direction", sorted(df["Direction"].uniq
 trigger_level = st.sidebar.selectbox("Select Trigger Level", sorted(df["TriggerLevel"].unique()), index=sorted(df["TriggerLevel"].unique()).index(0.0))
 time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
 
-# Sort available trigger times for the selected scenario
 available_times = df[
     (df["Direction"] == direction) & (df["TriggerLevel"] == trigger_level)
 ]["TriggerTime"].unique()
 trigger_times_sorted = [t for t in time_order if t in available_times]
-trigger_time = st.sidebar.selectbox("Select Trigger Time", trigger_times_sorted, index=trigger_times_sorted.index("OPEN") if "OPEN" in trigger_times_sorted else 0)
+trigger_time = st.sidebar.selectbox("Select Trigger Time", trigger_times_sorted, index=0)
 
 # --- Filter for selected scenario ---
 filtered = df[
@@ -29,76 +27,96 @@ filtered = df[
     (df["TriggerTime"] == trigger_time)
 ].copy()
 
-# --- Grouping logic to preserve misses ---
-# Count total triggers per GoalLevel (regardless of goal time)
-attempts = (
-    filtered.groupby("GoalLevel")
-    .size()
-    .reset_index(name="NumTriggers")
+# --- Aggregate data ---
+grouped = (
+    filtered.groupby(["GoalLevel", "GoalTime"])
+    .agg(
+        NumHits=("GoalHit", lambda x: (x == "Yes").sum()),
+        NumTriggers=("GoalHit", "count")
+    )
+    .reset_index()
 )
+grouped["PctCompletion"] = (grouped["NumHits"] / grouped["NumTriggers"]) * 100
 
-# Count hits per GoalLevel + GoalTime
-hits = (
-    filtered[filtered["GoalHit"] == "Yes"]
-    .groupby(["GoalLevel", "GoalTime"])
-    .size()
-    .reset_index(name="NumHits")
-)
-
-# Full grid: every GoalLevel x GoalTime
+# --- Define goal levels ---
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
-
-all_combos = pd.DataFrame(
-    list(itertools.product(fib_levels, time_order)),
-    columns=["GoalLevel", "GoalTime"]
-)
-
-# Merge hits and trigger attempts
-grouped = all_combos.merge(hits, on=["GoalLevel", "GoalTime"], how="left")
-grouped = grouped.merge(attempts, on="GoalLevel", how="left")
-
-# Define time index to blank earlier times
-time_index = {t: i for i, t in enumerate(time_order)}
-trigger_index = time_index[trigger_time]
-
-# Compute percent completions — show 0.0% where appropriate, blank earlier + trigger level
-def compute_pct(row):
-    if row["GoalLevel"] == trigger_level:
-        return None
-    if time_index[row["GoalTime"]] < trigger_index:
-        return None
-    if pd.isna(row["NumTriggers"]) or row["NumTriggers"] == 0:
-        return 0.0
-    return (row["NumHits"] or 0) / row["NumTriggers"] * 100
-
-grouped["PctCompletion"] = grouped.apply(compute_pct, axis=1)
 
 # --- Plotly figure setup ---
 fig = go.Figure()
 
-for _, row in grouped.iterrows():
-    level = row["GoalLevel"]
-    time_label = row["GoalTime"]
-    pct = row["PctCompletion"]
-    hits = int(row["NumHits"]) if pd.notna(row["NumHits"]) else 0
-    total = int(row["NumTriggers"]) if pd.notna(row["NumTriggers"]) else 0
-    warn = " ⚠️" if total < 30 else ""
-    
-    if pd.notna(pct):
+# --- Add percent text cells ---
+for level in fib_levels:
+    for t in time_order:
+        match = grouped[
+            (grouped["GoalLevel"] == level) & (grouped["GoalTime"] == t)
+        ]
+        if t < trigger_time:
+            continue
+        if not match.empty:
+            row = match.iloc[0]
+            pct = row["PctCompletion"]
+            hits = int(row["NumHits"])
+            total = int(row["NumTriggers"])
+            warn = " ⚠️" if total < 30 else ""
+            hover = f"{pct:.1f}% ({hits}/{total}){warn}"
+            display_text = f"{pct:.1f}%" if not pd.isna(pct) else ""
+        elif t >= trigger_time and level != trigger_level:
+            display_text = "0.0%"
+            hover = "0.0% (0/0)"
+        else:
+            continue
+
         fig.add_trace(go.Scatter(
-            x=[time_label],
+            x=[t],
             y=[level],
             mode="text",
-            text=[f"{pct:.1f}%"],
-            hovertext=[f"{pct:.1f}% ({hits}/{total}){warn}"],
+            text=[display_text],
+            hovertext=[hover],
             hoverinfo="text",
             textfont=dict(color="white", size=12),
-            textposition="top center",
             showlegend=False
         ))
 
-# --- Add horizontal fib lines ---
+# --- Draw shaded zones above and below the trigger ---
+def get_adjacent_level(levels, value, direction):
+    idx = levels.index(value)
+    if direction == "up" and idx > 0:
+        return levels[idx - 1]
+    elif direction == "down" and idx < len(levels) - 1:
+        return levels[idx + 1]
+    return None
+
+next_up = get_adjacent_level(fib_levels, trigger_level, "up")
+next_down = get_adjacent_level(fib_levels, trigger_level, "down")
+
+if next_up is not None:
+    fig.add_shape(
+        type="rect",
+        xref="paper", yref="y",
+        x0=0, x1=1,
+        y0=min(trigger_level, next_up),
+        y1=max(trigger_level, next_up),
+        fillcolor="lightgreen",
+        opacity=0.25,
+        line_width=0,
+        layer="below"
+    )
+
+if next_down is not None:
+    fig.add_shape(
+        type="rect",
+        xref="paper", yref="y",
+        x0=0, x1=1,
+        y0=min(trigger_level, next_down),
+        y1=max(trigger_level, next_down),
+        fillcolor="lightyellow",
+        opacity=0.25,
+        line_width=0,
+        layer="below"
+    )
+
+# --- Fib line styles ---
 fibo_styles = {
     1.0: ("white", 2),
     0.786: ("white", 1),
@@ -124,207 +142,41 @@ for level, (color, width) in fibo_styles.items():
         layer="below"
     )
 
-
-
-# --- Highlight both trigger zones regardless of direction ---
-if trigger_level in fib_levels:
-    idx = fib_levels.index(trigger_level)
-
-    # Green: UPWARD zone → next higher price level = lower index
-    if idx - 1 >= 0:
-        y0_up = fib_levels[idx]
-        y1_up = fib_levels[idx - 1]
-        fig.add_shape(
-            type="rect",
-            xref="paper", x0=0, x1=1,
-            yref="y", y0=min(y0_up, y1_up), y1=max(y0_up, y1_up),
-            fillcolor="rgba(0,255,0,0.3)",  # green zone above trigger
-            layer="below",
-            line_width=0,
-        )
-
-    # Yellow: DOWNWARD zone → next lower price level = higher index
-    if idx + 1 < len(fib_levels):
-        y0_down = fib_levels[idx]
-        y1_down = fib_levels[idx + 1]
-        fig.add_shape(
-            type="rect",
-            xref="paper", x0=0, x1=1,
-            yref="y", y0=min(y0_down, y1_down), y1=max(y0_down, y1_down),
-            fillcolor="rgba(255,255,0,0.3)",  # yellow zone below trigger
-            layer="below",
-            line_width=0,
-        )
-
-fig.add_shape(
-    type="line",
-    x0="OPEN", x1="OPEN",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="0900", x1="0900",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="1000", x1="1000",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="1100", x1="1100",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="1200", x1="1200",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="1300", x1="1300",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="1400", x1="1400",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="1500", x1="1500",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-
-fig.add_shape(
-    type="line",
-    x0="OPEN", x1="OPEN",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="0900", x1="0900",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="1000", x1="1000",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="1100", x1="1100",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="1200", x1="1200",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="1300", x1="1300",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="1400", x1="1400",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-fig.add_shape(
-    type="line",
-    x0="1500", x1="1500",
-    y0=min(fib_levels), y1=max(fib_levels),
-    xref="x", yref="y",
-    line=dict(color="gray", width=1, dash="dot"),
-    layer="below"
-)
-
-
-# --- Highlight both trigger zones regardless of direction ---
-if trigger_level in fib_levels:
-    idx = fib_levels.index(trigger_level)
-
-    # Green: UPWARD zone → next higher price level = lower index
-    if idx - 1 >= 0:
-        y0_up = fib_levels[idx]
-        y1_up = fib_levels[idx - 1]
-        fig.add_shape(
-            type="rect",
-            xref="paper", x0=0, x1=1,
-            yref="y", y0=min(y0_up, y1_up), y1=max(y0_up, y1_up),
-            fillcolor="rgba(0,255,0,0.3)",  # green zone above trigger
-            layer="below",
-            line_width=0,
-        )
-
-    # Yellow: DOWNWARD zone → next lower price level = higher index
-    if idx + 1 < len(fib_levels):
-        y0_down = fib_levels[idx]
-        y1_down = fib_levels[idx + 1]
-        fig.add_shape(
-            type="rect",
-            xref="paper", x0=0, x1=1,
-            yref="y", y0=min(y0_down, y1_down), y1=max(y0_down, y1_down),
-            fillcolor="rgba(255,255,0,0.3)",  # yellow zone below trigger
-            layer="below",
-            line_width=0,
-        )
-
+# Vertical hour lines
+for hour in time_order:
+    fig.add_shape(
+        type="line",
+        xref="x", yref="paper",
+        x0=hour, x1=hour,
+        y0=0, y1=1,
+        line=dict(color="gray", width=1, dash="dot"),
+        layer="below"
+    )
 
 # --- Layout ---
 fig.update_layout(
-
     title=f"{direction} | Trigger {trigger_level} at {trigger_time}",
-    width=1000,
-    
+    xaxis=dict(
+        title="Hour Goal Was Reached",
+        categoryorder="array",
+        categoryarray=time_order,
+        tickmode="array",
+        tickvals=time_order,
+        tickfont=dict(color="white")
+    ),
+    yaxis=dict(
+        title="Goal Level",
+        categoryorder="array",
+        categoryarray=fib_levels,
+        tickmode="array",
+        tickvals=fib_levels,
+        tickfont=dict(color="white")
+    ),
+    plot_bgcolor="black",
+    paper_bgcolor="black",
+    font=dict(color="white"),
     height=720,
+    width=1000,
     margin=dict(l=40, r=40, t=60, b=40)
 )
 
