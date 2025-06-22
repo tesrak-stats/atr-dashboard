@@ -124,19 +124,29 @@ for level, (color, width) in fibo_styles.items():
         layer="below"
     )
 
-# --- Highlight trigger zone (green for Upside, yellow for Downside) ---
-fib_lookup = fib_levels[::-1] if direction == "Downside" else fib_levels
-if trigger_level in fib_lookup:
-    idx = fib_lookup.index(trigger_level)
-    if idx + 1 < len(fib_lookup):
-        y0 = trigger_level
-        y1 = fib_lookup[idx + 1]
-        shade_color = "rgba(0,255,0,0.3)" if direction == "Upside" else "rgba(255,255,0,0.3)"
+
+# --- Highlight both trigger zones regardless of direction ---
+if trigger_level in fib_levels:
+    idx = fib_levels.index(trigger_level)
+    # Upside zone (if there's a level above)
+    if idx + 1 < len(fib_levels):
+        y0_up, y1_up = trigger_level, fib_levels[idx + 1]
         fig.add_shape(
             type="rect",
             xref="paper", x0=0, x1=1,
-            yref="y", y0=min(y0, y1), y1=max(y0, y1),
-            fillcolor=shade_color,
+            yref="y", y0=min(y0_up, y1_up), y1=max(y0_up, y1_up),
+            fillcolor="rgba(0,255,0,0.3)",  # light green
+            layer="below",
+            line_width=0,
+        )
+    # Downside zone (if there's a level below)
+    if idx - 1 >= 0:
+        y0_down, y1_down = trigger_level, fib_levels[idx - 1]
+        fig.add_shape(
+            type="rect",
+            xref="paper", x0=0, x1=1,
+            yref="y", y0=min(y0_down, y1_down), y1=max(y0_down, y1_down),
+            fillcolor="rgba(255,255,0,0.3)",  # light yellow
             layer="below",
             line_width=0,
         )
