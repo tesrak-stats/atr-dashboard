@@ -78,8 +78,8 @@ for _, row in grouped.iterrows():
     level = row["GoalLevel"]
     time_label = row["GoalTime"]
     pct = row["PctCompletion"]
-    hits = int(row["NumHits"] or 0)
-    total = int(row["NumTriggers"] or 0)
+    hits = int(row["NumHits"]) if pd.notna(row["NumHits"]) else 0
+    total = int(row["NumTriggers"]) if pd.notna(row["NumTriggers"]) else 0
     warn = " ⚠️" if total < 30 else ""
     
     if pd.notna(pct):
