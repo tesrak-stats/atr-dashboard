@@ -61,8 +61,10 @@ grouped = grouped.merge(attempts, on="GoalLevel", how="left")
 time_index = {t: i for i, t in enumerate(time_order)}
 trigger_index = time_index[trigger_time]
 
-# Compute percent completions — show 0.0% when NumHits=0
+# Compute percent completions — show 0.0% where appropriate, blank earlier + trigger level
 def compute_pct(row):
+    if row["GoalLevel"] == trigger_level:
+        return None
     if time_index[row["GoalTime"]] < trigger_index:
         return None
     if pd.isna(row["NumTriggers"]) or row["NumTriggers"] == 0:
@@ -91,6 +93,7 @@ for _, row in grouped.iterrows():
             hovertext=[f"{pct:.1f}% ({hits}/{total}){warn}"],
             hoverinfo="text",
             textfont=dict(color="white", size=12),
+            textposition="top center",  # 👈 improves visibility on mobile
             showlegend=False
         ))
 
@@ -119,6 +122,17 @@ for level, (color, width) in fibo_styles.items():
         line=dict(color=color, width=width),
         layer="below"
     )
+
+# --- Add trigger level arrow indicator ---
+fig.add_trace(go.Scatter(
+    x=["OPEN"],  # leftmost label
+    y=[trigger_level],
+    mode="text",
+    text=["➡️"],  # marker
+    textfont=dict(size=16, color="cyan"),
+    hoverinfo="skip",
+    showlegend=False
+))
 
 # --- Layout ---
 fig.update_layout(
