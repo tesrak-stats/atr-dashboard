@@ -58,6 +58,16 @@ lower = next_level_down(fib_levels, trigger_level)
 # --- Plotly figure setup ---
 fig = go.Figure()
 
+# --- Force X-axis to spread by adding invisible dummy trace
+fig.add_trace(go.Scatter(
+    x=time_order,
+    y=[None]*len(time_order),
+    mode="lines",
+    line=dict(color="rgba(0,0,0,0)"),
+    showlegend=False,
+    hoverinfo="skip"
+))
+
 # --- Add percent text cells ---
 for level in fib_levels:
     for t in time_order:
