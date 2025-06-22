@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -93,7 +94,7 @@ for _, row in grouped.iterrows():
             hovertext=[f"{pct:.1f}% ({hits}/{total}){warn}"],
             hoverinfo="text",
             textfont=dict(color="white", size=12),
-            textposition="top center",  # 👈 improves visibility on mobile
+            textposition="top center",
             showlegend=False
         ))
 
@@ -123,16 +124,22 @@ for level, (color, width) in fibo_styles.items():
         layer="below"
     )
 
-# --- Add trigger level arrow indicator ---
-fig.add_trace(go.Scatter(
-    x=["OPEN"],  # leftmost label
-    y=[trigger_level],
-    mode="text",
-    text=["➡️"],  # marker
-    textfont=dict(size=16, color="cyan"),
-    hoverinfo="skip",
-    showlegend=False
-))
+# --- Highlight trigger zone (green for Upside, yellow for Downside) ---
+fib_lookup = fib_levels[::-1] if direction == "Downside" else fib_levels
+if trigger_level in fib_lookup:
+    idx = fib_lookup.index(trigger_level)
+    if idx + 1 < len(fib_lookup):
+        y0 = trigger_level
+        y1 = fib_lookup[idx + 1]
+        shade_color = "rgba(0,255,0,0.1)" if direction == "Upside" else "rgba(255,255,0,0.1)"
+        fig.add_shape(
+            type="rect",
+            xref="paper", x0=0, x1=1,
+            yref="y", y0=min(y0, y1), y1=max(y0, y1),
+            fillcolor=shade_color,
+            layer="below",
+            line_width=0,
+        )
 
 # --- Layout ---
 fig.update_layout(
