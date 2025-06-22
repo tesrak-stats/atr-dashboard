@@ -16,22 +16,21 @@ st.title("ATR Roadmap Dashboard")
 direction = st.radio("Direction", sorted(df["Direction"].unique()), index=1, horizontal=True)
 trigger_level = st.selectbox("Trigger Level", sorted(df["TriggerLevel"].unique()), index=sorted(df["TriggerLevel"].unique()).index(0.0))
 
-# Define visible time blocks and padding for spacing
+# Add padded spacing on both ends (invisible columns) + center full range of hours
 visible_time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
-time_order = ["_PAD_LEFT"] + visible_time_order + ["1600", "_PAD_RIGHT"]
+time_order = ["_PAD_LEFT", "", *visible_time_order, "1600", "_PAD_RIGHT", ""]  # padding + explicit empty ticks
 
-# Dropdown only shows real values
+# Limit dropdown to actual event times
 trigger_times_sorted = [t for t in visible_time_order if t in df["TriggerTime"].unique()]
 trigger_time = st.selectbox("Trigger Time", trigger_times_sorted, index=0)
 
-# Filter to selected scenario
+# Filter for selected subset
 filtered = df[
     (df["Direction"] == direction) &
     (df["TriggerLevel"] == trigger_level) &
     (df["TriggerTime"] == trigger_time)
 ].copy()
 
-# Group by goal results
 grouped = filtered.groupby(["GoalLevel", "GoalTime"]).agg(
     NumHits=("GoalHit", lambda x: (x == "Yes").sum()),
     NumTriggers=("GoalHit", "count")
@@ -43,7 +42,7 @@ fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
 
 fig = go.Figure()
 
-# Dummy trace for forcing spacing using time_order (including padding)
+# Force grid layout using invisible trace (with extra spacing on left and right)
 fig.add_trace(go.Scatter(
     x=time_order,
     y=[None] * len(time_order),
@@ -53,7 +52,7 @@ fig.add_trace(go.Scatter(
     showlegend=False
 ))
 
-# Text label rendering only for visible_time_order
+# Add visible completion % annotations only for real hours
 for level in fib_levels:
     for t in visible_time_order:
         if visible_time_order.index(t) < visible_time_order.index(trigger_time):
@@ -126,7 +125,7 @@ fig.update_layout(
                categoryarray=time_order,
                tickmode="array",
                tickvals=time_order,
-               ticktext=[""] + visible_time_order + ["1600", ""],
+               ticktext=[""] + [""] + visible_time_order + ["1600", "", ""],
                tickangle=0,
                tickfont=dict(color="white")),
     yaxis=dict(title="Goal Level",
@@ -139,8 +138,8 @@ fig.update_layout(
     paper_bgcolor="black",
     font=dict(color="white"),
     height=720,
-    width=1800,
-    margin=dict(l=40, r=40, t=60, b=60)
+    width=2000,  # more room for spacing
+    margin=dict(l=60, r=60, t=60, b=60)  # extra margin so left-side doesn't clip
 )
 
 st.plotly_chart(fig, use_container_width=False)
