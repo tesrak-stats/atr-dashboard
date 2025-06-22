@@ -3,144 +3,94 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-@st.cache_data
-def load_data():
-    df = pd.read_csv("combined_trigger_goal_results.csv")
-    df["TriggerTime"] = df["TriggerTime"].astype(str)
-    df["GoalTime"] = df["GoalTime"].astype(str)
-    return df
+# Load and prepare data
+df = pd.read_csv("combined_trigger_goal_results.csv")
+df["TriggerTime"] = df["TriggerTime"].astype(str)
+df["GoalTime"] = df["GoalTime"].astype(str)
 
-df = load_data()
+# Sidebar UI
+st.sidebar.title("ATR Roadmap Matrix")
+direction = st.sidebar.selectbox("Select Direction", sorted(df["Direction"].unique()), index=0)
+trigger_level = st.sidebar.selectbox("Select Trigger Level", sorted(df["TriggerLevel"].unique()), index=sorted(df["TriggerLevel"].unique()).index(0.0))
+available_times = df[(df["Direction"] == direction) & (df["TriggerLevel"] == trigger_level)]["TriggerTime"].unique()
+time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+trigger_times_sorted = [t for t in time_order if t in available_times]
+trigger_time = st.sidebar.selectbox("Select Trigger Time", trigger_times_sorted, index=0)
 
-st.title("ATR Roadmap Dashboard")
-direction = st.radio("Direction", sorted(df["Direction"].unique()), index=1, horizontal=True)
-trigger_level = st.selectbox("Trigger Level", sorted(df["TriggerLevel"].unique()), index=sorted(df["TriggerLevel"].unique()).index(0.0))
+# Filter for scenario
+filtered = df[(df["Direction"] == direction) & (df["TriggerLevel"] == trigger_level) & (df["TriggerTime"] == trigger_time)].copy()
 
-# Real hour labels
-real_times = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
-# Interleaved for spacing
-category_order = []
-for i, t in enumerate(real_times):
-    category_order.append(t)
-    if i < len(real_times) - 1:
-        category_order.append(f"{t}_gap")
-
-# Tick labels only for real times
-tickvals = [t for t in category_order if "_gap" not in t]
-ticktext = [t for t in real_times]
-
-# Trigger time selector
-trigger_times_sorted = [t for t in real_times if t in df["TriggerTime"].unique()]
-trigger_time = st.selectbox("Trigger Time", trigger_times_sorted, index=0)
-
-# Filter
-filtered = df[
-    (df["Direction"] == direction) &
-    (df["TriggerLevel"] == trigger_level) &
-    (df["TriggerTime"] == trigger_time)
-].copy()
-
+# Aggregate
 grouped = filtered.groupby(["GoalLevel", "GoalTime"]).agg(
     NumHits=("GoalHit", lambda x: (x == "Yes").sum()),
     NumTriggers=("GoalHit", "count")
 ).reset_index()
 grouped["PctCompletion"] = (grouped["NumHits"] / grouped["NumTriggers"]) * 100
 
+# Fib levels and spacing
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
 
+visible_times = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+padded_times = []
+for t in visible_times:
+    padded_times.append(t)
+    padded_times.append(f"{t}_pad")
+padded_times = padded_times[:-1]  # Remove last padding
+
+# Plotly figure
 fig = go.Figure()
 
-# Phantom anchor points
-fig.add_trace(go.Scatter(
-    x=category_order,
-    y=[fib_levels[0]] * len(category_order),
-    mode="markers",
-    marker=dict(color="rgba(0,0,0,0)"),
-    hoverinfo="skip",
-    showlegend=False
-))
-
-# Plot real values only
+# Add percentage text cells
 for level in fib_levels:
-    for t in real_times:
-        if real_times.index(t) < real_times.index(trigger_time):
-            continue
-
+    for t in padded_times:
+        if "_pad" in t:
+            continue  # skip phantom cells
         match = grouped[(grouped["GoalLevel"] == level) & (grouped["GoalTime"] == t)]
         if not match.empty:
             row = match.iloc[0]
             pct = row["PctCompletion"]
-            hits = int(row["NumHits"])
-            total = int(row["NumTriggers"])
+            hits = row["NumHits"]
+            total = row["NumTriggers"]
             warn = " ⚠️" if total < 30 else ""
-            text = f"{pct:.1f}%"
             hover = f"{pct:.1f}% ({hits}/{total}){warn}"
-        elif level != trigger_level:
-            text = "0.0%"
-            hover = "0.0% (0/0)"
-        else:
-            continue
+            fig.add_trace(go.Scatter(
+                x=[t],
+                y=[level + 0.02],
+                mode="text",
+                text=[f"{pct:.1f}%"],
+                hovertext=[hover],
+                hoverinfo="text",
+                textfont=dict(color="white", size=12),
+                showlegend=False
+            ))
 
-        fig.add_trace(go.Scatter(
-            x=[t],
-            y=[level + 0.02],
-            mode="text",
-            text=[text],
-            hovertext=[hover],
-            hoverinfo="text",
-            textfont=dict(color="white", size=14),
-            showlegend=False
-        ))
-
-def next_level(levels, current, direction):
-    idx = levels.index(current)
-    if direction == "up" and idx > 0:
-        return levels[idx - 1]
-    elif direction == "down" and idx < len(levels) - 1:
-        return levels[idx + 1]
-    return None
-
-upper = next_level(fib_levels, trigger_level, "up")
-lower = next_level(fib_levels, trigger_level, "down")
-
-if upper:
-    fig.add_shape(type="rect", x0=0, x1=1, xref="paper", y0=trigger_level, y1=upper, yref="y",
-                  fillcolor="rgba(0,255,0,0.25)", line_width=0, layer="below")
-if lower:
-    fig.add_shape(type="rect", x0=0, x1=1, xref="paper", y0=trigger_level, y1=lower, yref="y",
-                  fillcolor="rgba(255,255,0,0.25)", line_width=0, layer="below")
-
+# Add guide lines
 fibo_styles = {
-    1.0: ("white", 2), 0.786: ("white", 1), 0.618: ("white", 2), 0.5: ("white", 1),
-    0.382: ("white", 1), 0.236: ("cyan", 2), 0.0: ("white", 1),
-    -0.236: ("yellow", 2), -0.382: ("white", 1), -0.5: ("white", 1),
-    -0.618: ("white", 2), -0.786: ("white", 1), -1.0: ("white", 2)
+    1.0: ("white", 2), 0.786: ("white", 1), 0.618: ("white", 2),
+    0.5: ("white", 1), 0.382: ("white", 1), 0.236: ("cyan", 2),
+    0.0: ("white", 1), -0.236: ("yellow", 2), -0.382: ("white", 1),
+    -0.5: ("white", 1), -0.618: ("white", 2), -0.786: ("white", 1), -1.0: ("white", 2)
 }
-
 for level, (color, width) in fibo_styles.items():
-    fig.add_shape(type="line", xref="paper", x0=0, x1=1,
-                  yref="y", y0=level, y1=level,
-                  line=dict(color=color, width=width),
-                  layer="below")
+    fig.add_shape(type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
+                  line=dict(color=color, width=width), layer="below")
 
-# Vertical grid for real hours
-for t in real_times:
-    fig.add_shape(type="line", x0=t, x1=t, xref="x",
-                  y0=min(fib_levels), y1=max(fib_levels), yref="y",
-                  line=dict(color="gray", width=1, dash="dot"), layer="below")
+# Add vertical lines for visible times only
+for t in visible_times:
+    fig.add_vline(x=t, line=dict(color="gray", width=1, dash="dot"))
 
+# Layout
 fig.update_layout(
     title=f"{direction} | Trigger {trigger_level} at {trigger_time}",
     xaxis=dict(
         title="Hour Goal Was Reached",
         categoryorder="array",
-        categoryarray=category_order,
+        categoryarray=padded_times,
         tickmode="array",
-        tickvals=tickvals,
-        ticktext=ticktext,
-        tickangle=0,
-        tickfont=dict(color="white")
+        tickvals=visible_times,
+        ticktext=visible_times,
+        tickfont=dict(color="white", size=12)
     ),
     yaxis=dict(
         title="Goal Level",
@@ -148,14 +98,15 @@ fig.update_layout(
         categoryarray=fib_levels,
         tickmode="array",
         tickvals=fib_levels,
-        tickfont=dict(color="white")
+        tickfont=dict(color="white", size=12)
     ),
     plot_bgcolor="black",
     paper_bgcolor="black",
     font=dict(color="white"),
     height=720,
     width=3000,
-    margin=dict(l=60, r=60, t=60, b=60)
+    margin=dict(l=40, r=40, t=60, b=40)
 )
 
+# Display
 st.plotly_chart(fig, use_container_width=False)
