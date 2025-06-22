@@ -16,24 +16,24 @@ st.title("ATR Roadmap Dashboard")
 direction = st.radio("Direction", sorted(df["Direction"].unique()), index=1, horizontal=True)
 trigger_level = st.selectbox("Trigger Level", sorted(df["TriggerLevel"].unique()), index=sorted(df["TriggerLevel"].unique()).index(0.0))
 
-# Real timepoints
+# Real hour labels
 real_times = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
-# Interleave half-hour spacers
-interleaved_times = []
+# Interleaved for spacing
+category_order = []
 for i, t in enumerate(real_times):
-    interleaved_times.append(t)
+    category_order.append(t)
     if i < len(real_times) - 1:
-        h1 = int(t[:2]) if t != "OPEN" else 9
-        h_half = f"{h1:02d}30"
-        interleaved_times.append(h_half)
+        category_order.append(f"{t}_gap")
 
-# Full axis category order + labels only on real times
-category_order = interleaved_times
-tick_labels = [t if t in real_times else "" for t in interleaved_times]
+# Tick labels only for real times
+tickvals = [t for t in category_order if "_gap" not in t]
+ticktext = [t for t in real_times]
 
+# Trigger time selector
 trigger_times_sorted = [t for t in real_times if t in df["TriggerTime"].unique()]
 trigger_time = st.selectbox("Trigger Time", trigger_times_sorted, index=0)
 
+# Filter
 filtered = df[
     (df["Direction"] == direction) &
     (df["TriggerLevel"] == trigger_level) &
@@ -51,7 +51,7 @@ fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
 
 fig = go.Figure()
 
-# 🔐 Phantom anchor trace — invisible, but enforces spacing
+# Phantom anchor points
 fig.add_trace(go.Scatter(
     x=category_order,
     y=[fib_levels[0]] * len(category_order),
@@ -61,11 +61,12 @@ fig.add_trace(go.Scatter(
     showlegend=False
 ))
 
-# 📊 Display percentages (only real hours)
+# Plot real values only
 for level in fib_levels:
     for t in real_times:
         if real_times.index(t) < real_times.index(trigger_time):
             continue
+
         match = grouped[(grouped["GoalLevel"] == level) & (grouped["GoalTime"] == t)]
         if not match.empty:
             row = match.iloc[0]
@@ -82,7 +83,8 @@ for level in fib_levels:
             continue
 
         fig.add_trace(go.Scatter(
-            x=[t], y=[level + 0.015],
+            x=[t],
+            y=[level + 0.02],
             mode="text",
             text=[text],
             hovertext=[hover],
@@ -122,7 +124,7 @@ for level, (color, width) in fibo_styles.items():
                   line=dict(color=color, width=width),
                   layer="below")
 
-# Only grid for real ticks
+# Vertical grid for real hours
 for t in real_times:
     fig.add_shape(type="line", x0=t, x1=t, xref="x",
                   y0=min(fib_levels), y1=max(fib_levels), yref="y",
@@ -135,11 +137,10 @@ fig.update_layout(
         categoryorder="array",
         categoryarray=category_order,
         tickmode="array",
-        tickvals=real_times,
-        ticktext=real_times,
+        tickvals=tickvals,
+        ticktext=ticktext,
         tickangle=0,
-        tickfont=dict(color="white"),
-        showgrid=False
+        tickfont=dict(color="white")
     ),
     yaxis=dict(
         title="Goal Level",
@@ -153,7 +154,7 @@ fig.update_layout(
     paper_bgcolor="black",
     font=dict(color="white"),
     height=720,
-    width=2400,
+    width=3000,
     margin=dict(l=60, r=60, t=60, b=60)
 )
 
