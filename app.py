@@ -125,28 +125,33 @@ for level, (color, width) in fibo_styles.items():
     )
 
 
+
 # --- Highlight both trigger zones regardless of direction ---
 if trigger_level in fib_levels:
     idx = fib_levels.index(trigger_level)
-    # Upside zone (if there's a level above)
-    if idx + 1 < len(fib_levels):
-        y0_up, y1_up = trigger_level, fib_levels[idx + 1]
+
+    # Green: UPWARD zone → next higher price level = lower index
+    if idx - 1 >= 0:
+        y0_up = fib_levels[idx]
+        y1_up = fib_levels[idx - 1]
         fig.add_shape(
             type="rect",
             xref="paper", x0=0, x1=1,
             yref="y", y0=min(y0_up, y1_up), y1=max(y0_up, y1_up),
-            fillcolor="rgba(0,255,0,0.3)",  # light green
+            fillcolor="rgba(0,255,0,0.3)",  # green zone above trigger
             layer="below",
             line_width=0,
         )
-    # Downside zone (if there's a level below)
-    if idx - 1 >= 0:
-        y0_down, y1_down = trigger_level, fib_levels[idx - 1]
+
+    # Yellow: DOWNWARD zone → next lower price level = higher index
+    if idx + 1 < len(fib_levels):
+        y0_down = fib_levels[idx]
+        y1_down = fib_levels[idx + 1]
         fig.add_shape(
             type="rect",
             xref="paper", x0=0, x1=1,
             yref="y", y0=min(y0_down, y1_down), y1=max(y0_down, y1_down),
-            fillcolor="rgba(255,255,0,0.3)",  # light yellow
+            fillcolor="rgba(255,255,0,0.3)",  # yellow zone below trigger
             layer="below",
             line_width=0,
         )
