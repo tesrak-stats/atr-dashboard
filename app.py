@@ -3,147 +3,110 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-# Load data
-df = pd.read_csv("combined_trigger_goal_results.csv")
-df["TriggerTime"] = df["TriggerTime"].astype(str)
-df["GoalTime"] = df["GoalTime"].astype(str)
+# Load CSV
+@st.cache_data
+def load_data():
+    return pd.read_csv("combined_trigger_goal_results.csv")
 
-# UI controls on top
-st.title("ATR Roadmap Dashboard")
+df = load_data()
+
+# Sidebar inputs
 col1, col2, col3 = st.columns(3)
 with col1:
-    direction = st.radio("Direction", sorted(df["Direction"].unique()), index=1, horizontal=True)
+    direction = st.selectbox("Direction", ["Upside", "Downside"], index=0)
 with col2:
-    trigger_level = st.selectbox("Trigger Level", sorted(df["TriggerLevel"].unique()), index=sorted(df["TriggerLevel"].unique()).index(0.0))
+    selected_trigger = st.selectbox("Trigger Level", sorted(df["TriggerLevel"].unique()))
 with col3:
-    time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"]
-    available_times = df[(df["Direction"] == direction) & (df["TriggerLevel"] == trigger_level)]["TriggerTime"].unique()
-    trigger_times_sorted = [t for t in time_order if t in available_times]
-    trigger_time = st.selectbox("Trigger Time", trigger_times_sorted, index=0)
+    selected_hour = st.selectbox("Trigger Hour", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"], index=0)
 
-# Filter
-filtered = df[(df["Direction"] == direction) & (df["TriggerLevel"] == trigger_level) & (df["TriggerTime"] == trigger_time)].copy()
+# Prep time blocks
+time_blocks = [
+    "OPEN", "0900", "0930", "1000", "1030", "1100", "1130",
+    "1200", "1230", "1300", "1330", "1400", "1430", "1500", "1530", "1600"
+]
+tick_labels = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"]
 
-# Aggregate
-grouped = filtered.groupby(["GoalLevel", "GoalTime"]).agg(
-    NumHits=("GoalHit", lambda x: (x == "Yes").sum()),
-    NumTriggers=("GoalHit", "count")
-).reset_index()
-grouped["PctCompletion"] = (grouped["NumHits"] / grouped["NumTriggers"]) * 100
+# Filter and pivot
+filt = (df["Direction"] == direction) & (df["TriggerLevel"] == selected_trigger) & (df["TriggerHour"] == selected_hour)
+data = df[filt]
 
-# Count OPEN trigger failures
-open_fails = df[
-    (df["Direction"] == direction) &
-    (df["TriggerLevel"] == trigger_level) &
-    (df["TriggerTime"] == "OPEN") &
-    (df["GoalHit"] == "No")
-].shape[0]
+pivot = pd.pivot_table(
+    data, values="PctCompletion",
+    index="GoalLevel", columns="GoalTime",
+    aggfunc="first"
+).reindex(columns=time_blocks).fillna("")
 
-# Time padding logic
-visible_times = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"]
-padded_times = []
-for t in visible_times:
-    padded_times.append(t)
-    padded_times.append(f"{t}_pad")
-padded_times = padded_times[:-1]
+hits = pd.pivot_table(
+    data, values="NumHits",
+    index="GoalLevel", columns="GoalTime",
+    aggfunc="first"
+).reindex(columns=time_blocks).fillna("")
 
-# Fib levels
-fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
-              -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+total = pd.pivot_table(
+    data, values="NumTriggerTotal",
+    index="GoalLevel", columns="GoalTime",
+    aggfunc="first"
+).reindex(columns=time_blocks).fillna("")
 
+# Plotly chart
 fig = go.Figure()
 
-# Add percentages and OPEN tooltip
-for level in fib_levels:
-    for t in padded_times:
-        if "_pad" in t:
-            continue
-        if t == "OPEN":
-            if level != trigger_level:
-                fig.add_trace(go.Scatter(
-                    x=[t],
-                    y=[level + 0.02],
-                    mode="text",
-                    text=[""],
-                    hovertext=[f"🕒 OPEN triggers that failed: {open_fails}"],
-                    hoverinfo="text",
-                    showlegend=False
-                ))
-            continue
-        if visible_times.index(t) < visible_times.index(trigger_time):
-            continue
-        match = grouped[(grouped["GoalLevel"] == level) & (grouped["GoalTime"] == t)]
-        if not match.empty:
-            row = match.iloc[0]
-            pct = row["PctCompletion"]
-            hits = row["NumHits"]
-            total = row["NumTriggers"]
-            warn = " ⚠️" if total < 30 else ""
-            hover = f"{pct:.1f}% ({hits}/{total}){warn}"
-            fig.add_trace(go.Scatter(
-                x=[t],
-                y=[level + 0.02],
-                mode="text",
-                text=[f"{pct:.1f}%"],
-                hovertext=[hover],
-                hoverinfo="text",
-                textfont=dict(color="white", size=12),
-                showlegend=False
-            ))
-        elif level != trigger_level:
-            fig.add_trace(go.Scatter(
-                x=[t],
-                y=[level + 0.02],
-                mode="text",
-                text=["0.0%"],
-                hovertext=["0.0% (0/0)"],
-                hoverinfo="text",
-                textfont=dict(color="white", size=12),
-                showlegend=False
-            ))
+# Add empty heatmap for layout
+fig.add_trace(go.Heatmap(
+    z=[[None]*len(time_blocks) for _ in pivot.index],
+    x=time_blocks, y=pivot.index,
+    showscale=False, colorscale='Viridis',
+    hoverinfo='none'
+))
 
-# Add fib lines
-fibo_styles = {
-    1.0: ("white", 2), 0.786: ("white", 1), 0.618: ("white", 2),
-    0.5: ("white", 1), 0.382: ("white", 1), 0.236: ("cyan", 2),
-    0.0: ("white", 1), -0.236: ("yellow", 2), -0.382: ("white", 1),
-    -0.5: ("white", 1), -0.618: ("white", 2), -0.786: ("white", 1), -1.0: ("white", 2)
-}
-for level, (color, width) in fibo_styles.items():
-    fig.add_shape(type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
-                  line=dict(color=color, width=width), layer="below")
+# Add annotations
+for y_idx, level in enumerate(pivot.index):
+    for x_idx, hour in enumerate(time_blocks):
+        pct = pivot.loc[level, hour]
+        if hour == "OPEN":
+            trigger_count = total.loc[level, hour]
+            if trigger_count and trigger_count > 0:
+                fig.add_annotation(
+                    text=f"{int(trigger_count)} trigger(s) failed at open",
+                    x=hour, y=level,
+                    showarrow=False, font=dict(color="gray", size=8)
+                )
+            continue
+        if hour > selected_hour:
+            if pct != "":
+                fig.add_annotation(
+                    text=f"{float(pct):.1f}%",
+                    x=hour, y=level,
+                    showarrow=False,
+                    font=dict(color="white", size=10)
+                )
 
-# Add vertical gridlines
-for t in visible_times:
-    fig.add_vline(x=t, line=dict(color="gray", width=1, dash="dot"))
+# Highlight zones
+levels = sorted(pivot.index.tolist())
+if selected_trigger in levels:
+    idx = levels.index(selected_trigger)
+    if idx + 1 < len(levels):
+        fig.add_shape(type="rect",
+            x0=-0.5, x1=len(time_blocks)-0.5,
+            y0=levels[idx], y1=levels[idx+1],
+            fillcolor="green", opacity=0.2, layer="below", line_width=0)
+    if idx - 1 >= 0:
+        fig.add_shape(type="rect",
+            x0=-0.5, x1=len(time_blocks)-0.5,
+            y0=levels[idx-1], y1=levels[idx],
+            fillcolor="yellow", opacity=0.2, layer="below", line_width=0)
 
-# Final layout
+# Layout
 fig.update_layout(
-    title=f"{direction} | Trigger {trigger_level} at {trigger_time}",
-    xaxis=dict(
-        title="Hour Goal Was Reached",
-        categoryorder="array",
-        categoryarray=padded_times,
-        tickmode="array",
-        tickvals=visible_times,
-        ticktext=visible_times,
-        tickfont=dict(color="white", size=12)
-    ),
-    yaxis=dict(
-        title="Goal Level",
-        categoryorder="array",
-        categoryarray=fib_levels,
-        tickmode="array",
-        tickvals=fib_levels,
-        tickfont=dict(color="white", size=12)
-    ),
+    title=f"{direction} | Trigger {selected_trigger} at {selected_hour}",
+    xaxis=dict(title="Hour Goal Was Reached", tickmode="array", tickvals=tick_labels),
+    yaxis_title="Goal Level",
     plot_bgcolor="black",
     paper_bgcolor="black",
     font=dict(color="white"),
-    height=720,
-    width=3200,
-    margin=dict(l=40, r=40, t=60, b=40)
+    width=1400,
+    height=800,
+    margin=dict(t=50, l=60, r=40, b=60)
 )
 
-# Show chart
 st.plotly_chart(fig, use_container_width=False)
