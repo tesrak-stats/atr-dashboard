@@ -11,8 +11,8 @@ df["GoalTime"] = df["GoalTime"].astype(str)
 
 # --- Sidebar UI ---
 st.sidebar.title("ATR Roadmap Matrix")
-direction = st.sidebar.selectbox("Select Direction", sorted(df["Direction"].unique()))
-trigger_level = st.sidebar.selectbox("Select Trigger Level", sorted(df["TriggerLevel"].unique()))
+direction = st.sidebar.selectbox("Select Direction", sorted(df["Direction"].unique()), index=0)
+trigger_level = st.sidebar.selectbox("Select Trigger Level", sorted(df["TriggerLevel"].unique()), index=sorted(df["TriggerLevel"].unique()).index(0.0))
 time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
 
 # Sort available trigger times for the selected scenario
@@ -20,7 +20,7 @@ available_times = df[
     (df["Direction"] == direction) & (df["TriggerLevel"] == trigger_level)
 ]["TriggerTime"].unique()
 trigger_times_sorted = [t for t in time_order if t in available_times]
-trigger_time = st.sidebar.selectbox("Select Trigger Time", trigger_times_sorted)
+trigger_time = st.sidebar.selectbox("Select Trigger Time", trigger_times_sorted, index=trigger_times_sorted.index("OPEN") if "OPEN" in trigger_times_sorted else 0)
 
 # --- Filter for selected scenario ---
 filtered = df[
