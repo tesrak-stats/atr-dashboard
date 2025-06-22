@@ -1,4 +1,4 @@
-atr_level,hour,direction,percent,raw_count
+trigger_level,hour,direction,percent,raw_count
 -1.0,OPEN,Above,40.6,280
 -1.0,OPEN,Below,74.5,198
 -0.786,OPEN,Above,61.7,131
