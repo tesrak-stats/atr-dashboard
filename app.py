@@ -3,7 +3,6 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-# --- Load and prepare data ---
 @st.cache_data
 def load_data():
     df = pd.read_csv("combined_trigger_goal_results.csv")
@@ -13,7 +12,6 @@ def load_data():
 
 df = load_data()
 
-# --- UI controls at the top ---
 st.title("ATR Roadmap Dashboard")
 direction = st.radio("Direction", sorted(df["Direction"].unique()), index=1, horizontal=True)
 trigger_level = st.selectbox("Trigger Level", sorted(df["TriggerLevel"].unique()), index=sorted(df["TriggerLevel"].unique()).index(0.0))
@@ -21,7 +19,6 @@ time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
 trigger_times_sorted = [t for t in time_order if t in df["TriggerTime"].unique()]
 trigger_time = st.selectbox("Trigger Time", trigger_times_sorted, index=0)
 
-# --- Filter and group data ---
 filtered = df[
     (df["Direction"] == direction) &
     (df["TriggerLevel"] == trigger_level) &
@@ -34,14 +31,12 @@ grouped = filtered.groupby(["GoalLevel", "GoalTime"]).agg(
 ).reset_index()
 grouped["PctCompletion"] = (grouped["NumHits"] / grouped["NumTriggers"]) * 100
 
-# --- Define goal levels ---
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
 
-# --- Setup figure ---
 fig = go.Figure()
 
-# --- Add dummy trace to force spacing ---
+# Dummy spacing trace
 fig.add_trace(go.Scatter(
     x=time_order,
     y=[None]*len(time_order),
@@ -51,7 +46,7 @@ fig.add_trace(go.Scatter(
     showlegend=False
 ))
 
-# --- Add percentage cells ---
+# Annotations for percent values
 for level in fib_levels:
     for t in time_order:
         if time_order.index(t) < time_order.index(trigger_time):
@@ -72,7 +67,7 @@ for level in fib_levels:
             continue
 
         fig.add_trace(go.Scatter(
-            x=[t], y=[level],
+            x=[t], y=[level + 0.015],  # 👈 slightly nudged up
             mode="text",
             text=[text],
             hovertext=[hover],
@@ -81,7 +76,6 @@ for level in fib_levels:
             showlegend=False
         ))
 
-# --- Add shading ---
 def next_level(levels, current, direction):
     idx = levels.index(current)
     if direction == "up" and idx > 0:
@@ -100,7 +94,6 @@ if lower:
     fig.add_shape(type="rect", x0=0, x1=1, xref="paper", y0=trigger_level, y1=lower, yref="y",
                   fillcolor="rgba(255,255,0,0.25)", line_width=0, layer="below")
 
-# --- Add gridlines ---
 fibo_styles = {
     1.0: ("white", 2), 0.786: ("white", 1), 0.618: ("white", 2), 0.5: ("white", 1),
     0.382: ("white", 1), 0.236: ("cyan", 2), 0.0: ("white", 1),
@@ -119,7 +112,6 @@ for t in time_order:
                   y0=min(fib_levels), y1=max(fib_levels), yref="y",
                   line=dict(color="gray", width=1, dash="dot"), layer="below")
 
-# --- Layout ---
 fig.update_layout(
     title=f"{direction} | Trigger {trigger_level} at {trigger_time}",
     xaxis=dict(title="Hour Goal Was Reached",
@@ -143,5 +135,4 @@ fig.update_layout(
     margin=dict(l=40, r=40, t=60, b=60)
 )
 
-# --- Display ---
 st.plotly_chart(fig, use_container_width=False)
