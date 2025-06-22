@@ -15,8 +15,11 @@ df = load_data()
 st.title("ATR Roadmap Dashboard")
 direction = st.radio("Direction", sorted(df["Direction"].unique()), index=1, horizontal=True)
 trigger_level = st.selectbox("Trigger Level", sorted(df["TriggerLevel"].unique()), index=sorted(df["TriggerLevel"].unique()).index(0.0))
-time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
-trigger_times_sorted = [t for t in time_order if t in df["TriggerTime"].unique()]
+# Added padding columns for visual space
+time_order = ["_PAD_LEFT", "OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600", "_PAD_RIGHT"]
+visible_time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+
+trigger_times_sorted = [t for t in visible_time_order if t in df["TriggerTime"].unique()]
 trigger_time = st.selectbox("Trigger Time", trigger_times_sorted, index=0)
 
 filtered = df[
@@ -36,7 +39,7 @@ fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
 
 fig = go.Figure()
 
-# Dummy spacing trace
+# Spacing dummy trace
 fig.add_trace(go.Scatter(
     x=time_order,
     y=[None]*len(time_order),
@@ -46,10 +49,9 @@ fig.add_trace(go.Scatter(
     showlegend=False
 ))
 
-# Annotations for percent values
 for level in fib_levels:
-    for t in time_order:
-        if time_order.index(t) < time_order.index(trigger_time):
+    for t in visible_time_order:
+        if visible_time_order.index(t) < visible_time_order.index(trigger_time):
             continue
         match = grouped[(grouped["GoalLevel"] == level) & (grouped["GoalTime"] == t)]
         if not match.empty:
@@ -67,7 +69,7 @@ for level in fib_levels:
             continue
 
         fig.add_trace(go.Scatter(
-            x=[t], y=[level + 0.015],  # 👈 slightly nudged up
+            x=[t], y=[level + 0.015],
             mode="text",
             text=[text],
             hovertext=[hover],
@@ -107,7 +109,7 @@ for level, (color, width) in fibo_styles.items():
                   line=dict(color=color, width=width),
                   layer="below")
 
-for t in time_order:
+for t in visible_time_order:
     fig.add_shape(type="line", x0=t, x1=t, xref="x",
                   y0=min(fib_levels), y1=max(fib_levels), yref="y",
                   line=dict(color="gray", width=1, dash="dot"), layer="below")
@@ -119,6 +121,7 @@ fig.update_layout(
                categoryarray=time_order,
                tickmode="array",
                tickvals=time_order,
+               ticktext=[""] + visible_time_order + [""],  # hide labels on padding
                tickangle=0,
                tickfont=dict(color="white")),
     yaxis=dict(title="Goal Level",
@@ -131,7 +134,7 @@ fig.update_layout(
     paper_bgcolor="black",
     font=dict(color="white"),
     height=720,
-    width=1200,
+    width=1800,
     margin=dict(l=40, r=40, t=60, b=60)
 )
 
