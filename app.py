@@ -17,7 +17,7 @@ with col1:
 with col2:
     selected_trigger = st.selectbox("Trigger Level", sorted(df["TriggerLevel"].unique()))
 with col3:
-    selected_hour = st.selectbox("Trigger Hour", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"], index=0)
+    selected_hour = st.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"], index=0)
 
 # Prep time blocks
 time_blocks = [
@@ -27,7 +27,7 @@ time_blocks = [
 tick_labels = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"]
 
 # Filter and pivot
-filt = (df["Direction"] == direction) & (df["TriggerLevel"] == selected_trigger) & (df["TriggerHour"] == selected_hour)
+filt = (df["Direction"] == direction) & (df["TriggerLevel"] == selected_trigger) & (df["TriggerTime"] == selected_hour)
 data = df[filt]
 
 pivot = pd.pivot_table(
