@@ -156,28 +156,75 @@ if trigger_level in fib_levels:
             line_width=0,
         )
 
+fig.add_shape(
+    type="line",
+    x0="OPEN", x1="OPEN",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="0900", x1="0900",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="1000", x1="1000",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="1100", x1="1100",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="1200", x1="1200",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="1300", x1="1300",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="1400", x1="1400",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+fig.add_shape(
+    type="line",
+    x0="1500", x1="1500",
+    y0=min(fib_levels), y1=max(fib_levels),
+    xref="x", yref="y",
+    line=dict(color="gray", width=1, dash="dot"),
+    layer="below"
+)
+
 # --- Layout ---
 fig.update_layout(
     title=f"{direction} | Trigger {trigger_level} at {trigger_time}",
-    xaxis=dict(
-        title="Hour Goal Was Reached",
-        categoryorder="array",
-        categoryarray=time_order,
-        tickmode="array",
-        tickvals=time_order,
-        tickfont=dict(color="white")
-    ),
-    yaxis=dict(
-        title="Goal Level",
-        categoryorder="array",
-        categoryarray=fib_levels,
-        tickmode="array",
-        tickvals=fib_levels,
-        tickfont=dict(color="white")
-    ),
-    plot_bgcolor="black",
-    paper_bgcolor="black",
-    font=dict(color="white"),
+    width=1000,
     height=720,
     margin=dict(l=40, r=40, t=60, b=40)
 )
