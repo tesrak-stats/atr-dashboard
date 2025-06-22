@@ -131,7 +131,7 @@ if trigger_level in fib_lookup:
     if idx + 1 < len(fib_lookup):
         y0 = trigger_level
         y1 = fib_lookup[idx + 1]
-        shade_color = "rgba(0,255,0,0.1)" if direction == "Upside" else "rgba(255,255,0,0.1)"
+        shade_color = "rgba(0,255,0,0.3)" if direction == "Upside" else "rgba(255,255,0,0.3)"
         fig.add_shape(
             type="rect",
             xref="paper", x0=0, x1=1,
