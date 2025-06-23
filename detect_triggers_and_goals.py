@@ -1,93 +1,112 @@
-
 import pandas as pd
-import numpy as np
 
-# Load daily ATR levels
-daily = pd.read_excel("SPXdailycandles.xlsx", skiprows=4)
-intraday = pd.read_csv("SPX_10min.csv", parse_dates=["Datetime"])
+# --- Load input files ---
+daily_df = pd.read_excel("SPXdailycandles.xlsx")
+intraday_df = pd.read_csv("SPX_10min.csv")
 
-# Preprocess intraday
-intraday["Date"] = intraday["Datetime"].dt.date
-intraday["TimeBlock"] = intraday["Datetime"].dt.strftime("%H00")
-intraday.loc[intraday["TimeBlock"] == "0930", "TimeBlock"] = "OPEN"
+# --- Define fib levels and time buckets ---
+fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
+              -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"]
+time_rank = {label: i for i, label in enumerate(time_order)}
 
-# Get correct ATR-based levels from row 5, columns J to V (cols 9:22)
-level_row = daily.iloc[4, 9:22]  # J to V
-fib_levels = level_row.values.astype(float)
-fib_labels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
-fib_map = dict(zip(fib_labels, fib_levels))
+# --- Result collector ---
+records = []
 
-results = []
+for _, row in daily_df.iterrows():
+    date = row["Date"]
+    atr = row["ATR"]
+    levels = {float(k): row[str(k)] for k in fib_levels}
 
-# Loop through each day
-for date in intraday["Date"].unique():
-    try:
-        day_intraday = intraday[intraday["Date"] == date]
-        day_daily = daily[daily["Date"] == pd.to_datetime(date)]
-        if day_daily.empty:
-            continue
-
-        for direction in ["Upside", "Downside"]:
-            for trigger_level in fib_labels:
-                if direction == "Upside":
-                    trigger_price = fib_map.get(trigger_level)
-                    level_col = "High"
-                    hit = day_intraday[day_intraday[level_col] >= trigger_price]
-                else:
-                    trigger_price = fib_map.get(trigger_level)
-                    level_col = "Low"
-                    hit = day_intraday[day_intraday[level_col] <= trigger_price]
-
-                if hit.empty:
-                    continue
-
-                first_hit = hit.iloc[0]
-                trigger_time = first_hit["TimeBlock"]
-                trigger_candle_index = day_intraday.index.get_loc(first_hit.name)
-
-                for goal_level in fib_labels:
-                    if goal_level == trigger_level:
-                        continue
-
-                    is_continuation = (goal_level > trigger_level) if direction == "Upside" else (goal_level < trigger_level)
-                    goal_price = fib_map.get(goal_level)
-
-                    if goal_price is None:
-                        continue
-
-                    goal_hit = False
-                    goal_time = None
-
-                    # Define which prices to scan and how to scan them
-                    if is_continuation:
-                        scan = day_intraday.iloc[trigger_candle_index:]
-                        price_col = "High" if direction == "Upside" else "Low"
-                        goal_hit_rows = scan[scan[price_col] >= goal_price] if direction == "Upside" else scan[scan[price_col] <= goal_price]
-                        if not goal_hit_rows.empty:
-                            goal_time = goal_hit_rows.iloc[0]["TimeBlock"]
-                            goal_hit = True
-                    else:
-                        scan = day_intraday.iloc[trigger_candle_index + 1:]
-                        price_col = "Low" if direction == "Upside" else "High"
-                        goal_hit_rows = scan[scan[price_col] <= goal_price] if direction == "Upside" else scan[scan[price_col] >= goal_price]
-                        if not goal_hit_rows.empty:
-                            goal_time = goal_hit_rows.iloc[0]["TimeBlock"]
-                            goal_hit = True
-
-                    results.append({
-                        "Date": date,
-                        "Direction": direction,
-                        "TriggerLevel": trigger_level,
-                        "TriggerTime": trigger_time,
-                        "GoalLevel": goal_level,
-                        "GoalTime": goal_time if goal_time else "",
-                        "GoalHit": "Yes" if goal_hit else "No"
-                    })
-    except Exception as e:
-        print(f"Error on {date}: {e}")
+    day_candles = intraday_df[intraday_df["Date"] == date]
+    if day_candles.empty:
         continue
 
-# Save result
-df_out = pd.DataFrame(results)
-df_out.to_csv("combined_trigger_goal_results.csv", index=False)
-print("✅ combined_trigger_goal_results.csv generated.")
+    first_candle = day_candles.iloc[0]
+    open_price = first_candle["Open"]
+    high_price = first_candle["High"]
+    low_price = first_candle["Low"]
+
+    triggered = {}
+
+    # --- Trigger detection ---
+    for direction in ["Upside", "Downside"]:
+        levels_to_check = [lvl for lvl in fib_levels if (lvl > 0 if direction == "Upside" else lvl < 0)]
+        for i, lvl in enumerate(levels_to_check):
+            lvl_val = levels[lvl]
+            next_lvl_val = levels[levels_to_check[i + 1]] if i + 1 < len(levels_to_check) else None
+
+            # Check for OPEN trigger
+            triggered_open = False
+            if direction == "Upside" and next_lvl_val and lvl_val <= open_price < next_lvl_val:
+                triggered[lvl] = ("OPEN", direction)
+                triggered_open = True
+            elif direction == "Downside" and next_lvl_val and lvl_val >= open_price > next_lvl_val:
+                triggered[lvl] = ("OPEN", direction)
+                triggered_open = True
+
+            # If not triggered at OPEN, check for high/low breach
+            if not triggered_open:
+                if direction == "Upside" and high_price >= lvl_val:
+                    triggered[lvl] = ("0900", direction)
+                elif direction == "Downside" and low_price <= lvl_val:
+                    triggered[lvl] = ("0900", direction)
+
+    # --- Goal checking ---
+    for lvl, (trigger_time, direction) in triggered.items():
+        lvl_val = levels[lvl]
+        relevant_levels = [l for l in fib_levels if (l > lvl if direction == "Upside" else l < lvl)]
+
+        # sort goals in directional order
+        sorted_goals = sorted(relevant_levels, reverse=(direction == "Downside"))
+        start_checking = False
+        for _, candle in day_candles.iterrows():
+            candle_time = candle["Time"]
+            hour_label = "OPEN" if candle_time == "09:30:00" else candle_time[:2] + "00"
+
+            if not start_checking:
+                if hour_label == trigger_time:
+                    start_checking = True
+                continue
+
+            goal_failed = False
+            for goal in sorted_goals:
+                goal_val = levels[goal]
+                hit = False
+
+                if direction == "Upside" and candle["High"] >= goal_val:
+                    hit = True
+                elif direction == "Downside" and candle["Low"] <= goal_val:
+                    hit = True
+
+                if hit:
+                    records.append({
+                        "Date": date,
+                        "Direction": direction,
+                        "TriggerLevel": lvl,
+                        "TriggerTime": trigger_time,
+                        "GoalLevel": goal,
+                        "GoalHit": "Yes",
+                        "GoalTime": hour_label
+                    })
+                else:
+                    # mark first failure and break directional goal search for this hour
+                    records.append({
+                        "Date": date,
+                        "Direction": direction,
+                        "TriggerLevel": lvl,
+                        "TriggerTime": trigger_time,
+                        "GoalLevel": goal,
+                        "GoalHit": "No",
+                        "GoalTime": hour_label
+                    })
+                    goal_failed = True
+                    break  # stop searching further levels in this direction for this hour
+
+            if goal_failed:
+                break  # stop processing candles until next hour
+
+# --- Save results ---
+result_df = pd.DataFrame(records)
+result_df.to_csv("combined_trigger_goal_results.csv", index=False)
+print("✅ combined_trigger_goal_results.csv saved.")
