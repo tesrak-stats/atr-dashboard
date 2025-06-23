@@ -53,7 +53,7 @@ for level in fib_levels:
             warn = " ⚠️" if total < 30 else ""
             hover = f"{pct:.1f}% ({hits}/{total}){warn}"
             fig.add_trace(go.Scatter(
-                x=[t], y=[level + 0.015],  # bump text upward
+                x=[t], y=[level + 0.015],
                 mode="text",
                 text=[f"{pct:.1f}%"],
                 hovertext=[hover],
@@ -101,13 +101,35 @@ for level, (color, width) in fibo_styles.items():
         layer="below"
     )
 
-# --- Outer white border ---
+# --- Add green/yellow shading between trigger and next level ---
+try:
+    i = fib_levels.index(trigger_level)
+    if direction == "Upside" and i > 0:
+        upper_level = fib_levels[i - 1]
+        fig.add_shape(
+            type="rect",
+            x0=0, x1=1, xref="paper",
+            y0=trigger_level, y1=upper_level, yref="y",
+            fillcolor="rgba(0,255,0,0.1)", line_width=0, layer="below"
+        )
+    elif direction == "Downside" and i < len(fib_levels) - 1:
+        lower_level = fib_levels[i + 1]
+        fig.add_shape(
+            type="rect",
+            x0=0, x1=1, xref="paper",
+            y0=trigger_level, y1=lower_level, yref="y",
+            fillcolor="rgba(255,255,0,0.1)", line_width=0, layer="below"
+        )
+except:
+    pass
+
+# --- Outer border (thinner) ---
 fig.add_shape(
     type="rect",
     xref="paper", yref="y",
     x0=0, x1=1,
     y0=min(fib_levels), y1=max(fib_levels),
-    line=dict(color="white", width=2),
+    line=dict(color="white", width=1),
     layer="above"
 )
 
@@ -133,8 +155,8 @@ fig.update_layout(
     plot_bgcolor="black",
     paper_bgcolor="black",
     font=dict(color="white"),
-    height=800,
-    width=1200,
+    height=900,
+    width=1400,
     margin=dict(l=80, r=60, t=60, b=60)
 )
 
