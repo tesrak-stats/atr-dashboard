@@ -54,8 +54,6 @@ fig = go.Figure()
 # --- Add matrix cells ---
 for level in fib_levels:
     for t in time_order:
-        if t in invisible_fillers:
-            continue
         match = grouped[(grouped["GoalLevel"] == level) & (grouped["GoalTime"] == t)]
         if not match.empty:
             row = match.iloc[0]
@@ -73,16 +71,15 @@ for level in fib_levels:
                 textfont=dict(color="white", size=12),
                 showlegend=False
             ))
-        else:
-            if t not in invisible_fillers and time_order.index(t) >= time_order.index(trigger_time):
-                fig.add_trace(go.Scatter(
-                    x=[t], y=[level + 0.015],
-                    mode="text",
-                    text=["0.0%"],
-                    hoverinfo="skip",
-                    textfont=dict(color="white", size=12),
-                    showlegend=False
-                ))
+        elif t not in invisible_fillers and time_order.index(t) >= time_order.index(trigger_time):
+            fig.add_trace(go.Scatter(
+                x=[t], y=[level + 0.015],
+                mode="text",
+                text=["0.0%"],
+                hoverinfo="skip",
+                textfont=dict(color="white", size=12),
+                showlegend=False
+            ))
 
 # --- Horizontal fib lines ---
 fibo_styles = {
@@ -132,7 +129,7 @@ try:
 except:
     pass
 
-# --- Unified outer border with matching top/bottom lines ---
+# --- Unified outer border with correct bounds and thickness ---
 fig.add_shape(
     type="rect",
     xref="paper", yref="y",
