@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -13,22 +12,13 @@ time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
 
-# --- Sidebar UI ---
-st.sidebar.title("ATR Roadmap Matrix")
+# --- Top Layout UI ---
+st.title("📈 ATR Roadmap Matrix")
+col1, col2, col3 = st.columns(3)
 
-# Ensure all levels/times are present even if not in data
-all_directions = sorted(df["Direction"].unique())
-all_trigger_levels = sorted(set(df["TriggerLevel"]).union(fib_levels))
-all_trigger_times = time_order
-
-# Set defaults
-default_dir = "Upside"
-default_level = 0.0
-default_time = "OPEN"
-
-direction = st.sidebar.selectbox("Select Direction", all_directions, index=all_directions.index(default_dir))
-trigger_level = st.sidebar.selectbox("Select Trigger Level", all_trigger_levels, index=all_trigger_levels.index(default_level))
-trigger_time = st.sidebar.selectbox("Select Trigger Time", all_trigger_times, index=all_trigger_times.index(default_time))
+direction = col1.selectbox("Select Direction", sorted(df["Direction"].unique()), index=0)
+trigger_level = col2.selectbox("Select Trigger Level", sorted(set(df["TriggerLevel"]).union(fib_levels)))
+trigger_time = col3.selectbox("Select Trigger Time", time_order, index=0)
 
 # --- Filter for selected scenario ---
 filtered = df[
@@ -46,19 +36,15 @@ grouped = (
     )
     .reset_index()
 )
-
 grouped["PctCompletion"] = (grouped["NumHits"] / grouped["NumTriggers"] * 100).round(1)
 
-# --- Plotly figure setup ---
+# --- Plotly setup ---
 fig = go.Figure()
 
-# --- Add percentage text cells ---
+# --- Add matrix cells ---
 for level in fib_levels:
     for t in time_order:
-        match = grouped[
-            (grouped["GoalLevel"] == level) & 
-            (grouped["GoalTime"] == t)
-        ]
+        match = grouped[(grouped["GoalLevel"] == level) & (grouped["GoalTime"] == t)]
         if not match.empty:
             row = match.iloc[0]
             pct = row["PctCompletion"]
@@ -66,24 +52,30 @@ for level in fib_levels:
             total = row["NumTriggers"]
             warn = " ⚠️" if total < 30 else ""
             hover = f"{pct:.1f}% ({hits}/{total}){warn}"
-            text_display = f"{pct:.1f}%"
+            fig.add_trace(go.Scatter(
+                x=[t], y=[level],
+                mode="text",
+                text=[f"{pct:.1f}%"],
+                hovertext=[hover],
+                hoverinfo="text",
+                textfont=dict(color="white", size=12),
+                showlegend=False
+            ))
         else:
-            # Leave early time blocks blank, others show 0%
-            hover = "No data"
-            text_display = ""
+            if time_order.index(t) < time_order.index(trigger_time):
+                display = ""
+            else:
+                display = "0.0%"
+            fig.add_trace(go.Scatter(
+                x=[t], y=[level],
+                mode="text",
+                text=[display],
+                hoverinfo="skip",
+                textfont=dict(color="white", size=12),
+                showlegend=False
+            ))
 
-        fig.add_trace(go.Scatter(
-            x=[t],
-            y=[level],
-            mode="text",
-            text=[text_display],
-            hovertext=[hover],
-            hoverinfo="text",
-            textfont=dict(color="white", size=12),
-            showlegend=False
-        ))
-
-# --- Horizontal guide lines for fib levels ---
+# --- Horizontal fib lines ---
 fibo_styles = {
     1.0: ("white", 2),
     0.786: ("white", 1),
@@ -131,9 +123,9 @@ fig.update_layout(
     plot_bgcolor="black",
     paper_bgcolor="black",
     font=dict(color="white"),
-    height=720,
-    margin=dict(l=40, r=40, t=60, b=40)
+    height=800,
+    width=1200,
+    margin=dict(l=80, r=60, t=60, b=60)
 )
 
-# --- Display ---
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, use_container_width=False)
