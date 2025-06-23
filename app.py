@@ -74,18 +74,15 @@ for level in fib_levels:
                 showlegend=False
             ))
         else:
-            if time_order.index(t) < time_order.index(trigger_time):
-                display = ""
-            else:
-                display = "0.0%"
-            fig.add_trace(go.Scatter(
-                x=[t], y=[level + 0.015],
-                mode="text",
-                text=[display],
-                hoverinfo="skip",
-                textfont=dict(color="white", size=12),
-                showlegend=False
-            ))
+            if t not in invisible_fillers and time_order.index(t) >= time_order.index(trigger_time):
+                fig.add_trace(go.Scatter(
+                    x=[t], y=[level + 0.015],
+                    mode="text",
+                    text=["0.0%"],
+                    hoverinfo="skip",
+                    textfont=dict(color="white", size=12),
+                    showlegend=False
+                ))
 
 # --- Horizontal fib lines ---
 fibo_styles = {
@@ -135,27 +132,13 @@ try:
 except:
     pass
 
-# --- Outer border ---
+# --- Unified outer border with matching top/bottom lines ---
 fig.add_shape(
     type="rect",
     xref="paper", yref="y",
     x0=0, x1=1,
-    y0=min(fib_levels), y1=max(fib_levels),
+    y0=-1.05, y1=1.05,
     line=dict(color="white", width=1),
-    layer="above"
-)
-
-# --- Bold lines at top and bottom (above 1, below -1) ---
-fig.add_shape(
-    type="line", x0=0, x1=1, xref="paper",
-    y0=1.05, y1=1.05, yref="y",
-    line=dict(color="white", width=2),
-    layer="above"
-)
-fig.add_shape(
-    type="line", x0=0, x1=1, xref="paper",
-    y0=-1.05, y1=-1.05, yref="y",
-    line=dict(color="white", width=2),
     layer="above"
 )
 
