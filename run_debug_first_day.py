@@ -2,7 +2,7 @@
 import pandas as pd
 
 # Load SPX daily candle data (header in row 5)
-daily = pd.read_excel("SPXdailycandles.xlsx", header=5)
+daily = pd.read_excel("SPXdailycandles.xlsx", header=4)
 daily.columns = daily.columns.str.strip()
 levels_row = daily.iloc[0]
 
