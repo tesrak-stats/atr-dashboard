@@ -23,7 +23,7 @@ intraday['Date'] = pd.to_datetime(intraday['Datetime']).dt.date
 daily['Date'] = pd.to_datetime(daily['Date']).dt.date
 first_day = daily.iloc[0]
 first_day_date = first_day['Date']
-atr = first_day['ATR']
+
 
 # === Extract ATR levels for the day ===
 level_values = {}
