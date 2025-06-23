@@ -28,44 +28,47 @@ for _, row in daily_df.iterrows():
     low_price = first_candle["Low"]
 
     triggered = {}
-    already_triggered_at_open = set()
+    triggered_at_open = set()
 
-    # --- Trigger detection ---
     for direction in ["Upside", "Downside"]:
-        levels_to_check = [lvl for lvl in fib_levels if (lvl > 0 if direction == "Upside" else lvl < 0)]
-        for i, lvl in enumerate(levels_to_check):
+        for i, lvl in enumerate(fib_levels):
             lvl_val = levels[lvl]
-            next_lvl = levels_to_check[i + 1] if i + 1 < len(levels_to_check) else None
+
+            # Identify next level in the same direction
+            if direction == "Upside":
+                next_lvls = [l for l in fib_levels if l > lvl]
+            else:
+                next_lvls = [l for l in fib_levels if l < lvl]
+            next_lvl = next_lvls[0] if next_lvls else None
             next_lvl_val = levels[next_lvl] if next_lvl else None
 
-            # Check for valid OPEN trigger
             is_open_trigger = False
-            if direction == "Upside" and next_lvl_val:
-                if lvl_val <= open_price < next_lvl_val:
+            if next_lvl_val is not None:
+                if direction == "Upside" and lvl_val <= open_price < next_lvl_val:
                     is_open_trigger = True
-            elif direction == "Downside" and next_lvl_val:
-                if lvl_val >= open_price > next_lvl_val:
+                elif direction == "Downside" and lvl_val >= open_price > next_lvl_val:
                     is_open_trigger = True
 
             if is_open_trigger:
-                triggered[lvl] = ("OPEN", direction)
-                already_triggered_at_open.add((lvl, direction))
+                triggered[(lvl, direction)] = "OPEN"
+                triggered_at_open.add((lvl, direction))
                 continue
 
-            # Otherwise, check for 0900 trigger ONLY if OPEN did NOT already trigger it
-            if (lvl, direction) in already_triggered_at_open:
+            # If not OPEN, check 0900 (high/low breach) but not if already triggered
+            if (lvl, direction) in triggered_at_open:
                 continue
 
             if direction == "Upside" and high_price >= lvl_val:
-                triggered[lvl] = ("0900", direction)
+                triggered[(lvl, direction)] = "0900"
             elif direction == "Downside" and low_price <= lvl_val:
-                triggered[lvl] = ("0900", direction)
+                triggered[(lvl, direction)] = "0900"
 
-    # --- Goal checking ---
-    for lvl, (trigger_time, direction) in triggered.items():
-        lvl_val = levels[lvl]
-        relevant_levels = [l for l in fib_levels if (l > lvl if direction == "Upside" else l < lvl)]
-        sorted_goals = sorted(relevant_levels, reverse=(direction == "Downside"))
+    # --- Goal evaluation ---
+    for (trigger_lvl, direction), trigger_time in triggered.items():
+        trigger_val = levels[trigger_lvl]
+
+        goal_levels = [lvl for lvl in fib_levels if lvl != trigger_lvl]
+        sorted_goals = sorted(goal_levels, key=lambda x: fib_levels.index(x))  # maintain defined order
 
         start_checking = False
         for _, candle in day_candles.iterrows():
@@ -77,41 +80,27 @@ for _, row in daily_df.iterrows():
                     start_checking = True
                 continue
 
-            goal_failed = False
+            goals_this_hour = set()
             for goal in sorted_goals:
                 goal_val = levels[goal]
                 hit = False
 
-                if direction == "Upside" and candle["High"] >= goal_val:
+                if goal_val > trigger_val and candle["High"] >= goal_val:
                     hit = True
-                elif direction == "Downside" and candle["Low"] <= goal_val:
+                elif goal_val < trigger_val and candle["Low"] <= goal_val:
                     hit = True
 
-                if hit:
+                if hit and (goal, hour_label) not in goals_this_hour:
                     records.append({
                         "Date": date,
                         "Direction": direction,
-                        "TriggerLevel": lvl,
+                        "TriggerLevel": trigger_lvl,
                         "TriggerTime": trigger_time,
                         "GoalLevel": goal,
                         "GoalHit": "Yes",
                         "GoalTime": hour_label
                     })
-                else:
-                    records.append({
-                        "Date": date,
-                        "Direction": direction,
-                        "TriggerLevel": lvl,
-                        "TriggerTime": trigger_time,
-                        "GoalLevel": goal,
-                        "GoalHit": "No",
-                        "GoalTime": hour_label
-                    })
-                    goal_failed = True
-                    break
-
-            if goal_failed:
-                break
+                    goals_this_hour.add((goal, hour_label))
 
 # --- Save results ---
 result_df = pd.DataFrame(records)
