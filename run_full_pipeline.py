@@ -1,166 +1,104 @@
-
-import streamlit as st
 import pandas as pd
 import numpy as np
+from datetime import datetime
+import os
 
-st.title("🧠 Full Trigger → Summary Generator (Debug Mode)")
+# --- Load input files ---
+daily = pd.read_excel("SPXdailycandles.xlsx", header=4)  # Row 5 = header (0-indexed as 4)
+intraday = pd.read_csv("SPX_10min.csv", parse_dates=['Datetime'])
 
-def detect_triggers_and_goals():
-    st.write("📥 Reading input files...")
-    daily = pd.read_excel("SPXdailycandles.xlsx", skiprows=4)
-    intraday = pd.read_csv("SPX_10min.csv", parse_dates=["Datetime"])
+# --- Ensure proper formatting ---
+daily['Date'] = pd.to_datetime(daily['Date'])
+intraday['Date'] = intraday['Datetime'].dt.date
+intraday['Time'] = intraday['Datetime'].dt.time
+intraday['HourBlock'] = intraday['Datetime'].dt.strftime('%H00')
 
-    intraday["Date"] = intraday["Datetime"].dt.date
-    intraday["TimeBlock"] = intraday["Datetime"].dt.strftime("%H00")
-    intraday.loc[intraday["TimeBlock"] == "0930", "TimeBlock"] = "OPEN"
+# --- Define Fibonacci levels (must match columns J–V in Excel) ---
+fib_levels = [1, 0.786, 0.618, 0.5, 0.382, 0.236, 0, -0.236, -0.382, -0.5, -0.618, -0.786, -1]
+level_cols = [str(level) for level in fib_levels]
 
-    # Show debug info for first row of levels
-    st.write("🔎 Preview of daily.iloc[0, 9:22] (should contain fib levels):")
-    st.write(daily.iloc[0, 9:22])
+# --- Container for all results ---
+all_results = []
 
+# --- Main loop ---
+for idx, row in daily.iterrows():
     try:
-        level_row = daily.iloc[0, 9:22]
-        fib_levels = level_row.values.astype(float)
-    except Exception as e:
-        st.error(f"❌ Error reading fib levels: {e}")
-        return pd.DataFrame()
-
-    fib_labels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
-    fib_map = dict(zip(fib_labels, fib_levels))
-
-    results = []
-    for date in intraday["Date"].unique():
-        try:
-            day_intraday = intraday[intraday["Date"] == date]
-            day_daily = daily[daily["Date"] == pd.to_datetime(date)]
-            if day_daily.empty:
-                continue
-
-            for direction in ["Upside", "Downside"]:
-                for trigger_level in fib_labels:
-                    if direction == "Upside":
-                        trigger_price = fib_map.get(trigger_level)
-                        level_col = "High"
-                        hit = day_intraday[day_intraday[level_col] >= trigger_price]
-                    else:
-                        trigger_price = fib_map.get(trigger_level)
-                        level_col = "Low"
-                        hit = day_intraday[day_intraday[level_col] <= trigger_price]
-
-                    if hit.empty:
-                        continue
-
-                    first_hit = hit.iloc[0]
-                    trigger_time = first_hit["TimeBlock"]
-                    trigger_candle_index = day_intraday.index.get_loc(first_hit.name)
-
-                    for goal_level in fib_labels:
-                        if goal_level == trigger_level:
-                            continue
-
-                        is_continuation = (goal_level > trigger_level) if direction == "Upside" else (goal_level < trigger_level)
-                        goal_price = fib_map.get(goal_level)
-                        if goal_price is None:
-                            continue
-
-                        goal_hit = False
-                        goal_time = None
-
-                        if is_continuation:
-                            scan = day_intraday.iloc[trigger_candle_index:]
-                            price_col = "High" if direction == "Upside" else "Low"
-                            goal_hit_rows = scan[scan[price_col] >= goal_price] if direction == "Upside" else scan[scan[price_col] <= goal_price]
-                            if not goal_hit_rows.empty:
-                                goal_time = goal_hit_rows.iloc[0]["TimeBlock"]
-                                goal_hit = True
-                        else:
-                            scan = day_intraday.iloc[trigger_candle_index + 1:]
-                            price_col = "Low" if direction == "Upside" else "High"
-                            goal_hit_rows = scan[scan[price_col] <= goal_price] if direction == "Upside" else scan[scan[price_col] >= goal_price]
-                            if not goal_hit_rows.empty:
-                                goal_time = goal_hit_rows.iloc[0]["TimeBlock"]
-                                goal_hit = True
-
-                        results.append({
-                            "Date": date,
-                            "Direction": direction,
-                            "TriggerLevel": trigger_level,
-                            "TriggerTime": trigger_time,
-                            "GoalLevel": goal_level,
-                            "GoalTime": goal_time if goal_time else "",
-                            "GoalHit": "Yes" if goal_hit else "No"
-                        })
-        except Exception as e:
-            st.error(f"⚠️ Error processing {date}: {e}")
+        date = row['Date'].date()
+        day_intraday = intraday[intraday['Date'] == date].copy()
+        if day_intraday.empty:
             continue
 
-    df_out = pd.DataFrame(results)
-    st.write("✅ Finished detection. Preview of results:")
-    st.dataframe(df_out.head())
-    return df_out
+        for direction in ['Upside', 'Downside']:
+            for trigger_level in fib_levels:
+                trigger_price = row[str(trigger_level)]
+                if pd.isna(trigger_price):
+                    continue
 
-def generate_summary(df):
-    st.write("📊 Generating summary...")
+                # Trigger logic
+                if direction == 'Upside':
+                    trigger_candles = day_intraday[
+                        (day_intraday['High'] >= trigger_price)
+                    ]
+                else:
+                    trigger_candles = day_intraday[
+                        (day_intraday['Low'] <= trigger_price)
+                    ]
 
-    required_cols = ['TriggerTime', 'GoalTime', 'Date', 'Direction']
-    if not all(col in df.columns for col in required_cols):
-        st.error(f"❌ Required columns missing from trigger data: {set(required_cols) - set(df.columns)}")
-        return pd.DataFrame()
+                if trigger_candles.empty:
+                    continue
 
-    df["TriggerTime"] = df["TriggerTime"].fillna("").astype(str)
-    df["GoalTime"] = df["GoalTime"].fillna("").astype(str)
+                trigger_idx = trigger_candles.index[0]
+                trigger_candle = day_intraday.loc[trigger_idx]
+                trigger_time = trigger_candle['HourBlock']
 
-    trigger_occurrences = df[['Date', 'TriggerLevel', 'TriggerTime', 'Direction']].drop_duplicates()
-    trigger_counts = (
-        trigger_occurrences
-        .value_counts(subset=['TriggerLevel', 'TriggerTime', 'Direction'])
-        .reset_index()
-    )
-    trigger_counts.columns = ['TriggerLevel', 'TriggerTime', 'Direction', 'NumTriggers']
+                # OPEN logic
+                open_candle = day_intraday.iloc[0]
+                if direction == 'Upside':
+                    if open_candle['Open'] >= trigger_price and open_candle['High'] >= trigger_price:
+                        trigger_time = 'OPEN'
+                else:
+                    if open_candle['Open'] <= trigger_price and open_candle['Low'] <= trigger_price:
+                        trigger_time = 'OPEN'
 
-    goal_hits = df[df['GoalHit'] == 'Yes']
-    goal_counts = (
-        goal_hits
-        .groupby(['TriggerLevel', 'TriggerTime', 'Direction', 'GoalLevel', 'GoalTime'])
-        .size()
-        .reset_index(name='NumHits')
-    )
+                # Collect goal results for levels in **both directions**
+                for goal_level in fib_levels:
+                    if direction == 'Upside' and goal_level <= trigger_level:
+                        continue
+                    if direction == 'Downside' and goal_level >= trigger_level:
+                        continue
 
-    summary = pd.merge(
-        goal_counts,
-        trigger_counts,
-        on=['TriggerLevel', 'TriggerTime', 'Direction'],
-        how='left'
-    )
-    summary['PctCompletion'] = (summary['NumHits'] / summary['NumTriggers'] * 100).round(2)
+                    goal_price = row[str(goal_level)]
+                    if pd.isna(goal_price):
+                        continue
 
-    summary = summary[[
-        'Direction',
-        'TriggerLevel',
-        'TriggerTime',
-        'GoalLevel',
-        'GoalTime',
-        'NumTriggers',
-        'NumHits',
-        'PctCompletion'
-    ]]
+                    goal_hit = 'No'
+                    goal_time = None
 
-    return summary
+                    future_intraday = day_intraday.loc[trigger_idx + 1:]
+                    for i, goal_row in future_intraday.iterrows():
+                        if direction == 'Upside' and goal_row['High'] >= goal_price:
+                            goal_hit = 'Yes'
+                            goal_time = goal_row['HourBlock']
+                            break
+                        elif direction == 'Downside' and goal_row['Low'] <= goal_price:
+                            goal_hit = 'Yes'
+                            goal_time = goal_row['HourBlock']
+                            break
 
-if st.button("🔁 Run Full Trigger + Summary Pipeline (Debug Mode)"):
-    with st.spinner("Running full logic..."):
-        df_trigger = detect_triggers_and_goals()
-        if not df_trigger.empty:
-            df_trigger.to_csv("combined_trigger_goal_results.csv", index=False)
-            df_summary = generate_summary(df_trigger)
-            if not df_summary.empty:
-                df_summary.to_csv("atr_dashboard_summary.csv", index=False)
-                st.success("✅ Both files generated!")
-                st.subheader("📄 Preview of atr_dashboard_summary.csv")
-                st.dataframe(df_summary.head(25))
-                st.download_button(
-                    label="⬇️ Download atr_dashboard_summary.csv",
-                    data=df_summary.to_csv(index=False),
-                    file_name="atr_dashboard_summary.csv",
-                    mime="text/csv"
-                )
+                    result = {
+                        'Date': date,
+                        'Direction': direction,
+                        'TriggerLevel': trigger_level,
+                        'TriggerTime': trigger_time,
+                        'GoalLevel': goal_level,
+                        'GoalHit': goal_hit,
+                        'GoalTime': goal_time
+                    }
+                    all_results.append(result)
+    except Exception as e:
+        print(f"Error on {row['Date']}: {e}")
+
+# --- Save results ---
+output = pd.DataFrame(all_results)
+output.to_csv("combined_trigger_goal_results.csv", index=False)
+print("✅ Done. Saved to combined_trigger_goal_results.csv")
