@@ -8,15 +8,14 @@ df["TriggerTime"] = df["TriggerTime"].astype(str)
 df["GoalTime"] = df["GoalTime"].astype(str)
 
 # --- Time blocks: real + spacing
-visible_hours = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"]
+visible_hours = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
 invisible_fillers = ["0930", "1030", "1130", "1230", "1330", "1430", "1530"]
-time_order = []
+time_order = ["OPEN"]
 for hour in visible_hours:
     time_order.append(hour)
-    if hour != "1600":
-        filler = f"{str(int(hour[:2])+1).zfill(2)}30" if hour != "OPEN" else "0930"
-        if filler not in time_order:
-            time_order.append(filler)
+    filler = f"{str(int(hour[:2])+1).zfill(2)}30"
+    time_order.append(filler)
+time_order.append("1600")  # Keep for spacing, not labeling
 
 # --- Fixed goal levels ---
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
@@ -28,7 +27,7 @@ col1, col2, col3 = st.columns(3)
 
 direction = col1.selectbox("Select Direction", sorted(df["Direction"].unique()), index=0)
 trigger_level = col2.selectbox("Select Trigger Level", sorted(set(df["TriggerLevel"]).union(fib_levels)))
-trigger_time = col3.selectbox("Select Trigger Time", visible_hours, index=0)
+trigger_time = col3.selectbox("Select Trigger Time", ["OPEN"] + visible_hours, index=0)
 
 # --- Filter for selected scenario ---
 filtered = df[
@@ -54,6 +53,8 @@ fig = go.Figure()
 # --- Add matrix cells ---
 for level in fib_levels:
     for t in time_order:
+        if t in invisible_fillers or t in ["OPEN", "1600"]:
+            continue
         match = grouped[(grouped["GoalLevel"] == level) & (grouped["GoalTime"] == t)]
         if not match.empty:
             row = match.iloc[0]
@@ -71,7 +72,7 @@ for level in fib_levels:
                 textfont=dict(color="white", size=12),
                 showlegend=False
             ))
-        elif t not in invisible_fillers and time_order.index(t) >= time_order.index(trigger_time):
+        elif time_order.index(t) >= time_order.index(trigger_time):
             fig.add_trace(go.Scatter(
                 x=[t], y=[level + 0.015],
                 mode="text",
@@ -129,7 +130,7 @@ try:
 except:
     pass
 
-# --- Unified outer border with correct bounds and thickness ---
+# --- Unified outer border ---
 fig.add_shape(
     type="rect",
     xref="paper", yref="y",
