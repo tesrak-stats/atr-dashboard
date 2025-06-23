@@ -90,8 +90,10 @@ def detect_triggers_and_goals():
     return df_out
 
 def generate_summary(df):
-    df["TriggerTime"] = df["TriggerTime"].astype(str)
-    df["GoalTime"] = df["GoalTime"].astype(str)
+    if "TriggerTime" in df.columns:
+        df["TriggerTime"] = df["TriggerTime"].fillna("").astype(str)
+    if "GoalTime" in df.columns:
+        df["GoalTime"] = df["GoalTime"].fillna("").astype(str)
 
     trigger_occurrences = df[['Date', 'TriggerLevel', 'TriggerTime', 'Direction']].drop_duplicates()
     trigger_counts = (
@@ -140,3 +142,10 @@ if st.button("🔁 Run Full Trigger + Summary Pipeline"):
 
     st.subheader("📄 Preview of atr_dashboard_summary.csv")
     st.dataframe(df_summary.head(25))
+
+    st.download_button(
+        label="⬇️ Download atr_dashboard_summary.csv",
+        data=df_summary.to_csv(index=False),
+        file_name="atr_dashboard_summary.csv",
+        mime="text/csv"
+    )
