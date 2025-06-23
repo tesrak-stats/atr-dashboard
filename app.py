@@ -1,115 +1,139 @@
+
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-st.set_page_config(layout="wide")
-st.title("📈 ATR Roadmap Matrix")
-
-# Load the summary file
+# --- Load and prepare data ---
 df = pd.read_csv("atr_dashboard_summary.csv")
+df["TriggerTime"] = df["TriggerTime"].astype(str)
+df["GoalTime"] = df["GoalTime"].astype(str)
 
-# Dropdowns
-directions = df['Direction'].unique()
-trigger_levels = sorted(df['TriggerLevel'].unique(), reverse=True)
-trigger_times = ['OPEN', '0900', '1000', '1100', '1200', '1300', '1400', '1500']
+# --- Fixed time and level order ---
+time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"]
+fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
+              -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
 
-col1, col2, col3 = st.columns(3)
-with col1:
-    selected_direction = st.selectbox("Select Direction", directions)
-with col2:
-    selected_trigger = st.selectbox("Select Trigger Level", trigger_levels)
-with col3:
-    selected_time = st.selectbox("Select Trigger Time", trigger_times)
+# --- Sidebar UI ---
+st.sidebar.title("ATR Roadmap Matrix")
 
-# Filtered Data
+# Ensure all levels/times are present even if not in data
+all_directions = sorted(df["Direction"].unique())
+all_trigger_levels = sorted(set(df["TriggerLevel"]).union(fib_levels))
+all_trigger_times = time_order
+
+# Set defaults
+default_dir = "Upside"
+default_level = 0.0
+default_time = "OPEN"
+
+direction = st.sidebar.selectbox("Select Direction", all_directions, index=all_directions.index(default_dir))
+trigger_level = st.sidebar.selectbox("Select Trigger Level", all_trigger_levels, index=all_trigger_levels.index(default_level))
+trigger_time = st.sidebar.selectbox("Select Trigger Time", all_trigger_times, index=all_trigger_times.index(default_time))
+
+# --- Filter for selected scenario ---
 filtered = df[
-    (df['Direction'] == selected_direction) &
-    (df['TriggerLevel'] == selected_trigger) &
-    (df['TriggerTime'] == selected_time)
-]
+    (df["Direction"] == direction) &
+    (df["TriggerLevel"] == trigger_level) &
+    (df["TriggerTime"] == trigger_time)
+].copy()
 
-# Ensure all goal levels appear (including 0% or missing)
-goal_levels = sorted(df['GoalLevel'].unique(), reverse=True)
-time_blocks = ['OPEN', '0900', '1000', '1100', '1200', '1300', '1400', '1500', '1600']
-
-z = []
-text = []
-for level in goal_levels:
-    row = []
-    row_text = []
-    for hour in time_blocks:
-        match = filtered[(filtered['GoalLevel'] == level) & (filtered['GoalTime'] == hour)]
-        if match.empty:
-            if hour == 'OPEN':
-                row.append(None)
-                row_text.append("")
-            else:
-                row.append(0)
-                row_text.append("0%")
-        else:
-            pct = match['PctCompletion'].values[0]
-            row.append(pct)
-            row_text.append(f"{pct:.1f}%")
-    z.append(row)
-    text.append(row_text)
-
-# Color logic
-def get_color(pct):
-    if pct is None:
-        return 'rgba(0,0,0,0)'
-    elif pct == 0:
-        return 'black'
-    elif pct == 100:
-        return 'darkgreen' if selected_direction == 'Upside' else 'darkred'
-    else:
-        return 'goldenrod'
-
-shapes = []
-annotations = []
-cell_width = 1
-cell_height = 1
-for i, level in enumerate(goal_levels):
-    for j, hour in enumerate(time_blocks):
-        x0 = j * cell_width
-        x1 = x0 + cell_width
-        y0 = i * cell_height
-        y1 = y0 + cell_height
-        val = z[i][j]
-        color = get_color(val)
-        shapes.append(dict(type="rect", x0=x0, x1=x1, y0=y0, y1=y1,
-                           line=dict(color="white", width=1),
-                           fillcolor=color))
-        if text[i][j]:
-            annotations.append(dict(x=(x0 + x1)/2, y=(y0 + y1)/2,
-                                    text=text[i][j],
-                                    showarrow=False,
-                                    font=dict(color="white", size=10)))
-
-fig = go.Figure()
-fig.update_layout(
-    shapes=shapes,
-    annotations=annotations,
-    xaxis=dict(
-        tickmode='array',
-        tickvals=[i + 0.5 for i in range(len(time_blocks))],
-        ticktext=time_blocks,
-        showgrid=False,
-        zeroline=False
-    ),
-    yaxis=dict(
-        tickmode='array',
-        tickvals=[i + 0.5 for i in range(len(goal_levels))],
-        ticktext=[str(lvl) for lvl in goal_levels],
-        autorange="reversed",
-        showgrid=False,
-        zeroline=False
-    ),
-    plot_bgcolor='black',
-    margin=dict(l=80, r=40, t=40, b=40),
-    height=600,
-    width=900
+# --- Aggregate data ---
+grouped = (
+    filtered.groupby(["GoalLevel", "GoalTime"])
+    .agg(
+        NumHits=("NumHits", "sum"),
+        NumTriggers=("NumTriggers", "first")
+    )
+    .reset_index()
 )
 
-fig.update_xaxes(showline=False, showticklabels=True)
-fig.update_yaxes(showline=False, showticklabels=True)
-st.plotly_chart(fig, use_container_width=False)
+grouped["PctCompletion"] = (grouped["NumHits"] / grouped["NumTriggers"] * 100).round(1)
+
+# --- Plotly figure setup ---
+fig = go.Figure()
+
+# --- Add percentage text cells ---
+for level in fib_levels:
+    for t in time_order:
+        match = grouped[
+            (grouped["GoalLevel"] == level) & 
+            (grouped["GoalTime"] == t)
+        ]
+        if not match.empty:
+            row = match.iloc[0]
+            pct = row["PctCompletion"]
+            hits = row["NumHits"]
+            total = row["NumTriggers"]
+            warn = " ⚠️" if total < 30 else ""
+            hover = f"{pct:.1f}% ({hits}/{total}){warn}"
+            text_display = f"{pct:.1f}%"
+        else:
+            # Leave early time blocks blank, others show 0%
+            hover = "No data"
+            text_display = ""
+
+        fig.add_trace(go.Scatter(
+            x=[t],
+            y=[level],
+            mode="text",
+            text=[text_display],
+            hovertext=[hover],
+            hoverinfo="text",
+            textfont=dict(color="white", size=12),
+            showlegend=False
+        ))
+
+# --- Horizontal guide lines for fib levels ---
+fibo_styles = {
+    1.0: ("white", 2),
+    0.786: ("white", 1),
+    0.618: ("white", 2),
+    0.5: ("white", 1),
+    0.382: ("white", 1),
+    0.236: ("cyan", 2),
+    0.0: ("white", 1),
+    -0.236: ("yellow", 2),
+    -0.382: ("white", 1),
+    -0.5: ("white", 1),
+    -0.618: ("white", 2),
+    -0.786: ("white", 1),
+    -1.0: ("white", 2),
+}
+
+for level, (color, width) in fibo_styles.items():
+    fig.add_shape(
+        type="line",
+        x0=0, x1=1, xref="paper",
+        y0=level, y1=level, yref="y",
+        line=dict(color=color, width=width),
+        layer="below"
+    )
+
+# --- Layout ---
+fig.update_layout(
+    title=f"{direction} | Trigger {trigger_level} at {trigger_time}",
+    xaxis=dict(
+        title="Hour Goal Was Reached",
+        categoryorder="array",
+        categoryarray=time_order,
+        tickmode="array",
+        tickvals=time_order,
+        tickfont=dict(color="white")
+    ),
+    yaxis=dict(
+        title="Goal Level",
+        categoryorder="array",
+        categoryarray=fib_levels,
+        tickmode="array",
+        tickvals=fib_levels,
+        tickfont=dict(color="white")
+    ),
+    plot_bgcolor="black",
+    paper_bgcolor="black",
+    font=dict(color="white"),
+    height=720,
+    margin=dict(l=40, r=40, t=60, b=40)
+)
+
+# --- Display ---
+st.plotly_chart(fig, use_container_width=True)
