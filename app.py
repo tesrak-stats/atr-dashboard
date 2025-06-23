@@ -1,10 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from scripts.generate_daily_atr_levels import get_latest_atr_levels
-
-# ... rest of app.py unchanged ...
-
+from generate_daily_atr_levels import get_latest_atr_levels
 
 # --- Load and prepare data ---
 df = pd.read_csv("atr_dashboard_summary.csv")
