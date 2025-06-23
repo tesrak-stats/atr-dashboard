@@ -1,27 +1,23 @@
 
 import pandas as pd
 
-# Load daily candle levels
-daily = pd.read_excel("SPXdailycandles.xlsx", header=5)
-print("✅ Loaded columns:", daily.columns.tolist())
+# ✅ Load daily candle levels with correct header row (row 5 = index 4)
+daily = pd.read_excel("SPXdailycandles.xlsx", header=4)
 
-level_map = {}
-for col in daily.columns[9:22]:  # Columns J through V
-    try:
-        if isinstance(col, str) and '%' in col:
-            float_label = float(col.strip('%')) / 100
-        else:
-            float_label = float(col)  # fallback for numeric labels like 0, 1, -1
-        level_map[float_label] = col
-    except ValueError:
-        continue
+# Preview to confirm
+print("✅ Columns loaded:", daily.columns.tolist())
 
-print("✅ Level map built:", level_map)
-
-# Placeholder for full logic, with debug on Date access
+# Proceed with logic (placeholder)
 for index, row in daily.iterrows():
     try:
         date = row["Date"]
     except KeyError:
-        print("❌ 'Date' KeyError - Available columns in row:", row.index.tolist())
+        print("❌ 'Date' KeyError on row", index)
         raise
+
+# Placeholder for future logic:
+# - Trigger/goal detection
+# - Level parsing
+# - Time block matching, etc.
+
+print("✅ Script ran successfully.")
