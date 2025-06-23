@@ -19,7 +19,7 @@ for col in daily.columns[9:22]:  # Columns J through V
 print("✅ Level map built:", level_map)
 
 # Load intraday data
-intraday = pd.read_excel("SPX_10min.xlsx", header=1)
+intraday = pd.read_csv("SPX_10min.csv", header=1)
 intraday['Date'] = pd.to_datetime(intraday['Datetime']).dt.date
 
 all_results = []
