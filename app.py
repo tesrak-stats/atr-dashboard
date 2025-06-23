@@ -1,13 +1,23 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+from scripts.generate_daily_atr_levels import get_latest_atr_levels
+
+# ... rest of app.py unchanged ...
+
 
 # --- Load and prepare data ---
 df = pd.read_csv("atr_dashboard_summary.csv")
 df["TriggerTime"] = df["TriggerTime"].astype(str)
 df["GoalTime"] = df["GoalTime"].astype(str)
 
-# --- Time blocks: real + spacing
+# --- Load current ATR-based price levels ---
+try:
+    atr_price_levels = get_latest_atr_levels()
+except:
+    atr_price_levels = {}
+
+# --- Time structure ---
 visible_hours = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
 invisible_fillers = ["0930", "1030", "1130", "1230", "1330", "1430", "1530"]
 time_order = ["OPEN"]
@@ -17,7 +27,7 @@ for hour in visible_hours:
     time_order.append(filler)
 time_order.append("1600")
 
-# --- Fixed goal levels ---
+# --- Fib levels ---
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
 
@@ -79,7 +89,7 @@ for level in fib_levels:
                 showlegend=False
             ))
 
-# --- Anchor invisible marker to force 'OPEN' label to show ---
+# --- Anchor invisible point for OPEN ---
 fig.add_trace(go.Scatter(
     x=["OPEN"], y=[0.0],
     mode="markers",
@@ -88,7 +98,7 @@ fig.add_trace(go.Scatter(
     hoverinfo="skip"
 ))
 
-# --- Horizontal reference lines ---
+# --- Horizontal lines ---
 fibo_styles = {
     1.0: ("white", 2), 0.786: ("white", 1), 0.618: ("white", 2),
     0.5: ("white", 1), 0.382: ("white", 1), 0.236: ("cyan", 2),
@@ -102,35 +112,21 @@ for level, (color, width) in fibo_styles.items():
         line=dict(color=color, width=width), layer="below"
     )
 
-# --- Green/yellow shading for continuation/retracement ---
-try:
-    i = fib_levels.index(trigger_level)
-    if direction == "Upside" and i > 0:
-        fig.add_shape(
-            type="rect", x0=0, x1=1, xref="paper",
-            y0=trigger_level, y1=fib_levels[i - 1], yref="y",
-            fillcolor="rgba(0,255,0,0.1)", line_width=0, layer="below"
-        )
-    elif direction == "Downside" and i < len(fib_levels) - 1:
-        fig.add_shape(
-            type="rect", x0=0, x1=1, xref="paper",
-            y0=trigger_level, y1=fib_levels[i + 1], yref="y",
-            fillcolor="rgba(255,255,0,0.1)", line_width=0, layer="below"
-        )
-except:
-    pass
+# --- Price ladder on right Y-axis ---
+if atr_price_levels:
+    price_labels = [atr_price_levels.get(level, "") for level in fib_levels]
+    yaxis2 = dict(
+        overlaying='y',
+        side='right',
+        tickvals=fib_levels,
+        ticktext=[f"{price:.2f}" if isinstance(price, (int, float)) else "" for price in price_labels],
+        tickfont=dict(color="lightgray"),
+        showgrid=False,
+        title="Price Level"
+    )
+    fig.update_layout(yaxis2=yaxis2)
 
-# --- Border box ---
-fig.add_shape(
-    type="rect",
-    xref="paper", yref="y",
-    x0=0, x1=1,
-    y0=-1.05, y1=1.05,
-    line=dict(color="white", width=1),
-    layer="above"
-)
-
-# --- Layout ---
+# --- Chart Layout ---
 fig.update_layout(
     title=f"{direction} | Trigger {trigger_level} at {trigger_time}",
     xaxis=dict(
