@@ -7,8 +7,18 @@ df = pd.read_csv("atr_dashboard_summary.csv")
 df["TriggerTime"] = df["TriggerTime"].astype(str)
 df["GoalTime"] = df["GoalTime"].astype(str)
 
-# --- Fixed time and level order ---
-time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"]
+# --- Time blocks: real + spacing
+visible_hours = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"]
+invisible_fillers = ["0930", "1030", "1130", "1230", "1330", "1430", "1530"]
+time_order = []
+for hour in visible_hours:
+    time_order.append(hour)
+    if hour != "1600":
+        filler = f"{str(int(hour[:2])+1).zfill(2)}30" if hour != "OPEN" else "0930"
+        if filler not in time_order:
+            time_order.append(filler)
+
+# --- Fixed goal levels ---
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
 
@@ -18,7 +28,7 @@ col1, col2, col3 = st.columns(3)
 
 direction = col1.selectbox("Select Direction", sorted(df["Direction"].unique()), index=0)
 trigger_level = col2.selectbox("Select Trigger Level", sorted(set(df["TriggerLevel"]).union(fib_levels)))
-trigger_time = col3.selectbox("Select Trigger Time", time_order, index=0)
+trigger_time = col3.selectbox("Select Trigger Time", visible_hours, index=0)
 
 # --- Filter for selected scenario ---
 filtered = df[
@@ -44,6 +54,8 @@ fig = go.Figure()
 # --- Add matrix cells ---
 for level in fib_levels:
     for t in time_order:
+        if t in invisible_fillers:
+            continue
         match = grouped[(grouped["GoalLevel"] == level) & (grouped["GoalTime"] == t)]
         if not match.empty:
             row = match.iloc[0]
@@ -123,13 +135,27 @@ try:
 except:
     pass
 
-# --- Outer border (thinner) ---
+# --- Outer border ---
 fig.add_shape(
     type="rect",
     xref="paper", yref="y",
     x0=0, x1=1,
     y0=min(fib_levels), y1=max(fib_levels),
     line=dict(color="white", width=1),
+    layer="above"
+)
+
+# --- Bold lines at top and bottom (above 1, below -1) ---
+fig.add_shape(
+    type="line", x0=0, x1=1, xref="paper",
+    y0=1.05, y1=1.05, yref="y",
+    line=dict(color="white", width=2),
+    layer="above"
+)
+fig.add_shape(
+    type="line", x0=0, x1=1, xref="paper",
+    y0=-1.05, y1=-1.05, yref="y",
+    line=dict(color="white", width=2),
     layer="above"
 )
 
@@ -141,7 +167,7 @@ fig.update_layout(
         categoryorder="array",
         categoryarray=time_order,
         tickmode="array",
-        tickvals=time_order,
+        tickvals=visible_hours,
         tickfont=dict(color="white")
     ),
     yaxis=dict(
