@@ -15,7 +15,7 @@ for hour in visible_hours:
     time_order.append(hour)
     filler = f"{str(int(hour[:2])+1).zfill(2)}30"
     time_order.append(filler)
-time_order.append("1600")  # Keep for spacing, not labeling
+time_order.append("1600")  # Spacing only
 
 # --- Fixed goal levels ---
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
@@ -25,9 +25,13 @@ fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
 st.title("📈 ATR Roadmap Matrix")
 col1, col2, col3 = st.columns(3)
 
-direction = col1.selectbox("Select Direction", sorted(df["Direction"].unique()), index=0)
-trigger_level = col2.selectbox("Select Trigger Level", sorted(set(df["TriggerLevel"]).union(fib_levels)))
-trigger_time = col3.selectbox("Select Trigger Time", ["OPEN"] + visible_hours, index=0)
+default_dir = "Upside"
+default_level = 0.0
+default_time = "OPEN"
+
+direction = col1.selectbox("Select Direction", sorted(df["Direction"].unique()), index=sorted(df["Direction"].unique()).index(default_dir))
+trigger_level = col2.selectbox("Select Trigger Level", sorted(set(df["TriggerLevel"]).union(fib_levels)), index=sorted(set(df["TriggerLevel"]).union(fib_levels)).index(default_level))
+trigger_time = col3.selectbox("Select Trigger Time", ["OPEN"] + visible_hours, index=(["OPEN"] + visible_hours).index(default_time))
 
 # --- Filter for selected scenario ---
 filtered = df[
