@@ -11,9 +11,9 @@ intraday["Date"] = intraday["Datetime"].dt.date
 intraday["TimeBlock"] = intraday["Datetime"].dt.strftime("%H00")
 intraday.loc[intraday["TimeBlock"] == "0930", "TimeBlock"] = "OPEN"
 
-# Extract level values from row 5 of SPXdailycandles.xlsx
-level_row = daily.iloc[4]
-fib_levels = level_row.loc["J5":"V5"].values.astype(float)
+# Get correct ATR-based levels from row 5, columns J to V (cols 9:22)
+level_row = daily.iloc[4, 9:22]  # J to V
+fib_levels = level_row.values.astype(float)
 fib_labels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
 fib_map = dict(zip(fib_labels, fib_levels))
 
