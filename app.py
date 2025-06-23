@@ -152,7 +152,7 @@ fig.update_layout(
         categoryorder="array",
         categoryarray=time_order,
         tickmode="array",
-        tickvals=["OPEN"] + visible_hours + ["1600"],
+        tickvals=["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"],
         tickfont=dict(color="white")
     ),
     yaxis=dict(
