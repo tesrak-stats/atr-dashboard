@@ -53,7 +53,7 @@ for level in fib_levels:
             warn = " ⚠️" if total < 30 else ""
             hover = f"{pct:.1f}% ({hits}/{total}){warn}"
             fig.add_trace(go.Scatter(
-                x=[t], y=[level],
+                x=[t], y=[level + 0.015],  # bump text upward
                 mode="text",
                 text=[f"{pct:.1f}%"],
                 hovertext=[hover],
@@ -67,7 +67,7 @@ for level in fib_levels:
             else:
                 display = "0.0%"
             fig.add_trace(go.Scatter(
-                x=[t], y=[level],
+                x=[t], y=[level + 0.015],
                 mode="text",
                 text=[display],
                 hoverinfo="skip",
@@ -100,6 +100,16 @@ for level, (color, width) in fibo_styles.items():
         line=dict(color=color, width=width),
         layer="below"
     )
+
+# --- Outer white border ---
+fig.add_shape(
+    type="rect",
+    xref="paper", yref="y",
+    x0=0, x1=1,
+    y0=min(fib_levels), y1=max(fib_levels),
+    line=dict(color="white", width=2),
+    layer="above"
+)
 
 # --- Layout ---
 fig.update_layout(
