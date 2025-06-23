@@ -1,10 +1,13 @@
 import pandas as pd
 
-# === Load Daily Levels ===
-daily = pd.read_excel("SPXdailycandles.xlsx", header=5)
+# === Robust Daily Excel Load (header in row 5) ===
+daily = pd.read_excel("SPXdailycandles.xlsx", header=None)
+daily = daily.iloc[4:].reset_index(drop=True)     # Start from row 5
+daily.columns = daily.iloc[0]                     # Set row 5 as header
+daily = daily[1:]                                 # Remove header row from data
 daily.columns = daily.columns.str.strip()
 
-# Extract Fibonacci level mapping from column headers
+# === Build Fibonacci Level Map ===
 level_map = {}
 for col in daily.columns[9:22]:  # Columns J through V
     try:
@@ -18,7 +21,7 @@ for col in daily.columns[9:22]:  # Columns J through V
 
 fib_levels = sorted(level_map.keys(), reverse=True)
 
-# === Load Intraday 10-min candles ===
+# === Load Intraday and Prepare ===
 intraday = pd.read_csv("SPX_10min.csv")
 intraday['Datetime'] = pd.to_datetime(intraday['Datetime'])
 intraday['Date'] = intraday['Datetime'].dt.date
