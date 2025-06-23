@@ -1,38 +1,42 @@
 
 import pandas as pd
 
-# Load daily and intraday data
+# Load SPX daily candle data (header in row 5)
 daily = pd.read_excel("SPXdailycandles.xlsx", header=5)
-intraday = pd.read_csv("SPX_10min.csv")
+daily.columns = daily.columns.str.strip()
+levels_row = daily.iloc[0]
 
-# Ensure datetime conversion and day filtering
-intraday['Date'] = pd.to_datetime(intraday['Datetime']).dt.date
-first_day = intraday['Date'].min()
-intraday_day = intraday[intraday['Date'] == first_day]
-
-# Pull ATR levels from columns J–V
+# Extract ATR levels from columns J to V (indices 9 to 21)
 level_map = {}
-for col in daily.columns[9:22]:  # J to V
+for col in daily.columns[9:22]:
     try:
         label = col
-        if isinstance(label, str) and '%' in label:
-            float_label = float(label.strip('%')) / 100
+        if isinstance(label, str) and "%" in label:
+            float_label = float(label.strip("%")) / 100
         else:
             float_label = float(label)
-        level_map[float_label] = col
-    except ValueError:
+        level_map[float_label] = levels_row[col]
+    except:
         continue
 
-# Get the first day's levels
-daily_first = daily.iloc[0]
-levels = {k: daily_first[v] for k, v in level_map.items()}
+# Load intraday 10-minute candles
+intraday = pd.read_csv("SPX_10min.csv")
+intraday['Datetime'] = pd.to_datetime(intraday['Datetime'])
+intraday['Date'] = intraday['Datetime'].dt.date
 
+# Filter to only first day in the daily file
+target_date = pd.to_datetime(levels_row["Date"]).date()
+intraday_day = intraday[intraday["Date"] == target_date].copy()
+
+# Sort and reset index
+intraday_day = intraday_day.sort_values("Datetime").reset_index(drop=True)
+
+# Define columns to record trigger/goal results
 results = []
-triggered_levels = set()
+triggered_levels = {"Upside": set(), "Downside": set()}
 
-# Check each candle for triggers and goals
 for _, row in intraday_day.iterrows():
-    row_result = {
+    entry = {
         "Datetime": row["Datetime"],
         "Open": row["Open"],
         "High": row["High"],
@@ -40,29 +44,34 @@ for _, row in intraday_day.iterrows():
         "Close": row["Last"]
     }
 
-    # Track which levels were triggered/goals hit
-    for level, value in levels.items():
-        trigger_hit = None
-        goal_hit = None
+    for direction in ["Upside", "Downside"]:
+        for lvl, value in level_map.items():
+            key = f"{direction}_@{lvl}"
+            if direction == "Upside":
+                # Trigger condition
+                if lvl not in triggered_levels["Upside"] and row["High"] >= value:
+                    entry[f"Triggered_{key}"] = "Yes"
+                    triggered_levels["Upside"].add(lvl)
+                else:
+                    entry[f"Triggered_{key}"] = ""
+                # Goal condition (if already triggered)
+                entry[f"Goal_{key}"] = "Yes" if lvl in triggered_levels["Upside"] and row["High"] >= value else ""
+            else:
+                # Downside logic
+                if lvl not in triggered_levels["Downside"] and row["Low"] <= value:
+                    entry[f"Triggered_{key}"] = "Yes"
+                    triggered_levels["Downside"].add(lvl)
+                else:
+                    entry[f"Triggered_{key}"] = ""
+                entry[f"Goal_{key}"] = "Yes" if lvl in triggered_levels["Downside"] and row["Low"] <= value else ""
 
-        # Upside trigger: high crosses at or above level
-        if row["High"] >= value and level not in triggered_levels:
-            trigger_hit = "YES"
-            triggered_levels.add(level)
+    # Add ATR levels as a row reference
+    for lvl, val in level_map.items():
+        entry[f"Level_{lvl}"] = val
 
-        # Goal hit after trigger
-        if level in triggered_levels:
-            if level > 0 and row["High"] >= value:
-                goal_hit = "YES"
-            elif level < 0 and row["Low"] <= value:
-                goal_hit = "YES"
+    results.append(entry)
 
-        row_result[f"Trigger_{level}"] = trigger_hit or ""
-        row_result[f"Goal_{level}"] = goal_hit or ""
-
-    results.append(row_result)
-
-# Save results to CSV
+# Export to CSV
 debug_df = pd.DataFrame(results)
-debug_df.to_csv("debug_first_day_results.csv", index=False)
-print("✅ Debug CSV generated: debug_first_day_results.csv")
+debug_df.to_csv("debug_first_day_detailed.csv", index=False)
+print("✅ Debug trace saved as debug_first_day_detailed.csv")
