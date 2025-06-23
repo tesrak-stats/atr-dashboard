@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 # Load daily ATR levels
-daily = pd.read_excel("SPXdailycandles.xlsx")
+daily = pd.read_excel("SPXdailycandles.xlsx", skiprows=4)
 intraday = pd.read_csv("SPX_10min.csv", parse_dates=["Datetime"])
 
 # Preprocess intraday
