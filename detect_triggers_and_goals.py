@@ -1,22 +1,29 @@
 import pandas as pd
 
 # --- Load input files ---
-daily_df = pd.read_excel("SPXdailycandles.xlsx")
+daily_df = pd.read_excel("SPXdailycandles.xlsx", header=4)
 intraday_df = pd.read_csv("SPX_10min.csv")
 
-# --- Define fib levels and time buckets ---
+# --- Clean headers ---
+daily_df.columns = daily_df.columns.str.strip()
+
+# --- Define fib levels and matching Excel labels ---
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+level_map = {
+    1.0: "100%", 0.786: "78.6%", 0.618: "61.8%", 0.5: "50.0%",
+    0.382: "38.2%", 0.236: "23.6%", 0.0: "0.0%",
+    -0.236: "-23.6%", -0.382: "-38.2%", -0.5: "-50.0%",
+    -0.618: "-61.8%", -0.786: "-78.6%", -1.0: "-100%"
+}
 time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"]
-time_rank = {label: i for i, label in enumerate(time_order)}
 
 # --- Result collector ---
 records = []
 
 for _, row in daily_df.iterrows():
     date = row["Date"]
-    atr = row["ATR"]
-    levels = {float(k): row[str(k)] for k in fib_levels}
+    levels = {lvl: row[level_map[lvl]] for lvl in fib_levels}
 
     day_candles = intraday_df[intraday_df["Date"] == date]
     if day_candles.empty:
@@ -31,10 +38,9 @@ for _, row in daily_df.iterrows():
     triggered_at_open = set()
 
     for direction in ["Upside", "Downside"]:
-        for i, lvl in enumerate(fib_levels):
+        for lvl in fib_levels:
             lvl_val = levels[lvl]
 
-            # Identify next level in the same direction
             if direction == "Upside":
                 next_lvls = [l for l in fib_levels if l > lvl]
             else:
@@ -54,7 +60,6 @@ for _, row in daily_df.iterrows():
                 triggered_at_open.add((lvl, direction))
                 continue
 
-            # If not OPEN, check 0900 (high/low breach) but not if already triggered
             if (lvl, direction) in triggered_at_open:
                 continue
 
@@ -68,7 +73,7 @@ for _, row in daily_df.iterrows():
         trigger_val = levels[trigger_lvl]
 
         goal_levels = [lvl for lvl in fib_levels if lvl != trigger_lvl]
-        sorted_goals = sorted(goal_levels, key=lambda x: fib_levels.index(x))  # maintain defined order
+        sorted_goals = sorted(goal_levels, key=lambda x: fib_levels.index(x))
 
         start_checking = False
         for _, candle in day_candles.iterrows():
