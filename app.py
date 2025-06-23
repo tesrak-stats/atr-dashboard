@@ -144,6 +144,16 @@ fig.add_shape(
     layer="above"
 )
 
+
+# --- Add invisible marker to anchor 'OPEN' on x-axis ---
+fig.add_trace(go.Scatter(
+    x=["OPEN"], y=[0.0],
+    mode="markers",
+    marker=dict(opacity=0),
+    showlegend=False,
+    hoverinfo="skip"
+))
+
 # --- Layout ---
 fig.update_layout(
     title=f"{direction} | Trigger {trigger_level} at {trigger_time}",
