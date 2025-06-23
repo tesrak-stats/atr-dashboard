@@ -1,14 +1,11 @@
+
 import pandas as pd
 
-# === Robust Daily Excel Load (header in row 5) ===
-daily = pd.read_excel("SPXdailycandles.xlsx", header=None)
-daily = daily.iloc[4:].reset_index(drop=True)     # Start from row 5
-daily.columns = daily.iloc[0]                     # Set row 5 as header
-daily = daily[1:]                                 # Remove header row from data
-daily.columns = daily.columns.str.strip()
-
-# === Build Fibonacci Level Map ===
+# Load daily candle levels
+daily = pd.read_excel("SPXdailycandles.xlsx", header=5)
 level_map = {}
+
+# Convert column headers like '23.6%' to float keys like 0.236
 for col in daily.columns[9:22]:  # Columns J through V
     try:
         if isinstance(col, str) and '%' in col:
@@ -19,96 +16,32 @@ for col in daily.columns[9:22]:  # Columns J through V
     except ValueError:
         continue
 
-fib_levels = sorted(level_map.keys(), reverse=True)
+print("✅ Level map built:", level_map)
 
-# === Load Intraday and Prepare ===
-intraday = pd.read_csv("SPX_10min.csv")
-intraday['Datetime'] = pd.to_datetime(intraday['Datetime'])
-intraday['Date'] = intraday['Datetime'].dt.date
-intraday['Time'] = intraday['Datetime'].dt.strftime('%H%M')
+# Load intraday data
+intraday = pd.read_excel("SPX_10min.xlsx", header=1)
+intraday['Date'] = pd.to_datetime(intraday['Datetime']).dt.date
 
-results = []
+all_results = []
 
+# Placeholder: your detection logic goes here
+# Right now just testing that this path executes
+print("🚀 Starting loop over daily data...")
 for idx, row in daily.iterrows():
     date = row["Date"]
-    levels = {level: row[col] for level, col in level_map.items()}
-    close_prev = levels.get(0)
-
-    intraday_day = intraday[intraday["Date"] == date]
+    intraday_day = intraday[intraday['Date'] == date]
     if intraday_day.empty:
         continue
+    # Simulate result
+    all_results.append({
+        "Date": date,
+        "Example": "Test row"
+    })
 
-    open_price = intraday_day.iloc[0]["Open"]
-
-    for direction in ["Upside", "Downside"]:
-        sorted_levels = [lvl for lvl in fib_levels if (lvl > 0 if direction == "Upside" else lvl < 0)]
-        check_col = "High" if direction == "Upside" else "Low"
-        open_check = (
-            lambda lvl, nxt: open_price >= levels[lvl] and open_price < levels[nxt]
-            if direction == "Upside"
-            else open_price <= levels[lvl] and open_price > levels[nxt]
-        )
-        intraday_check = (
-            lambda bar, lvl: bar["High"] >= levels[lvl]
-            if direction == "Upside"
-            else bar["Low"] <= levels[lvl]
-        )
-
-        for i, trigger_level in enumerate(sorted_levels):
-            if trigger_level not in levels:
-                continue
-            next_level = sorted_levels[i + 1] if i + 1 < len(sorted_levels) else (1.0 if direction == "Upside" else -1.0)
-            if next_level not in levels:
-                continue
-
-            if open_check(trigger_level, next_level):
-                trigger_time = "OPEN"
-            else:
-                triggered = False
-                trigger_time = None
-                for _, bar in intraday_day.iterrows():
-                    if intraday_check(bar, trigger_level):
-                        if bar["Time"] == "0900" and open_check(trigger_level, next_level):
-                            trigger_time = "OPEN"
-                        else:
-                            trigger_time = bar["Time"]
-                        triggered = True
-                        break
-                if not triggered:
-                    continue
-
-            filtered = intraday_day[intraday_day["Time"] >= "0900"]
-            for j, goal_level in enumerate(sorted_levels):
-                if (direction == "Upside" and goal_level <= trigger_level) or (direction == "Downside" and goal_level >= trigger_level):
-                    continue
-                goal_hit = False
-                for _, bar in filtered.iterrows():
-                    hour = bar["Time"]
-                    if intraday_check(bar, goal_level):
-                        if trigger_time == "OPEN" and open_check(trigger_level, goal_level):
-                            continue
-                        goal_hit = True
-                        results.append({
-                            "Date": date,
-                            "Direction": direction,
-                            "TriggerLevel": trigger_level,
-                            "TriggerTime": trigger_time,
-                            "GoalLevel": goal_level,
-                            "GoalHit": "Yes",
-                            "GoalTime": hour
-                        })
-                    else:
-                        results.append({
-                            "Date": date,
-                            "Direction": direction,
-                            "TriggerLevel": trigger_level,
-                            "TriggerTime": trigger_time,
-                            "GoalLevel": goal_level,
-                            "GoalHit": "No",
-                            "GoalTime": hour
-                        })
-                        break
-
-# Export result
-pd.DataFrame(results).to_csv("combined_trigger_goal_results.csv", index=False)
-print("✅ Results saved to combined_trigger_goal_results.csv")
+# Write CSV if results exist
+if all_results:
+    df = pd.DataFrame(all_results)
+    df.to_csv("combined_trigger_goal_results.csv", index=False)
+    print(f"✅ File written with {len(df)} rows.")
+else:
+    print("⚠️ No data to write to CSV. all_results is empty.")
