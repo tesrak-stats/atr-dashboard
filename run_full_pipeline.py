@@ -2,11 +2,11 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import os
 
-st.title("🧠 ATR Trigger → Summary Generator")
+st.title("🧠 Full Trigger → Summary Generator (Debug Mode)")
 
 def detect_triggers_and_goals():
+    st.write("📥 Reading input files...")
     daily = pd.read_excel("SPXdailycandles.xlsx", skiprows=4)
     intraday = pd.read_csv("SPX_10min.csv", parse_dates=["Datetime"])
 
@@ -14,13 +14,21 @@ def detect_triggers_and_goals():
     intraday["TimeBlock"] = intraday["Datetime"].dt.strftime("%H00")
     intraday.loc[intraday["TimeBlock"] == "0930", "TimeBlock"] = "OPEN"
 
-    level_row = daily.iloc[0, 9:22]
-    fib_levels = level_row.values.astype(float)
+    # Show debug info for first row of levels
+    st.write("🔎 Preview of daily.iloc[0, 9:22] (should contain fib levels):")
+    st.write(daily.iloc[0, 9:22])
+
+    try:
+        level_row = daily.iloc[0, 9:22]
+        fib_levels = level_row.values.astype(float)
+    except Exception as e:
+        st.error(f"❌ Error reading fib levels: {e}")
+        return pd.DataFrame()
+
     fib_labels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
     fib_map = dict(zip(fib_labels, fib_levels))
 
     results = []
-
     for date in intraday["Date"].unique():
         try:
             day_intraday = intraday[intraday["Date"] == date]
@@ -83,17 +91,24 @@ def detect_triggers_and_goals():
                             "GoalHit": "Yes" if goal_hit else "No"
                         })
         except Exception as e:
-            print(f"Error on {date}: {e}")
+            st.error(f"⚠️ Error processing {date}: {e}")
             continue
 
     df_out = pd.DataFrame(results)
+    st.write("✅ Finished detection. Preview of results:")
+    st.dataframe(df_out.head())
     return df_out
 
 def generate_summary(df):
-    if "TriggerTime" in df.columns:
-        df["TriggerTime"] = df["TriggerTime"].fillna("").astype(str)
-    if "GoalTime" in df.columns:
-        df["GoalTime"] = df["GoalTime"].fillna("").astype(str)
+    st.write("📊 Generating summary...")
+
+    required_cols = ['TriggerTime', 'GoalTime', 'Date', 'Direction']
+    if not all(col in df.columns for col in required_cols):
+        st.error(f"❌ Required columns missing from trigger data: {set(required_cols) - set(df.columns)}")
+        return pd.DataFrame()
+
+    df["TriggerTime"] = df["TriggerTime"].fillna("").astype(str)
+    df["GoalTime"] = df["GoalTime"].fillna("").astype(str)
 
     trigger_occurrences = df[['Date', 'TriggerLevel', 'TriggerTime', 'Direction']].drop_duplicates()
     trigger_counts = (
@@ -132,20 +147,20 @@ def generate_summary(df):
 
     return summary
 
-if st.button("🔁 Run Full Trigger + Summary Pipeline"):
+if st.button("🔁 Run Full Trigger + Summary Pipeline (Debug Mode)"):
     with st.spinner("Running full logic..."):
         df_trigger = detect_triggers_and_goals()
-        df_trigger.to_csv("combined_trigger_goal_results.csv", index=False)
-        df_summary = generate_summary(df_trigger)
-        df_summary.to_csv("atr_dashboard_summary.csv", index=False)
-    st.success("✅ Both files generated!")
-
-    st.subheader("📄 Preview of atr_dashboard_summary.csv")
-    st.dataframe(df_summary.head(25))
-
-    st.download_button(
-        label="⬇️ Download atr_dashboard_summary.csv",
-        data=df_summary.to_csv(index=False),
-        file_name="atr_dashboard_summary.csv",
-        mime="text/csv"
-    )
+        if not df_trigger.empty:
+            df_trigger.to_csv("combined_trigger_goal_results.csv", index=False)
+            df_summary = generate_summary(df_trigger)
+            if not df_summary.empty:
+                df_summary.to_csv("atr_dashboard_summary.csv", index=False)
+                st.success("✅ Both files generated!")
+                st.subheader("📄 Preview of atr_dashboard_summary.csv")
+                st.dataframe(df_summary.head(25))
+                st.download_button(
+                    label="⬇️ Download atr_dashboard_summary.csv",
+                    data=df_summary.to_csv(index=False),
+                    file_name="atr_dashboard_summary.csv",
+                    mime="text/csv"
+                )
