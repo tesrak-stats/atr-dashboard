@@ -1,139 +1,77 @@
 
+# Full updated app.py
+
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
+import plotly.graph_objs as go
 
-# --- Load and prepare data ---
-df = pd.read_csv("atr_dashboard_summary.csv")
-df["TriggerTime"] = df["TriggerTime"].astype(str)
-df["GoalTime"] = df["GoalTime"].astype(str)
+st.set_page_config(layout="wide")
 
-# --- Fixed time and level order ---
+st.title("📈 ATR Roadmap Matrix")
+
+# Load summary data
+@st.cache_data
+def load_data():
+    return pd.read_csv("atr_dashboard_summary.csv")
+
+df = load_data()
+
+# Sidebar controls
+with st.sidebar:
+    st.header("ATR Roadmap Matrix")
+    direction = st.selectbox("Select Direction", df['Direction'].unique())
+    level = st.selectbox("Select Trigger Level", sorted(df[df['Direction'] == direction]['TriggerLevel'].unique(), reverse=True))
+    hour = st.selectbox("Select Trigger Time", sorted(df[df['Direction'] == direction]['TriggerTime'].unique()))
+
+# Filter and reshape
+filtered = df[(df['Direction'] == direction) & (df['TriggerLevel'] == level) & (df['TriggerTime'] == hour)]
+pivot = filtered.pivot(index="GoalLevel", columns="GoalTime", values="PctCompletion").fillna("")
+
+# Fill 0% explicitly, blank before trigger
 time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "1600"]
-fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
-              -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+pivot = pivot.reindex(columns=time_order, fill_value="")
 
-# --- Sidebar UI ---
-st.sidebar.title("ATR Roadmap Matrix")
-
-# Ensure all levels/times are present even if not in data
-all_directions = sorted(df["Direction"].unique())
-all_trigger_levels = sorted(set(df["TriggerLevel"]).union(fib_levels))
-all_trigger_times = time_order
-
-# Set defaults
-default_dir = "Upside"
-default_level = 0.0
-default_time = "OPEN"
-
-direction = st.sidebar.selectbox("Select Direction", all_directions, index=all_directions.index(default_dir))
-trigger_level = st.sidebar.selectbox("Select Trigger Level", all_trigger_levels, index=all_trigger_levels.index(default_level))
-trigger_time = st.sidebar.selectbox("Select Trigger Time", all_trigger_times, index=all_trigger_times.index(default_time))
-
-# --- Filter for selected scenario ---
-filtered = df[
-    (df["Direction"] == direction) &
-    (df["TriggerLevel"] == trigger_level) &
-    (df["TriggerTime"] == trigger_time)
-].copy()
-
-# --- Aggregate data ---
-grouped = (
-    filtered.groupby(["GoalLevel", "GoalTime"])
-    .agg(
-        NumHits=("NumHits", "sum"),
-        NumTriggers=("NumTriggers", "first")
-    )
-    .reset_index()
-)
-
-grouped["PctCompletion"] = (grouped["NumHits"] / grouped["NumTriggers"] * 100).round(1)
-
-# --- Plotly figure setup ---
+# Layout chart
 fig = go.Figure()
 
-# --- Add percentage text cells ---
-for level in fib_levels:
-    for t in time_order:
-        match = grouped[
-            (grouped["GoalLevel"] == level) & 
-            (grouped["GoalTime"] == t)
-        ]
-        if not match.empty:
-            row = match.iloc[0]
-            pct = row["PctCompletion"]
-            hits = row["NumHits"]
-            total = row["NumTriggers"]
-            warn = " ⚠️" if total < 30 else ""
-            hover = f"{pct:.1f}% ({hits}/{total}){warn}"
-            text_display = f"{pct:.1f}%"
-        else:
-            # Leave early time blocks blank, others show 0%
-            hover = "No data"
-            text_display = ""
+goal_colors = {
+    0.236: "cyan", -0.236: "yellow"
+}
+thick_levels = [0.618, -0.618]
 
+for i, row in pivot.iterrows():
+    for j, time in enumerate(pivot.columns):
+        val = row[time]
+        show_val = "" if val == "" else f"{val}%"
         fig.add_trace(go.Scatter(
-            x=[t],
-            y=[level],
-            mode="text",
-            text=[text_display],
-            hovertext=[hover],
+            x=[time], y=[i], mode="text",
+            text=[show_val],
+            textposition="middle center",
+            showlegend=False,
             hoverinfo="text",
-            textfont=dict(color="white", size=12),
-            showlegend=False
+            textfont=dict(size=10, color="white")
         ))
 
-# --- Horizontal guide lines for fib levels ---
-fibo_styles = {
-    1.0: ("white", 2),
-    0.786: ("white", 1),
-    0.618: ("white", 2),
-    0.5: ("white", 1),
-    0.382: ("white", 1),
-    0.236: ("cyan", 2),
-    0.0: ("white", 1),
-    -0.236: ("yellow", 2),
-    -0.382: ("white", 1),
-    -0.5: ("white", 1),
-    -0.618: ("white", 2),
-    -0.786: ("white", 1),
-    -1.0: ("white", 2),
-}
-
-for level, (color, width) in fibo_styles.items():
-    fig.add_shape(
-        type="line",
-        x0=0, x1=1, xref="paper",
-        y0=level, y1=level, yref="y",
-        line=dict(color=color, width=width),
-        layer="below"
-    )
-
-# --- Layout ---
 fig.update_layout(
-    title=f"{direction} | Trigger {trigger_level} at {trigger_time}",
-    xaxis=dict(
-        title="Hour Goal Was Reached",
-        categoryorder="array",
-        categoryarray=time_order,
-        tickmode="array",
-        tickvals=time_order,
-        tickfont=dict(color="white")
-    ),
-    yaxis=dict(
-        title="Goal Level",
-        categoryorder="array",
-        categoryarray=fib_levels,
-        tickmode="array",
-        tickvals=fib_levels,
-        tickfont=dict(color="white")
-    ),
+    xaxis=dict(title="Hour Goal Was Reached", tickvals=time_order, tickangle=0),
+    yaxis=dict(title="Goal Level", tickvals=sorted(pivot.index), autorange="reversed"),
+    width=1000, height=700,
     plot_bgcolor="black",
     paper_bgcolor="black",
-    font=dict(color="white"),
-    height=720,
-    margin=dict(l=40, r=40, t=60, b=40)
+    margin=dict(l=60, r=40, t=40, b=60)
 )
 
-# --- Display ---
+for lvl in pivot.index:
+    if lvl in goal_colors:
+        fig.add_shape(type="rect", x0=-0.5, x1=len(time_order)-0.5, y0=lvl-0.05, y1=lvl+0.05,
+                      fillcolor=goal_colors[lvl], line=dict(width=0), opacity=0.2, layer="below")
+
+    if lvl in thick_levels:
+        fig.add_shape(type="line", x0=-0.5, x1=len(time_order)-0.5, y0=lvl, y1=lvl,
+                      line=dict(color="white", width=2))
+
+# Axis gridlines
+fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="gray")
+fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor="white")
+
 st.plotly_chart(fig, use_container_width=True)
