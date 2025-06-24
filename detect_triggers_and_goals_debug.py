@@ -7,7 +7,7 @@ def run_debug():
         intraday = pd.read_csv("SPX_10min.csv", parse_dates=["Datetime"])
         intraday['Date'] = intraday['Datetime'].dt.date
 
-        first_day = daily['Date'].iloc[0]
+        first_day = pd.to_datetime("2014-01-02")
         day_row = daily[daily['Date'] == first_day].iloc[0]
         debug_log = []
 
