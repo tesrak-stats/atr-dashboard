@@ -9,10 +9,10 @@ def detect_triggers_and_goals(daily, intraday):
     for date in daily['Date'].unique():
         day_row = daily[daily['Date'] == date].iloc[0]
         prev_close = day_row.get('0') or day_row.get(0.0)
-
         if pd.isna(prev_close):
             continue
 
+        # Map level values from the daily sheet
         level_map = {}
         for level in fib_levels:
             level_str = f"{level:.3f}".rstrip('0').rstrip('.') if '.' in f"{level:.3f}" else str(level)
@@ -38,32 +38,35 @@ def detect_triggers_and_goals(daily, intraday):
             time_label = '0000' if idx == 0 and (open_price >= min(level_map.values())) else row['Time']
             hour_block = '0000' if time_label == '0000' else time_label[:2] + '00'
 
+            # Upside trigger detection
             for level in sorted([lvl for lvl in fib_levels if lvl > 0]):
                 if level in triggered_up:
                     continue
-                if high >= level_map[level]:
+                if high >= level_map.get(level, float('inf')):
                     triggered_up[level] = {
                         'TriggerLevel': level,
                         'TriggerTime': time_label,
                         'TriggeredRow': idx
                     }
 
+            # Downside trigger detection
             for level in sorted([lvl for lvl in fib_levels if lvl < 0], reverse=True):
                 if level in triggered_down:
                     continue
-                if low <= level_map[level]:
+                if low <= level_map.get(level, float('-inf')):
                     triggered_down[level] = {
                         'TriggerLevel': level,
                         'TriggerTime': time_label,
                         'TriggeredRow': idx
                     }
 
+        # Evaluate goals for upside triggers
         for level, trigger_info in triggered_up.items():
             for goal_level in [l for l in fib_levels if l > level]:
                 goal_hit = False
                 goal_time = ''
                 for _, row in day_data.iloc[trigger_info['TriggeredRow']+1:].iterrows():
-                    if row['High'] >= level_map[goal_level]:
+                    if row['High'] >= level_map.get(goal_level, float('inf')):
                         goal_hit = True
                         goal_time = row['Time']
                         break
@@ -79,11 +82,12 @@ def detect_triggers_and_goals(daily, intraday):
                     'RetestedTrigger': 'No'
                 })
 
+            # Retracement for upside triggers
             for retrace_level in [l for l in fib_levels if l < 0]:
                 goal_hit = False
                 goal_time = ''
                 for _, row in day_data.iloc[trigger_info['TriggeredRow']+1:].iterrows():
-                    if row['Low'] <= level_map[retrace_level]:
+                    if row['Low'] <= level_map.get(retrace_level, float('-inf')):
                         goal_hit = True
                         goal_time = row['Time']
                         break
@@ -99,12 +103,13 @@ def detect_triggers_and_goals(daily, intraday):
                     'RetestedTrigger': 'No'
                 })
 
+        # Evaluate goals for downside triggers
         for level, trigger_info in triggered_down.items():
             for goal_level in [l for l in fib_levels if l < level]:
                 goal_hit = False
                 goal_time = ''
                 for _, row in day_data.iloc[trigger_info['TriggeredRow']+1:].iterrows():
-                    if row['Low'] <= level_map[goal_level]:
+                    if row['Low'] <= level_map.get(goal_level, float('-inf')):
                         goal_hit = True
                         goal_time = row['Time']
                         break
@@ -120,11 +125,12 @@ def detect_triggers_and_goals(daily, intraday):
                     'RetestedTrigger': 'No'
                 })
 
+            # Retracement for downside triggers
             for retrace_level in [l for l in fib_levels if l > 0]:
                 goal_hit = False
                 goal_time = ''
                 for _, row in day_data.iloc[trigger_info['TriggeredRow']+1:].iterrows():
-                    if row['High'] >= level_map[retrace_level]:
+                    if row['High'] >= level_map.get(retrace_level, float('inf')):
                         goal_hit = True
                         goal_time = row['Time']
                         break
@@ -143,7 +149,7 @@ def detect_triggers_and_goals(daily, intraday):
     return pd.DataFrame(results)
 
 
-# --- Load Data and Run Everything ---
+# --- MAIN EXECUTION ---
 if __name__ == "__main__":
     daily = pd.read_excel("SPXdailycandles.xlsx", header=4)
     intraday = pd.read_csv("SPX_10min.csv", parse_dates=['Datetime'])
@@ -152,3 +158,4 @@ if __name__ == "__main__":
     df = detect_triggers_and_goals(daily, intraday)
     df.to_csv("combined_trigger_goal_results.csv", index=False)
     print("✅ Output saved to combined_trigger_goal_results.csv")
+    print(df.head(10))
