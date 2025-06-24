@@ -1,4 +1,7 @@
 
+import os
+os.environ["STREAMLIT_WATCH_DIRECTORIES"] = "false"
+
 import streamlit as st
 from generate_daily_atr_levels import get_latest_atr_levels
 import pandas as pd
