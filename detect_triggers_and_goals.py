@@ -6,13 +6,15 @@ def detect_triggers_and_goals(daily, intraday):
 
     results = []
 
-    for date in daily['Date'].unique():
-        day_row = daily[daily['Date'] == date].iloc[0]
-        prev_close = day_row.get('0') or day_row.get(0.0)
+    # Make sure the data is sorted by date
+    daily = daily.sort_values('Date').reset_index(drop=True)
 
-        if pd.isna(prev_close):
-            continue
+    for i in range(1, len(daily)):
+        date = daily.loc[i, 'Date']
+        prev_close = daily.loc[i - 1, 'Close']
+        day_row = daily.loc[i]
 
+        # Build the level map from current day row
         level_map = {}
         for level in fib_levels:
             level_str = f"{level:.3f}".rstrip('0').rstrip('.') if '.' in f"{level:.3f}" else str(level)
@@ -21,6 +23,7 @@ def detect_triggers_and_goals(daily, intraday):
             except KeyError:
                 continue
 
+        # Filter intraday data
         day_data = intraday[intraday['Date'] == date].copy()
         if day_data.empty:
             continue
@@ -35,8 +38,9 @@ def detect_triggers_and_goals(daily, intraday):
             open_price = row['Open']
             high = row['High']
             low = row['Low']
-            time_label = '0000' if idx == 0 and (open_price >= min(level_map.values())) else row['Time']
+            time_label = '0000' if idx == 0 and (open_price >= min(level_map.values()) or open_price <= max(level_map.values())) else row['Time']
 
+            # Upside triggers
             for level in sorted([lvl for lvl in fib_levels if lvl > 0]):
                 if level in triggered_up:
                     continue
@@ -47,6 +51,7 @@ def detect_triggers_and_goals(daily, intraday):
                         'TriggeredRow': idx
                     }
 
+            # Downside triggers
             for level in sorted([lvl for lvl in fib_levels if lvl < 0], reverse=True):
                 if level in triggered_down:
                     continue
@@ -57,6 +62,7 @@ def detect_triggers_and_goals(daily, intraday):
                         'TriggeredRow': idx
                     }
 
+        # Goal tracking: upside
         for level, trigger_info in triggered_up.items():
             for goal_level in [l for l in fib_levels if l > level]:
                 goal_hit = False
@@ -98,6 +104,7 @@ def detect_triggers_and_goals(daily, intraday):
                     'RetestedTrigger': 'No'
                 })
 
+        # Goal tracking: downside
         for level, trigger_info in triggered_down.items():
             for goal_level in [l for l in fib_levels if l < level]:
                 goal_hit = False
@@ -141,8 +148,9 @@ def detect_triggers_and_goals(daily, intraday):
 
     return pd.DataFrame(results)
 
-# --- Callable main() for Streamlit or standalone use ---
-def main():
+
+# --- Run full pipeline ---
+if __name__ == "__main__":
     daily = pd.read_excel("SPXdailycandles.xlsx", header=4)
     intraday = pd.read_csv("SPX_10min.csv", parse_dates=['Datetime'])
     intraday['Date'] = intraday['Datetime'].dt.date
@@ -150,4 +158,3 @@ def main():
     df = detect_triggers_and_goals(daily, intraday)
     df.to_csv("combined_trigger_goal_results.csv", index=False)
     print("✅ Output saved to combined_trigger_goal_results.csv")
-    print(df.head(10))  # Optional: preview top rows
