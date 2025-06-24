@@ -84,6 +84,8 @@ def main():
     results_df = pd.DataFrame(all_results)
     results_df.to_csv("combined_trigger_goal_results.csv", index=False)
     print("✅ Saved: combined_trigger_goal_results.csv")
+    return results_df
+
 
 if __name__ == "__main__":
     main()
