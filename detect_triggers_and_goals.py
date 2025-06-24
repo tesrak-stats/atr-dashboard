@@ -146,7 +146,7 @@ def detect_triggers_and_goals(daily, intraday):
 
 
 # --- Enable Streamlit or CLI use ---
-if __name__ == "__main__":
+def main():
     daily = pd.read_excel("SPXdailycandles.xlsx", header=4)
     intraday = pd.read_csv("SPX_10min.csv", parse_dates=['Datetime'])
     intraday['Date'] = intraday['Datetime'].dt.date
@@ -154,4 +154,8 @@ if __name__ == "__main__":
     df = detect_triggers_and_goals(daily, intraday)
     df.to_csv("combined_trigger_goal_results.csv", index=False)
     print("✅ Output saved to combined_trigger_goal_results.csv")
-    
+
+
+# This allows both Streamlit and CLI to use it:
+if __name__ == "__main__":
+    main()
