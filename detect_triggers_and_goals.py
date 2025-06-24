@@ -11,7 +11,7 @@ def detect_triggers_and_goals(daily, intraday):
     
     results = []
 
-    for date in daily['Date'].unique():
+    for date in daily[daily['Date'] >= pd.to_datetime("2014-01-02")]['Date'].unique():
         day_row = daily[daily['Date'] == date].iloc[0]
 
         # Fix for Previous Close from column 0 or '0'
