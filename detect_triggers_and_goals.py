@@ -1,194 +1,130 @@
-# detect_triggers_and_goals.py
-# v1.0.1 – Full logic for upside/downside, continuation/retracement, goal tracking, time filtering, retouch flag
-
 import pandas as pd
 
 # Load data
-intraday_df = pd.read_csv("SPX_10min.csv")
 daily_df = pd.read_excel("SPXdailycandles.xlsx", header=4)
+intraday_df = pd.read_csv("SPX_10min.csv")
 
-# Format time columns
-intraday_df["Datetime"] = pd.to_datetime(intraday_df["Datetime"])
-intraday_df["Date"] = intraday_df["Datetime"].dt.date
-intraday_df["Time"] = intraday_df["Datetime"].dt.strftime("%H%M")
-intraday_df.loc[intraday_df["Time"] == "0930", "Time"] = "OPEN"  # Convert 0930 to OPEN
+# Ensure proper datetime
+intraday_df['Datetime'] = pd.to_datetime(intraday_df['Datetime'])
+intraday_df['Date'] = intraday_df['Datetime'].dt.date
+intraday_df['Hour'] = intraday_df['Datetime'].dt.strftime('%H00')
 
-# Clean daily level labels
-daily_df.columns = [str(c).replace("%", "").strip() for c in daily_df.columns]
-daily_df["Date"] = pd.to_datetime(daily_df["Date"]).dt.date
-
-# Identify level columns (excluding Date, ATR, etc.)
-level_cols = [col for col in daily_df.columns if col not in ["Date", "ATR", "ATR Wilder", "Close"]]
-level_map = {col: round(float(col) / 100, 3) for col in level_cols}
-
-# Storage
+# Build output
 results = []
 
-# Main loop
-for date in intraday_df["Date"].unique():
-    try:
-        day_intraday = intraday_df[intraday_df["Date"] == date]
-        day_daily = daily_df[daily_df["Date"] == date]
+# List of Fibonacci levels and their column names
+level_columns = [
+    ('1.000', '100.0%'), ('0.786', '78.6%'), ('0.618', '61.8%'), ('0.500', '50.0%'),
+    ('0.382', '38.2%'), ('0.236', '23.6%'), ('0.000', '0.0%'),
+    ('-0.236', '-23.6%'), ('-0.382', '-38.2%'), ('-0.500', '-50.0%'),
+    ('-0.618', '-61.8%'), ('-0.786', '-78.6%'), ('-1.000', '-100.0%')
+]
 
-        if day_intraday.empty or day_daily.empty:
-            continue
+level_map = {float(k): v for k, v in level_columns}
+fib_levels = list(level_map.keys())
 
-        open_price = day_intraday.iloc[0]["Open"]
-        levels = day_daily.iloc[0][level_cols]
-        level_values = levels.to_dict()
+# Loop over each day
+for i in range(len(daily_df)):
+    date = pd.to_datetime(daily_df.loc[i, 'Date']).date()
+    daily_levels = {
+        float(k): daily_df.loc[i, v]
+        for k, v in level_columns
+        if pd.notnull(daily_df.loc[i, v])
+    }
 
-        # Sort levels numerically
-        sorted_levels = sorted(level_map.items(), key=lambda x: x[1])
-        level_keys = [k for k, _ in sorted_levels]
-        level_floats = [level_map[k] for k in level_keys]
-
-        level_vals = [level_values[k] for k in level_keys]
-
-        # Iterate for both directions
-        for direction in ["Upside", "Downside"]:
-            ascending = direction == "Upside"
-            levels_to_use = list(zip(level_keys, level_vals)) if ascending else list(zip(level_keys, level_vals))[::-1]
-
-            for i, (trigger_key, trigger_level) in enumerate(levels_to_use):
-                # Get the next level (for open zone filtering)
-                if i + 1 < len(levels_to_use):
-                    next_level_val = levels_to_use[i + 1][1]
-                else:
-                    next_level_val = None
-
-                # Determine trigger at OPEN
-                if direction == "Upside":
-                    open_trigger = (
-                        open_price >= trigger_level and
-                        (next_level_val is None or open_price < next_level_val)
-                    )
-                else:
-                    open_trigger = (
-                        open_price <= trigger_level and
-                        (next_level_val is None or open_price > next_level_val)
-                    )
-
-                # Detect trigger
-                trigger_found = False
-                trigger_time = None
-
-                for idx, row in day_intraday.iterrows():
-                    high = row["High"]
-                    low = row["Low"]
-                    tlabel = row["Time"]
-
-                    if tlabel == "OPEN" and open_trigger:
-                        trigger_time = "OPEN"
-                        trigger_price = open_price
-                        trigger_found = True
-                        break
-
-                    if direction == "Upside" and high >= trigger_level:
-                        if tlabel == "OPEN":
-                            continue
-                        trigger_time = tlabel
-                        trigger_price = high
-                        trigger_found = True
-                        break
-
-                    if direction == "Downside" and low <= trigger_level:
-                        if tlabel == "OPEN":
-                            continue
-                        trigger_time = tlabel
-                        trigger_price = low
-                        trigger_found = True
-                        break
-
-                if not trigger_found:
-                    continue
-
-                # CONTINUATION GOALS
-                for j in range(i + 1, len(levels_to_use)):
-                    goal_key, goal_val = levels_to_use[j]
-                    goal_hit = False
-                    goal_time = ""
-                    retouched = False
-
-                    for _, row2 in day_intraday.iterrows():
-                        t2 = row2["Time"]
-                        if t2 < trigger_time or t2 == "OPEN":
-                            continue
-
-                        if t2 == trigger_time:
-                            continue  # continuation allows same candle, already skipped OPEN
-
-                        if direction == "Upside":
-                            if row2["High"] >= goal_val:
-                                goal_hit = True
-                                goal_time = t2
-                                break
-                            if row2["Low"] < trigger_level:
-                                retouched = True
-
-                        else:  # Downside
-                            if row2["Low"] <= goal_val:
-                                goal_hit = True
-                                goal_time = t2
-                                break
-                            if row2["High"] > trigger_level:
-                                retouched = True
-
-                    results.append({
-                        "Date": date,
-                        "Direction": direction,
-                        "TriggerLevel": level_map[trigger_key],
-                        "TriggerTime": trigger_time,
-                        "GoalLevel": level_map[goal_key],
-                        "GoalHit": "Yes" if goal_hit else "No",
-                        "GoalTime": goal_time,
-                        "GoalType": "Continuation",
-                        "Retouched": "Yes" if retouched else "No"
-                    })
-
-                # RETRACEMENT GOALS
-                for j in range(i + 1, len(levels_to_use)):
-                    goal_key, goal_val = levels_to_use[j]
-                    goal_hit = False
-                    goal_time = ""
-                    retouched = False
-
-                    for _, row2 in day_intraday.iterrows():
-                        t2 = row2["Time"]
-                        if t2 <= trigger_time or t2 == "OPEN":
-                            continue
-
-                        if direction == "Upside":
-                            if row2["Low"] <= goal_val:
-                                goal_hit = True
-                                goal_time = t2
-                                break
-                            if row2["Low"] < trigger_level:
-                                retouched = True
-                        else:
-                            if row2["High"] >= goal_val:
-                                goal_hit = True
-                                goal_time = t2
-                                break
-                            if row2["High"] > trigger_level:
-                                retouched = True
-
-                    results.append({
-                        "Date": date,
-                        "Direction": direction,
-                        "TriggerLevel": level_map[trigger_key],
-                        "TriggerTime": trigger_time,
-                        "GoalLevel": level_map[goal_key],
-                        "GoalHit": "Yes" if goal_hit else "No",
-                        "GoalTime": goal_time,
-                        "GoalType": "Retracement",
-                        "Retouched": "Yes" if retouched else "No"
-                    })
-
-    except Exception as e:
-        print(f"❌ Error on {date}: {e}")
+    day_data = intraday_df[intraday_df['Date'] == date].copy()
+    if day_data.empty:
         continue
 
-# Save output
-output_df = pd.DataFrame(results)
-output_df.to_csv("combined_trigger_goal_results.csv", index=False)
-print("✅ Exported: combined_trigger_goal_results.csv")
+    first_candle = day_data.iloc[0]
+    open_price = first_candle['Open']
+    open_time = '0000'
+
+    for direction in ['upside', 'downside']:
+        if direction == 'upside':
+            trigger_check = lambda high, level: high >= level
+            goal_check = lambda high, level: high >= level
+            price_column = 'High'
+            fib_sorted = sorted(fib_levels)
+        else:
+            trigger_check = lambda low, level: low <= level
+            goal_check = lambda low, level: low <= level
+            price_column = 'Low'
+            fib_sorted = sorted(fib_levels, reverse=True)
+
+        for idx, trigger_level in enumerate(fib_sorted[:-1]):
+            trigger_value = daily_levels.get(trigger_level)
+            if trigger_value is None:
+                continue
+
+            next_level = fib_sorted[idx + 1]
+            next_value = daily_levels.get(next_level)
+
+            # Trigger detection logic
+            open_trigger = False
+            if direction == 'upside':
+                if open_price >= trigger_value and (next_value is None or open_price < next_value):
+                    open_trigger = True
+            else:
+                if open_price <= trigger_value and (next_value is None or open_price > next_value):
+                    open_trigger = True
+
+            trigger_row = None
+            trigger_hour = None
+
+            if open_trigger:
+                trigger_row = first_candle
+                trigger_hour = open_time
+            else:
+                for j, row in day_data.iterrows():
+                    if trigger_check(row[price_column], trigger_value):
+                        trigger_row = row
+                        trigger_hour = row['Hour']
+                        break
+
+            if trigger_row is None:
+                continue  # No trigger occurred
+
+            trigger_time = trigger_hour
+
+            for goal_level in fib_levels:
+                if (direction == 'upside' and goal_level <= trigger_level) or \
+                   (direction == 'downside' and goal_level >= trigger_level):
+                    continue  # Only evaluate goals beyond the trigger
+
+                goal_value = daily_levels.get(goal_level)
+                if goal_value is None:
+                    continue
+
+                goal_hit = False
+                goal_time = None
+                open_completion = 'No'
+
+                for j, row in day_data.iterrows():
+                    row_hour = row['Hour']
+                    if pd.to_datetime(row['Datetime']) < pd.to_datetime(trigger_row['Datetime']):
+                        continue  # Must be after trigger
+
+                    if goal_check(row[price_column], goal_value):
+                        goal_hit = True
+                        goal_time = row_hour
+                        if row['Datetime'] == trigger_row['Datetime'] and trigger_time == open_time:
+                            goal_time = open_time
+                            open_completion = 'Yes'
+                        break
+
+                results.append({
+                    'Date': date,
+                    'Direction': direction,
+                    'TriggerLevel': trigger_level,
+                    'TriggerTime': trigger_time,
+                    'GoalLevel': goal_level,
+                    'GoalHit': 'Yes' if goal_hit else 'No',
+                    'GoalTime': goal_time if goal_hit else '',
+                    'OpenCompletionFlag': open_completion
+                })
+
+# Save
+df_out = pd.DataFrame(results)
+df_out.to_csv("combined_trigger_goal_results.csv", index=False)
+print("✅ File saved: combined_trigger_goal_results.csv")
