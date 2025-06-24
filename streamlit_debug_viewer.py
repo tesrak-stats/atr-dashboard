@@ -1,37 +1,37 @@
+# streamlit_debug_viewer.py
+
 import streamlit as st
 import pandas as pd
 import os
+import subprocess
+import time
 
-st.title("🔍 ATR Debug Viewer: First Day Trace")
-
-if st.button("Run Debug Script"):
-    with st.spinner("Running debug analysis..."):
-        import run_debug_first_day
-        st.success("✅ Debug CSV generated!")
+st.title("🔍 Debug Viewer – First Day Trigger & Goal Trace")
 
 csv_path = "debug_first_day_trace.csv"
+debug_script = "detect_triggers_and_goals_debug.py"
 
-st.text(f"Path checked: {csv_path}")
-st.text(f"Exists? {os.path.exists(csv_path)}")
-if os.path.exists(csv_path):
-    size = os.path.getsize(csv_path)
-    st.text(f"Size of CSV: {size} bytes")
+# Run the debug detection script
+if st.button("Run Debug Analysis"):
+    with st.spinner("Running debug logic..."):
+        try:
+            # Run the Python script
+            subprocess.run(["python", debug_script], check=True)
 
-    try:
-        df = pd.read_csv(csv_path)
-        st.text(f"Loaded DataFrame: {df.shape}")
-        st.markdown("### 🧾 Debug CSV Preview")
-        st.dataframe(df, use_container_width=True)
-        st.text(f"First 2 rows:\n{df.head(2).to_string()}")
+            # Small delay to ensure the file is written
+            time.sleep(1)
 
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="⬇️ Download Debug CSV",
-            data=csv,
-            file_name="debug_first_day_trace.csv",
-            mime="text/csv"
-        )
-    except Exception as e:
-        st.error(f"Error loading CSV: {e}")
+            # Load and display the output
+            if os.path.exists(csv_path):
+                df = pd.read_csv(csv_path)
+                if df.empty:
+                    st.warning("Debug CSV was created but contains no rows. No triggers/goals may have occurred on the first day.")
+                else:
+                    st.success("Debug results loaded!")
+                    st.dataframe(df)
+            else:
+                st.error("The debug script ran, but the CSV file was not found.")
+        except subprocess.CalledProcessError as e:
+            st.error(f"An error occurred while running the debug script:\n{e}")
 else:
-    st.info("Click the button above to generate the debug file.")
+    st.info("Click the button above to run the debug analysis.")
