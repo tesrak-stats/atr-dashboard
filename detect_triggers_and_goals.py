@@ -1,7 +1,8 @@
+
 import pandas as pd
 
 # Load daily candle levels
-daily = pd.read_excel("SPXdailycandles.xlsx", header=5)
+daily = pd.read_excel("SPXdailycandles.xlsx", header=4)
 
 # Build a map of level names to float values
 level_map = {}
