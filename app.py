@@ -121,7 +121,7 @@ if atr_price_levels:
         showgrid=False,
         title="Price Level"
     )
-    fig.update_layout(yaxis2=yaxis2)
+    
 
 # --- Chart Layout ---
 fig.update_layout(
@@ -151,3 +151,26 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=False)
+# --- Price ladder on right Y-axis ---
+if atr_price_levels:
+    price_labels = [atr_price_levels["levels"].get(f"{level:+.3f}", "") for level in fib_levels]
+
+    fig.update_layout(
+        yaxis=dict(
+            title="Fib Level",
+            tickvals=fib_levels,
+            ticktext=[f"{lvl:+.3f}" for lvl in fib_levels],
+        ),
+        yaxis2=dict(
+            title="Price Level",
+            overlaying="y",
+            side="right",
+            tickvals=fib_levels,
+            ticktext=[
+                f"{price:.2f}" if isinstance(price, (int, float)) else ""
+                for price in price_labels
+            ],
+            tickfont=dict(color="lightgray"),
+            showgrid=False
+        )
+    )
