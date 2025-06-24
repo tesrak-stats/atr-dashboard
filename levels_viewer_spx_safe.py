@@ -8,12 +8,11 @@ import pandas as pd
 st.title("📊 ATR Fib Level Viewer (SPX)")
 
 try:
+    # Move import inside try block to catch import-time errors
     from generate_daily_atr_levels_spx_fast import get_latest_atr_levels
 
-    # Get the data
     atr_data = get_latest_atr_levels()
 
-    # Show metadata
     st.markdown(f"""
     **Ticker**: {atr_data['ticker']}  
     **Date Generated**: {atr_data['date_generated']}  
@@ -22,7 +21,6 @@ try:
     **Latest Open**: {atr_data['latest_open']}
     """)
 
-    # Convert levels to a DataFrame
     levels_df = pd.DataFrame({
         "Fib Level": list(atr_data["levels"].keys()),
         "ATR Price": list(atr_data["levels"].values())
