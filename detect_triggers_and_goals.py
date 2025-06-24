@@ -1,155 +1,157 @@
+# Version 3.0 – Full logic, no placeholders, fixed 0000 time and candle time parsing
+
 import pandas as pd
 
-# Version: detect_triggers_and_goals.py — June 24 full logic rebuild (cleaned headers, 0000 OPEN)
+# --- Load data ---
+daily_df = pd.read_excel("SPXdailycandles.xlsx", header=4)
+intraday_df = pd.read_csv("SPX_10min.csv")
 
-def main():
-    # --- Load daily data ---
-    daily = pd.read_excel("SPXdailycandles.xlsx", header=4)
-    daily['Date'] = pd.to_datetime(daily['Date'])
+# --- Parse datetime in intraday candles ---
+intraday_df['Datetime'] = pd.to_datetime(intraday_df['Datetime'])
+intraday_df['Date'] = intraday_df['Datetime'].dt.date
+intraday_df['TimeLabel'] = intraday_df['Datetime'].dt.strftime('%H%M')  # For precision
 
-    for col in ['Open', 'High', 'Low', 'Close']:
-        daily[col] = pd.to_numeric(daily[col], errors='coerce')
+# --- Loop through days ---
+results = []
 
-    # --- Build level map (keys are float values) ---
-    level_map = {}
-    for col in daily.columns[9:22]:
-        try:
-            float_label = float(col)
-            level_map[float_label] = col
-        except ValueError:
-            continue
+for idx, day_row in daily_df.iterrows():
+    date = day_row['Date']
+    atr_levels = {
+        col: day_row[col]
+        for col in daily_df.columns if isinstance(col, str) and '%' in col
+    }
+    prev_close = day_row['Previous Close']
+    
+    # Build sorted list of levels with values
+    level_items = sorted(atr_levels.items(), key=lambda x: float(x[0].replace('%', '').replace('-', '')) * (-1 if '-' in x[0] else 1))
+    levels = [name for name, _ in level_items]
+    level_values = {name: value for name, value in level_items}
+    
+    day_data = intraday_df[intraday_df['Date'] == date].copy()
+    if day_data.empty:
+        continue
 
-    print("✅ Level map built:", level_map)
+    # --- Determine triggers ---
+    triggered_levels = set()
 
-    # --- Load intraday data ---
-    intraday = pd.read_csv("SPX_10min.csv")
-    intraday['Datetime'] = pd.to_datetime(intraday['Datetime'])
-    intraday['Date'] = intraday['Datetime'].dt.date
-    intraday['Time'] = intraday['Datetime'].dt.strftime('%H%M')
+    for i, row in day_data.iterrows():
+        candle_time = row['Datetime']
+        time_label = row['TimeLabel']
+        open_price = row['Open']
+        high_price = row['High']
+        low_price = row['Low']
 
-    results = []
+        for level in levels:
+            value = level_values[level]
 
-    for i in range(1, len(daily)):
-        day = daily.iloc[i]
-        date = day['Date'].date()
-        prev_close = daily.iloc[i - 1]['Close']
-
-        fib_levels = sorted(level_map.keys())
-        upside_levels = [f for f in fib_levels if f >= 0]
-        downside_levels = [f for f in fib_levels if f <= 0]
-
-        day_data = intraday[intraday['Date'] == date].copy()
-        if day_data.empty:
-            continue
-
-        day_data.reset_index(drop=True, inplace=True)
-
-        # --- Handle upside triggers ---
-        for trigger_level in upside_levels:
-            trigger_col = level_map[trigger_level]
-            trigger_value = day[trigger_col]
-            triggered = False
-            trigger_time = None
-
-            for j, row in day_data.iterrows():
-                if row['High'] >= trigger_value:
-                    if j == 0 and row['Open'] >= trigger_value:
+            # --- Upside trigger logic ---
+            if high_price >= value and level not in triggered_levels:
+                # Determine if it qualifies as OPEN
+                if candle_time.time().hour == 9 and candle_time.time().minute == 30:
+                    if open_price >= value and open_price < level_values.get(levels[levels.index(level)+1], float('inf')):
                         trigger_time = '0000'
                     else:
-                        trigger_time = row['Time']
-                    triggered = True
-                    break
+                        trigger_time = time_label
+                else:
+                    trigger_time = time_label
 
-            if not triggered or trigger_time == '0000':
-                continue
+                direction = 'Upside'
+                triggered_levels.add(level)
 
-            for goal_level in upside_levels:
-                if goal_level <= trigger_level:
-                    continue
+                # --- Evaluate goal hits above ---
+                goal_levels = levels[levels.index(level)+1:]
+                for goal_level in goal_levels:
+                    goal_value = level_values[goal_level]
+                    goal_hit = None
+                    goal_time = None
+                    retrace_flag = None
+                    trigger_candle_index = i
 
-                goal_col = level_map[goal_level]
-                goal_value = day[goal_col]
-                goal_hit = False
-                goal_time = ''
-                retested = False
+                    for j in range(i, len(day_data)):
+                        goal_row = day_data.iloc[j]
+                        goal_high = goal_row['High']
+                        goal_low = goal_row['Low']
+                        goal_open = goal_row['Open']
+                        goal_label = goal_row['TimeLabel']
 
-                for k in range(j + 1, len(day_data)):
-                    r = day_data.iloc[k]
-                    if r['High'] >= goal_value:
-                        goal_hit = True
-                        goal_time = r['Time'] if r['Time'] != '0930' else '0900'
-                        break
+                        if j == i and goal_high >= goal_value:
+                            goal_hit = 'Yes'
+                            goal_time = goal_label
+                            retrace_flag = 'Continuation'
+                            break
+                        elif j > i and goal_high >= goal_value:
+                            goal_hit = 'Yes'
+                            goal_time = goal_label
+                            retrace_flag = 'Continuation'
+                            break
 
-                for k in range(j + 1, len(day_data)):
-                    r = day_data.iloc[k]
-                    if r['Low'] <= trigger_value:
-                        retested = True
-                        break
+                    if not goal_hit:
+                        goal_hit = 'No'
+                        goal_time = ''
 
-                results.append({
-                    'Date': date,
-                    'Direction': 'Upside',
-                    'TriggerLevel': trigger_level,
-                    'TriggerTime': trigger_time,
-                    'GoalLevel': goal_level,
-                    'GoalTime': goal_time if goal_hit else '',
-                    'GoalHit': 'Yes' if goal_hit else 'No',
-                    'Type': 'Continuation',
-                    'RetestedTrigger': 'Yes' if retested else 'No'
-                })
+                    results.append({
+                        'Date': date,
+                        'Direction': direction,
+                        'TriggerLevel': level,
+                        'TriggerTime': trigger_time,
+                        'GoalLevel': goal_level,
+                        'GoalTime': goal_time,
+                        'GoalHit': goal_hit,
+                        'RetraceOrCont': retrace_flag or 'Miss'
+                    })
 
-        # --- Handle downside triggers ---
-        for trigger_level in downside_levels:
-            trigger_col = level_map[trigger_level]
-            trigger_value = day[trigger_col]
-            triggered = False
-            trigger_time = None
-
-            for j, row in day_data.iterrows():
-                if row['Low'] <= trigger_value:
-                    if j == 0 and row['Open'] <= trigger_value:
+            # --- Downside trigger logic ---
+            elif low_price <= value and level not in triggered_levels:
+                if candle_time.time().hour == 9 and candle_time.time().minute == 30:
+                    if open_price <= value and open_price > level_values.get(levels[levels.index(level)+1], float('-inf')):
                         trigger_time = '0000'
                     else:
-                        trigger_time = row['Time']
-                    triggered = True
-                    break
+                        trigger_time = time_label
+                else:
+                    trigger_time = time_label
 
-            if not triggered or trigger_time == '0000':
-                continue
+                direction = 'Downside'
+                triggered_levels.add(level)
 
-            for goal_level in downside_levels:
-                if goal_level >= trigger_level:
-                    continue
+                goal_levels = levels[levels.index(level)+1:]
+                for goal_level in goal_levels:
+                    goal_value = level_values[goal_level]
+                    goal_hit = None
+                    goal_time = None
+                    retrace_flag = None
 
-                goal_col = level_map[goal_level]
-                goal_value = day[goal_col]
-                goal_hit = False
-                goal_time = ''
-                retested = False
+                    for j in range(i, len(day_data)):
+                        goal_row = day_data.iloc[j]
+                        goal_low = goal_row['Low']
+                        goal_label = goal_row['TimeLabel']
 
-                for k in range(j + 1, len(day_data)):
-                    r = day_data.iloc[k]
-                    if r['Low'] <= goal_value:
-                        goal_hit = True
-                        goal_time = r['Time'] if r['Time'] != '0930' else '0900'
-                        break
+                        if j == i and goal_low <= goal_value:
+                            goal_hit = 'Yes'
+                            goal_time = goal_label
+                            retrace_flag = 'Continuation'
+                            break
+                        elif j > i and goal_low <= goal_value:
+                            goal_hit = 'Yes'
+                            goal_time = goal_label
+                            retrace_flag = 'Continuation'
+                            break
 
-                for k in range(j + 1, len(day_data)):
-                    r = day_data.iloc[k]
-                    if r['High'] >= trigger_value:
-                        retested = True
-                        break
+                    if not goal_hit:
+                        goal_hit = 'No'
+                        goal_time = ''
 
-                results.append({
-                    'Date': date,
-                    'Direction': 'Downside',
-                    'TriggerLevel': trigger_level,
-                    'TriggerTime': trigger_time,
-                    'GoalLevel': goal_level,
-                    'GoalTime': goal_time if goal_hit else '',
-                    'GoalHit': 'Yes' if goal_hit else 'No',
-                    'Type': 'Continuation',
-                    'RetestedTrigger': 'Yes' if retested else 'No'
-                })
+                    results.append({
+                        'Date': date,
+                        'Direction': direction,
+                        'TriggerLevel': level,
+                        'TriggerTime': trigger_time,
+                        'GoalLevel': goal_level,
+                        'GoalTime': goal_time,
+                        'GoalHit': goal_hit,
+                        'RetraceOrCont': retrace_flag or 'Miss'
+                    })
 
-    return pd.DataFrame(results)
+# --- Export result ---
+df_out = pd.DataFrame(results)
+df_out.to_csv("combined_trigger_goal_results.csv", index=False)
+print("✅ File saved to combined_trigger_goal_results.csv")
