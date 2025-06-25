@@ -160,20 +160,20 @@ return pd.DataFrame(results)
 ```
 
 def main():
-daily = pd.read_excel("SPXdailycandles.xlsx", header=4)
-intraday = pd.read_csv("SPX_10min.csv", parse_dates=['Datetime'])
-intraday['Date'] = intraday['Datetime'].dt.date
+daily = pd.read_excel(‘SPXdailycandles.xlsx’, header=4)
+intraday = pd.read_csv(‘SPX_10min.csv’, parse_dates=[‘Datetime’])
+intraday[‘Date’] = intraday[‘Datetime’].dt.date
 
 ```
 df = detect_triggers_and_goals(daily, intraday)
-df.to_csv("combined_trigger_goal_results.csv", index=False)
-print("✅ Output saved to combined_trigger_goal_results.csv")
+df.to_csv('combined_trigger_goal_results.csv', index=False)
+print('✅ Output saved to combined_trigger_goal_results.csv')
 return df
 ```
 
 st.title(“📊 ATR Trigger & Goal Generator”)
 
-output_path = “combined_trigger_goal_results.csv"
+output_path = “combined_trigger_goal_results.csv”
 
 if st.button(“Generate combined_trigger_goal_results.csv”):
 with st.spinner(“Running detection…”):
