@@ -173,7 +173,7 @@ return df
 
 st.title(“📊 ATR Trigger & Goal Generator”)
 
-output_path = “combined_trigger_goal_results.csv”
+output_path = “combined_trigger_goal_results.csv"
 
 if st.button(“Generate combined_trigger_goal_results.csv”):
 with st.spinner(“Running detection…”):
