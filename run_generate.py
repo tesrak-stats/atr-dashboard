@@ -74,21 +74,33 @@ def main():
         daily = pd.read_excel('SPXdailycandles.xlsx', header=4)
         debug_info.append(f"Daily data shape: {daily.shape}")
         debug_info.append(f"Daily columns: {list(daily.columns)}")
-        debug_info.append(f"First few dates: {daily['Date'].head().tolist()}")
+        
+        # Test the column matching logic
+        fib_levels = [1.000, 0.786, 0.618, 0.500, 0.382, 0.236, 0.000, -0.236, -0.382, -0.500, -0.618, -0.786, -1.000]
+        test_row = daily.iloc[1]  # Test with second row
+        found_levels = []
+        
+        for level in fib_levels:
+            test_names = [str(level), str(int(level)) if level == int(level) else str(level), f'{level:.1f}' if level != int(level) else str(int(level))]
+            debug_info.append(f"Testing level {level}, trying names: {test_names}")
+            
+            found_col = None
+            for test_name in test_names:
+                if test_name in test_row.index:
+                    found_col = test_name
+                    debug_info.append(f"  Found match: {test_name}")
+                    break
+            
+            if found_col:
+                found_levels.append(found_col)
+            else:
+                debug_info.append(f"  No match found for {level}")
+        
+        debug_info.append(f"Found level columns: {found_levels}")
         
         intraday = pd.read_csv('SPX_10min.csv', parse_dates=['Datetime'])
         intraday['Date'] = intraday['Datetime'].dt.date
         debug_info.append(f"Intraday data shape: {intraday.shape}")
-        debug_info.append(f"Intraday date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
-        
-        # Check for level columns
-        fib_levels = [1.000, 0.786, 0.618, 0.500, 0.382, 0.236, 0.000, -0.236, -0.382, -0.500, -0.618, -0.786, -1.000]
-        found_levels = []
-        for level in fib_levels:
-            level_str = f'{level:.3f}'.rstrip('0').rstrip('.') if '.' in f'{level:.3f}' else str(level)
-            if level_str in daily.columns:
-                found_levels.append(level_str)
-        debug_info.append(f"Found level columns: {found_levels}")
         
         df = detect_triggers_and_goals(daily, intraday)
         debug_info.append(f"Results generated: {len(df)} rows")
@@ -98,9 +110,6 @@ def main():
     except Exception as e:
         debug_info.append(f"Error: {str(e)}")
         return pd.DataFrame(), debug_info
-
-st.title('ATR Trigger & Goal Generator')
-
 output_path = 'combined_trigger_goal_results.csv'
 
 # Update the button section too:
