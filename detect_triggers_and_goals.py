@@ -1,14 +1,15 @@
+
 import pandas as pd
 
 def detect_triggers_and_goals(daily, intraday):
-    fib_levels = [1.000, 0.786, 0.618, 0.500, 0.382, 0.236,
-                 -0.236, -0.382, -0.500, -0.618, -0.786, -1.000]
+    fib_levels = [1.000, 0.786, 0.618, 0.500, 0.382,
+                  0.236, -0.236, -0.382, -0.500, -0.618, -0.786, -1.000]
 
     results = []
 
     for direction in ['Upside', 'Downside']:
         for date in intraday['Date'].unique():
-            if date < pd.Timestamp("2014-01-02").date():
+            if pd.to_datetime(date) < pd.Timestamp("2014-01-02"):
                 continue
 
             day_data = intraday[intraday['Date'] == date].copy()
@@ -27,25 +28,19 @@ def detect_triggers_and_goals(daily, intraday):
                 if level_str in day_row:
                     level_map[level] = day_row[level_str]
 
-            # === Trigger/goal detection logic ===
-            for goal_level, goal_price in level_map.items():
-                results.append({
-                    'Date': date,
-                    'Direction': direction,
-                    'Level': goal_level,
-                    'GoalPrice': goal_price,
-                    'Hit': False  # placeholder, actual logic should update this
-                })
+            # === Insert real trigger/goal detection logic here ===
+            results.append({
+                'Date': date,
+                'Direction': direction,
+                'ExampleResult': True
+            })
 
     return pd.DataFrame(results)
 
-
 def main():
-    # Load daily data from Excel (header row is on Excel row 5 → header=4)
     daily = pd.read_excel("SPXdailycandles.xlsx", header=4)
     daily['Date'] = pd.to_datetime(daily['Date'])
 
-    # Load intraday data and normalize date column
     intraday = pd.read_csv("SPX_10min.csv")
     intraday['Datetime'] = pd.to_datetime(intraday['Datetime'])
     intraday['Date'] = intraday['Datetime'].dt.date
