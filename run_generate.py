@@ -158,13 +158,35 @@ def detect_triggers_and_goals(daily, intraday):
     return pd.DataFrame(results)
 
 def main():
+    print("Loading data files...")
     daily = pd.read_excel('SPXdailycandles.xlsx', header=4)
+    print(f"Daily data shape: {daily.shape}")
+    print(f"Daily columns: {list(daily.columns)}")
+    print(f"First few dates: {daily['Date'].head()}")
+    
     intraday = pd.read_csv('SPX_10min.csv', parse_dates=['Datetime'])
     intraday['Date'] = intraday['Datetime'].dt.date
-
+    print(f"Intraday data shape: {intraday.shape}")
+    print(f"Intraday date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
+    
+    # Check for level columns
+    fib_levels = [1.000, 0.786, 0.618, 0.500, 0.382, 0.236, 0.000, -0.236, -0.382, -0.500, -0.618, -0.786, -1.000]
+    found_levels = []
+    for level in fib_levels:
+        level_str = f'{level:.3f}'.rstrip('0').rstrip('.') if '.' in f'{level:.3f}' else str(level)
+        if level_str in daily.columns:
+            found_levels.append(level_str)
+    print(f"Found level columns: {found_levels}")
+    
     df = detect_triggers_and_goals(daily, intraday)
-    df.to_csv('combined_trigger_goal_results.csv', index=False)
-    print('Output saved to combined_trigger_goal_results.csv')
+    print(f"Results generated: {len(df)} rows")
+    
+    if not df.empty:
+        df.to_csv('combined_trigger_goal_results.csv', index=False)
+        print('Output saved to combined_trigger_goal_results.csv')
+    else:
+        print('No results generated - check data alignment')
+        
     return df
 
 st.title('ATR Trigger & Goal Generator')
