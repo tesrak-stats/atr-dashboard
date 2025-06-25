@@ -32,7 +32,18 @@ def detect_triggers_and_goals(daily, intraday):
 
         level_map = {}
         for level in fib_levels:
-            level_str = f'{level:.3f}'.rstrip('0').rstrip('.') if '.' in f'{level:.3f}' else str(level)
+            # Try multiple possible column name formats
+possible_names = [
+    f'{level:.3f}'.rstrip('0').rstrip('.'),  # Original logic
+    str(level),                               # Direct string
+    str(int(level)) if level == int(level) else str(level),  # Integer for whole numbers
+    f'{level:.1f}' if level != int(level) else str(int(level))  # Your Excel format
+]
+level_str = None
+for name in possible_names:
+    if name in day_row:
+        level_str = name
+        break
             if level_str in day_row:
                 level_map[level] = day_row[level_str]
 
