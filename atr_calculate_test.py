@@ -87,15 +87,25 @@ def test_atr_calculation():
             current_close = row['Close']
             calculated_atr = row['ATR_Calculated']
             
-            # FIX: Use CURRENT row's ATR with CURRENT row's date
-            # (not previous row's ATR with current date)
-            if pd.isna(calculated_atr):
+            # Skip if we can't get previous day's data
+            row_position = daily.index.get_loc(idx)
+            if row_position == 0:  # Skip first row
+                continue
+                
+            # Get previous day's data for level calculation
+            prev_idx = daily.index[row_position - 1]
+            prev_row = daily.loc[prev_idx]
+            prev_close = prev_row['Close']
+            prev_atr = prev_row['ATR_Calculated']
+            
+            if pd.isna(calculated_atr) or pd.isna(prev_atr):
                 continue
             
-            # Generate calculated levels using current close and current ATR
-            calculated_levels = generate_atr_levels(current_close, calculated_atr)
+            # CORRECT: Generate levels using PREVIOUS day's close + PREVIOUS day's ATR
+            # These are the levels that would be set for trading on the current day
+            calculated_levels = generate_atr_levels(prev_close, prev_atr)
             
-            # Try to find Excel ATR value for CURRENT row
+            # Try to find Excel ATR value for CURRENT row (for ATR comparison)
             excel_atr = None
             for atr_col in atr_cols:
                 if not pd.isna(row[atr_col]):
@@ -105,8 +115,10 @@ def test_atr_calculation():
             # Create comparison row
             comp_row = {
                 'Date': date,
-                'Close': current_close,
-                'ATR_Calculated': calculated_atr,
+                'PrevClose': prev_close,
+                'PrevATR': prev_atr,
+                'CurrentClose': current_close,
+                'CurrentATR': calculated_atr,
                 'ATR_Excel': excel_atr,
                 'ATR_Match': compare_levels(calculated_atr, excel_atr, tolerance=0.01) if excel_atr else 'NO_EXCEL_ATR'
             }
@@ -226,7 +238,7 @@ if st.button('🔍 Run ATR Validation Test'):
                 # Preview results
                 st.subheader('🔍 Preview of Validation Results')
                 # Show key columns first
-                key_cols = ['Date', 'Close', 'ATR_Calculated', 'ATR_Excel', 'ATR_Match']
+                key_cols = ['Date', 'PrevClose', 'PrevATR', 'CurrentClose', 'CurrentATR', 'ATR_Excel', 'ATR_Match']
                 display_cols = [col for col in key_cols if col in result_df.columns]
                 st.dataframe(result_df[display_cols].head(10))
                 
