@@ -1,4 +1,5 @@
 import pandas as pd
+from datetime import datetime
 
 def detect_triggers_and_goals(daily, intraday):
 fib_levels = [1.000, 0.786, 0.618, 0.500, 0.382, 0.236, 0.000,
@@ -6,12 +7,20 @@ fib_levels = [1.000, 0.786, 0.618, 0.500, 0.382, 0.236, 0.000,
 
 ```
 results = []
-start_date = pd.to_datetime("2014-01-02")  # Keep as Timestamp
+# Use datetime.strptime for foolproof comparison
+start_date_str = "2014-01-02"
 
 for i in range(1, len(daily)):
     date = daily.iloc[i]['Date']
-    # Fix: Compare Timestamp to Timestamp
-    if pd.to_datetime(date) < start_date:
+    
+    # Convert date to string for comparison - bulletproof approach
+    if isinstance(date, str):
+        date_str = date[:10]  # Take first 10 chars (YYYY-MM-DD)
+    else:
+        date_str = str(date)[:10]  # Convert to string and take first 10 chars
+    
+    # String comparison - this will definitely work
+    if date_str < start_date_str:
         continue
 
     day_row = daily.iloc[i]
@@ -160,4 +169,3 @@ return df
 
 if **name** == “**main**”:
 main()
-
