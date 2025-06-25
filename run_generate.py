@@ -102,8 +102,8 @@ def detect_triggers_and_goals(daily, intraday):
                     any(open_price <= level_map[level] for level in fib_levels if level < 0)
                 ) else row['Time']
 
-                # Check upside triggers
-                for level in [lvl for lvl in fib_levels if lvl > 0]:
+                # Check upside triggers (FIXED: include 0.0 level)
+                for level in [lvl for lvl in fib_levels if lvl >= 0]:  # Changed > to >=
                     if level in triggered_up:
                         continue
                     
@@ -132,11 +132,11 @@ def detect_triggers_and_goals(daily, intraday):
                             'TriggerPrice': trigger_price
                         }
 
-            # Process upside triggers and goals
+            # Process upside triggers and goals (FIXED: include 0.0)
             for level, trigger_info in triggered_up.items():
                 trigger_row = trigger_info['TriggeredRow']
                 
-                # Check continuation goals (higher levels)
+                # Check continuation goals (higher levels, including levels > current)
                 for goal_level in [l for l in fib_levels if l > level]:
                     goal_price = level_map[goal_level]
                     goal_hit = False
