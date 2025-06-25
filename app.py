@@ -1,18 +1,59 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from generate_daily_atr_levels import get_latest_atr_levels
 
-# --- Load and prepare data ---
-df = pd.read_csv("atr_dashboard_summary.csv")
-df["TriggerTime"] = df["TriggerTime"].astype(str)
-df["GoalTime"] = df["GoalTime"].astype(str)
+# --- Load and prepare data with CONVERSION FIX ---
+st.title("📈 ATR Roadmap Matrix")
 
-# --- Load current ATR-based price levels ---
 try:
-    atr_price_levels = get_latest_atr_levels()
-except:
-    atr_price_levels = {}
+    df = pd.read_csv("atr_dashboard_summary.csv")
+    
+    # FIX DATA TYPES AND FORMATS
+    # Convert float times to proper string format
+    df["TriggerTime"] = df["TriggerTime"].astype(str).str.replace('.0', '', regex=False)
+    df["GoalTime"] = df["GoalTime"].astype(str).str.replace('.0', '', regex=False)
+    
+    # Convert time buckets to hour format
+    def convert_to_hour_bucket(time_str):
+        if time_str == 'OPEN':
+            return 'OPEN'
+        elif time_str in ['930', '940', '950', '959']:
+            return '0900'
+        elif time_str.startswith('10'):
+            return '1000'
+        elif time_str.startswith('11'):
+            return '1100'
+        elif time_str.startswith('12'):
+            return '1200'
+        elif time_str.startswith('13'):
+            return '1300'
+        elif time_str.startswith('14'):
+            return '1400'
+        elif time_str.startswith('15'):
+            return '1500'
+        else:
+            return time_str
+    
+    df["TriggerTime"] = df["TriggerTime"].apply(convert_to_hour_bucket)
+    df["GoalTime"] = df["GoalTime"].apply(convert_to_hour_bucket)
+    
+    # Re-aggregate after time conversion
+    df_reaggregated = df.groupby(['Direction', 'TriggerLevel', 'TriggerTime', 'GoalLevel', 'GoalTime']).agg({
+        'NumHits': 'sum',
+        'NumTriggers': 'first',  # Should be same for all rows in group
+        'PctCompletion': 'first'
+    }).reset_index()
+    
+    # Recalculate percentages
+    df_reaggregated['PctCompletion'] = (df_reaggregated['NumHits'] / df_reaggregated['NumTriggers'] * 100).round(1)
+    
+    df = df_reaggregated
+    
+    st.success(f"✅ Data loaded and fixed: {df.shape}")
+    
+except Exception as e:
+    st.error(f"❌ Error loading data: {e}")
+    st.stop()
 
 # --- Time structure ---
 visible_hours = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
@@ -28,12 +69,22 @@ time_order.append("1600")
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
 
-# --- UI layout ---
-st.title("📈 ATR Roadmap Matrix")
+# --- UI layout with FIXED DEFAULTS ---
 col1, col2, col3 = st.columns(3)
-direction = col1.selectbox("Select Direction", sorted(df["Direction"].unique()), index=0)
-trigger_level = col2.selectbox("Select Trigger Level", sorted(set(df["TriggerLevel"]).union(fib_levels)), index=sorted(set(df["TriggerLevel"]).union(fib_levels)).index(0.0))
+
+# Set up correct defaults
+directions = sorted(df["Direction"].unique())
+upside_index = directions.index("Upside") if "Upside" in directions else 0
+
+trigger_levels_available = sorted(set(df["TriggerLevel"]).union(fib_levels))
+zero_index = trigger_levels_available.index(0.0) if 0.0 in trigger_levels_available else 0
+
+direction = col1.selectbox("Select Direction", directions, index=upside_index)
+trigger_level = col2.selectbox("Select Trigger Level", trigger_levels_available, index=zero_index)
 trigger_time = col3.selectbox("Select Trigger Time", ["OPEN"] + visible_hours, index=0)
+
+# --- DEBUG INFO ---
+st.write(f"**Selected:** {direction}, {trigger_level}, {trigger_time}")
 
 # --- Filter for selection ---
 filtered = df[
@@ -42,6 +93,17 @@ filtered = df[
     (df["TriggerTime"] == trigger_time)
 ].copy()
 
+st.write(f"**Filtered records:** {len(filtered)}")
+
+if len(filtered) == 0:
+    st.error("❌ No data found for this combination!")
+    
+    # Show available combinations
+    st.write("**Available combinations for debugging:**")
+    available = df[df["Direction"] == direction][["TriggerLevel", "TriggerTime"]].drop_duplicates().head(10)
+    st.dataframe(available)
+    st.stop()
+
 # --- Aggregate ---
 grouped = (
     filtered.groupby(["GoalLevel", "GoalTime"])
@@ -49,6 +111,13 @@ grouped = (
     .reset_index()
 )
 grouped["PctCompletion"] = (grouped["NumHits"] / grouped["NumTriggers"] * 100).round(1)
+
+st.write(f"**Grouped records:** {len(grouped)}")
+st.write(f"**Non-zero completions:** {len(grouped[grouped['PctCompletion'] > 0])}")
+
+# Show sample of grouped data
+with st.expander("📊 Sample Results"):
+    st.dataframe(grouped.head(10))
 
 # --- Plot setup ---
 fig = go.Figure()
@@ -109,20 +178,6 @@ for level, (color, width) in fibo_styles.items():
         line=dict(color=color, width=width), layer="below"
     )
 
-# --- Price ladder on right Y-axis ---
-if atr_price_levels:
-    price_labels = [atr_price_levels.get(level, "") for level in fib_levels]
-    yaxis2 = dict(
-        overlaying='y',
-        side='right',
-        tickvals=fib_levels,
-        ticktext=[f"{price:.2f}" if isinstance(price, (int, float)) else "" for price in price_labels],
-        tickfont=dict(color="lightgray"),
-        showgrid=False,
-        title="Price Level"
-    )
-    
-
 # --- Chart Layout ---
 fig.update_layout(
     title=f"{direction} | Trigger {trigger_level} at {trigger_time}",
@@ -151,26 +206,3 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=False)
-# --- Price ladder on right Y-axis ---
-if atr_price_levels:
-    price_labels = [atr_price_levels["levels"].get(f"{level:+.3f}", "") for level in fib_levels]
-
-    fig.update_layout(
-        yaxis=dict(
-            title="Fib Level",
-            tickvals=fib_levels,
-            ticktext=[f"{lvl:+.3f}" for lvl in fib_levels],
-        ),
-        yaxis2=dict(
-            title="Price Level",
-            overlaying="y",
-            side="right",
-            tickvals=fib_levels,
-            ticktext=[
-                f"{price:.2f}" if isinstance(price, (int, float)) else ""
-                for price in price_labels
-            ],
-            tickfont=dict(color="lightgray"),
-            showgrid=False
-        )
-    )
