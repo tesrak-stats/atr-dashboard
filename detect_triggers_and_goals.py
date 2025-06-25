@@ -156,9 +156,9 @@ return pd.DataFrame(results)
 ```
 
 def main():
-daily = pd.read_excel(“SPXdailycandles.xlsx”, header=4)
-intraday = pd.read_csv(“SPX_10min.csv”, parse_dates=[‘Datetime’])
-intraday[‘Date’] = intraday[‘Datetime’].dt.date
+daily = pd.read_excel("SPXdailycandles.xlsx", header=4)
+intraday = pd.read_csv("SPX_10min.csv", parse_dates=['Datetime'])
+intraday['Date'] = intraday['Datetime'].dt.date
 
 ```
 df = detect_triggers_and_goals(daily, intraday)
