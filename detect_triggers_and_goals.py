@@ -1,96 +1,110 @@
+
 import pandas as pd
 
 def detect_triggers_and_goals(daily, intraday):
-    fib_levels = [1.000, 0.786, 0.618, 0.500, 0.382, 0.236,
+    fib_levels = [1.000, 0.786, 0.618, 0.500, 0.382,
                   -0.236, -0.382, -0.500, -0.618, -0.786, -1.000]
 
     results = []
 
-    for i in range(1, len(daily)):
-        date = daily.iloc[i]['Date']
-        if date < pd.to_datetime("2014-01-02"):
-            continue
+    for direction in ['Upside', 'Downside']:
+        for date in intraday['Date'].unique():
+            if pd.to_datetime(date) < pd.Timestamp("2014-01-02"):
+                continue
 
-        day_row = daily.iloc[i]
-        prev_row = daily.iloc[i - 1]
-        prev_close = prev_row['Close']
+            day_data = intraday[intraday['Date'] == date].copy()
+            daily_row = daily[daily['Date'] == pd.to_datetime(date)]
 
-        level_map = {}
-        for level in fib_levels:
-            level_str = f"{level:.3f}".rstrip('0').rstrip('.')
-            if level_str in day_row:
-                level_map[level] = day_row[level_str]
+            if daily_row.empty:
+                continue
 
-        day_data = intraday[intraday['Date'] == date]
-        if day_data.empty:
-            continue
+            day_row = daily_row.iloc[0]
+            prev_row = daily[daily['Date'] < pd.to_datetime(date)].iloc[-1]
+            prev_close = prev_row['Close']
 
-        day_data['Time'] = day_data['Datetime'].dt.strftime('%H%M')
-        first_row = day_data.iloc[0]
-
-        for direction in ['Upside', 'Downside']:
-            trigger_hit = {}
-            for level in fib_levels:
-                if direction == 'Upside' and level <= 0:
-                    continue
-                if direction == 'Downside' and level >= 0:
-                    continue
-                level_val = level_map.get(level)
-                if pd.isna(level_val):
+            level_map = {}
+            for col in daily.columns[9:22]:
+                try:
+                    col_str = str(col).strip().replace('%', '')
+                    float_label = float(col_str) / 100 if '%' in str(col) else float(col_str)
+                    level_map[float_label] = day_row[col]
+                except ValueError:
                     continue
 
+            if direction == 'Upside':
+                trigger_levels = [lvl for lvl in fib_levels if lvl > 0 and lvl in level_map]
+                goal_levels = [lvl for lvl in fib_levels if lvl > 0 and lvl in level_map]
+                trigger_check = lambda row, lvl: row['High'] >= level_map[lvl]
+                goal_check = lambda row, lvl: row['High'] >= level_map[lvl]
+                open_check = lambda row, lvl, next_lvl: (
+                    level_map[lvl] <= row['Open'] < level_map[next_lvl]
+                )
+            else:
+                trigger_levels = [lvl for lvl in fib_levels if lvl < 0 and lvl in level_map]
+                goal_levels = [lvl for lvl in fib_levels if lvl < 0 and lvl in level_map]
+                trigger_check = lambda row, lvl: row['Low'] <= level_map[lvl]
+                goal_check = lambda row, lvl: row['Low'] <= level_map[lvl]
+                open_check = lambda row, lvl, next_lvl: (
+                    level_map[next_lvl] < row['Open'] <= level_map[lvl]
+                )
+
+            for lvl in trigger_levels:
+                triggered = False
+                trigger_time = None
                 for idx, row in day_data.iterrows():
-                    if direction == 'Upside' and row['High'] >= level_val:
-                        trig_time = '0000' if row.name == day_data.index[0] and row['Open'] >= level_val else row['Time']
-                        trigger_hit[(direction, level)] = (trig_time, row)
-                        break
-                    if direction == 'Downside' and row['Low'] <= level_val:
-                        trig_time = '0000' if row.name == day_data.index[0] and row['Open'] <= level_val else row['Time']
-                        trigger_hit[(direction, level)] = (trig_time, row)
-                        break
-
-            for (dir_key, trig_level), (trig_time, trig_row) in trigger_hit.items():
-                trig_idx = day_data.index.get_loc(trig_row.name)
-                for goal_level in fib_levels:
-                    if dir_key == 'Upside' and goal_level <= trig_level:
-                        continue
-                    if dir_key == 'Downside' and goal_level >= trig_level:
-                        continue
-                    goal_val = level_map.get(goal_level)
-                    if pd.isna(goal_val):
-                        continue
-
-                    goal_time = None
-                    for idx in day_data.index[trig_idx+1:]:
-                        row = day_data.loc[idx]
-                        if dir_key == 'Upside' and row['High'] >= goal_val:
-                            goal_time = row['Time']
+                    if idx == day_data.index[0]:
+                        try:
+                            next_lvl = trigger_levels[trigger_levels.index(lvl) + 1]
+                        except IndexError:
+                            next_lvl = lvl
+                        if open_check(row, lvl, next_lvl):
+                            trigger_time = '0000'
+                            triggered = True
                             break
-                        if dir_key == 'Downside' and row['Low'] <= goal_val:
-                            goal_time = row['Time']
+                    elif trigger_check(row, lvl):
+                        trigger_time = row['Time'][:2] + '00'
+                        triggered = True
+                        break
+
+                if not triggered:
+                    continue
+
+                for goal_lvl in goal_levels:
+                    if (direction == 'Upside' and goal_lvl <= lvl) or (direction == 'Downside' and goal_lvl >= lvl):
+                        continue
+
+                    goal_hit = False
+                    for idx, row in day_data.iterrows():
+                        if goal_check(row, goal_lvl):
+                            goal_hit = True
                             break
 
                     results.append({
                         'Date': date,
-                        'Direction': dir_key,
-                        'Trigger Level': trig_level,
-                        'Goal Level': goal_level,
-                        'Trigger Time': trig_time,
-                        'Goal Time': goal_time
+                        'Direction': direction,
+                        'Trigger Level': lvl,
+                        'Trigger Time': trigger_time,
+                        'Goal Level': goal_lvl,
+                        'Goal Hit': goal_hit,
+                        'Trigger Price': level_map[lvl],
+                        'Goal Price': level_map[goal_lvl],
                     })
 
     return pd.DataFrame(results)
 
-def main():
-    daily = pd.read_csv("SPX_daily.csv")
-    intraday = pd.read_csv("SPX_10min.csv")
 
+def main():
+    daily = pd.read_excel("SPXdailycandles.xlsx", header=4)
     daily['Date'] = pd.to_datetime(daily['Date'])
+
+    intraday = pd.read_csv("SPX_10min.csv")
     intraday['Datetime'] = pd.to_datetime(intraday['Datetime'])
-    intraday['Date'] = intraday['Datetime'].dt.normalize()
+    intraday['Date'] = intraday['Datetime'].dt.date
 
     df = detect_triggers_and_goals(daily, intraday)
     df.to_csv("combined_trigger_goal_results.csv", index=False)
+    print("✅ Output written to combined_trigger_goal_results.csv")
+
 
 if __name__ == "__main__":
     main()
