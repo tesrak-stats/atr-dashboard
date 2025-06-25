@@ -1,16 +1,14 @@
-
 import pandas as pd
 
 def detect_triggers_and_goals(daily, intraday):
     fib_levels = [1.000, 0.786, 0.618, 0.500, 0.382, 0.236, 0.000,
                   -0.236, -0.382, -0.500, -0.618, -0.786, -1.000]
-    
+
     results = []
-    start_date = pd.to_datetime("2014-01-02")
 
     for i in range(1, len(daily)):
         date = daily.iloc[i]['Date']
-        if pd.to_datetime(date) < start_date:
+        if pd.to_datetime(date) < pd.to_datetime("2014-01-02"):
             continue
 
         day_row = daily.iloc[i]
@@ -144,7 +142,7 @@ def detect_triggers_and_goals(daily, intraday):
 
     return pd.DataFrame(results)
 
-if __name__ == "__main__":
+def main():
     daily = pd.read_excel("SPXdailycandles.xlsx", header=4)
     intraday = pd.read_csv("SPX_10min.csv", parse_dates=['Datetime'])
     intraday['Date'] = intraday['Datetime'].dt.date
@@ -152,3 +150,6 @@ if __name__ == "__main__":
     df = detect_triggers_and_goals(daily, intraday)
     df.to_csv("combined_trigger_goal_results.csv", index=False)
     print("✅ Output saved to combined_trigger_goal_results.csv")
+
+if __name__ == "__main__":
+    main()
