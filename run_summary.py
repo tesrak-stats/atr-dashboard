@@ -46,7 +46,7 @@ def process_summary_data():
         
         # Simple time conversion function - FIXED VERSION
         def convert_time_to_hour(time_str):
-            time_str = str(time_str)
+            time_str = str(time_str).replace('.0', '')  # Remove .0 from floats
             if time_str == 'OPEN':
                 return 'OPEN'
             elif time_str in ['930', '940', '950', '959']:  # Specific 9:30 hour times
