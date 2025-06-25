@@ -158,54 +158,64 @@ def detect_triggers_and_goals(daily, intraday):
     return pd.DataFrame(results)
 
 def main():
-    print("Loading data files...")
-    daily = pd.read_excel('SPXdailycandles.xlsx', header=4)
-    print(f"Daily data shape: {daily.shape}")
-    print(f"Daily columns: {list(daily.columns)}")
-    print(f"First few dates: {daily['Date'].head()}")
+    debug_info = []
     
-    intraday = pd.read_csv('SPX_10min.csv', parse_dates=['Datetime'])
-    intraday['Date'] = intraday['Datetime'].dt.date
-    print(f"Intraday data shape: {intraday.shape}")
-    print(f"Intraday date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
-    
-    # Check for level columns
-    fib_levels = [1.000, 0.786, 0.618, 0.500, 0.382, 0.236, 0.000, -0.236, -0.382, -0.500, -0.618, -0.786, -1.000]
-    found_levels = []
-    for level in fib_levels:
-        level_str = f'{level:.3f}'.rstrip('0').rstrip('.') if '.' in f'{level:.3f}' else str(level)
-        if level_str in daily.columns:
-            found_levels.append(level_str)
-    print(f"Found level columns: {found_levels}")
-    
-    df = detect_triggers_and_goals(daily, intraday)
-    print(f"Results generated: {len(df)} rows")
-    
-    if not df.empty:
-        df.to_csv('combined_trigger_goal_results.csv', index=False)
-        print('Output saved to combined_trigger_goal_results.csv')
-    else:
-        print('No results generated - check data alignment')
+    try:
+        debug_info.append("Loading data files...")
+        daily = pd.read_excel('SPXdailycandles.xlsx', header=4)
+        debug_info.append(f"Daily data shape: {daily.shape}")
+        debug_info.append(f"Daily columns: {list(daily.columns)}")
+        debug_info.append(f"First few dates: {daily['Date'].head().tolist()}")
         
-    return df
+        intraday = pd.read_csv('SPX_10min.csv', parse_dates=['Datetime'])
+        intraday['Date'] = intraday['Datetime'].dt.date
+        debug_info.append(f"Intraday data shape: {intraday.shape}")
+        debug_info.append(f"Intraday date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
+        
+        # Check for level columns
+        fib_levels = [1.000, 0.786, 0.618, 0.500, 0.382, 0.236, 0.000, -0.236, -0.382, -0.500, -0.618, -0.786, -1.000]
+        found_levels = []
+        for level in fib_levels:
+            level_str = f'{level:.3f}'.rstrip('0').rstrip('.') if '.' in f'{level:.3f}' else str(level)
+            if level_str in daily.columns:
+                found_levels.append(level_str)
+        debug_info.append(f"Found level columns: {found_levels}")
+        
+        df = detect_triggers_and_goals(daily, intraday)
+        debug_info.append(f"Results generated: {len(df)} rows")
+        
+        return df, debug_info
+        
+    except Exception as e:
+        debug_info.append(f"Error: {str(e)}")
+        return pd.DataFrame(), debug_info
 
 st.title('ATR Trigger & Goal Generator')
 
 output_path = 'combined_trigger_goal_results.csv'
 
+# Update the button section too:
 if st.button('Generate combined_trigger_goal_results.csv'):
     with st.spinner('Running detection...'):
         try:
-            result_df = main()
-            result_df['Source'] = 'Full'
-            result_df.to_csv(output_path, index=False)
-            st.success('File generated and saved!')
-
-            # Preview
-            if os.path.exists(output_path):
-                df = pd.read_csv(output_path)
-                st.subheader('Preview of Most Recent Output')
-                st.dataframe(df.head(30))
-                st.download_button('Download CSV', data=df.to_csv(index=False), file_name=output_path, mime='text/csv')
+            result_df, debug_messages = main()
+            
+            # Show debug info
+            st.subheader('Debug Information')
+            for msg in debug_messages:
+                st.write(msg)
+            
+            if not result_df.empty:
+                result_df['Source'] = 'Full'
+                result_df.to_csv(output_path, index=False)
+                st.success('File generated and saved!')
+                
+                # Preview
+                st.subheader('Preview of Results')
+                st.dataframe(result_df.head(30))
+                st.download_button('Download CSV', data=result_df.to_csv(index=False), file_name=output_path, mime='text/csv')
+            else:
+                st.warning('No results generated - check debug info above')
+                
         except Exception as e:
-            st.error(f'Error running detect_triggers_and_goals.py: {e}')
+            st.error(f'Error: {e}')
