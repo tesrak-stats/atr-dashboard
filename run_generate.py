@@ -50,7 +50,7 @@ def detect_triggers_and_goals(daily, intraday):
             open_price = row['Open']
             high = row['High']
             low = row['Low']
-           time_label = '0000' if idx == 0 and level_map and (open_price >= min(level_map.values())) else row['Time']
+            time_label = '0000' if idx == 0 and level_map and (open_price >= min(level_map.values())) else row['Time']
             hour_block = '0000' if time_label == '0000' else time_label[:2] + '00'
 
             for level in sorted([lvl for lvl in fib_levels if lvl > 0]):
