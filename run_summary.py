@@ -44,24 +44,24 @@ def process_summary_data():
         st.write("🔍 Counting unique triggers per day...")
         trigger_occurrences = df[['Date', 'TriggerLevel', 'TriggerTime', 'Direction']].drop_duplicates()
         
-        # Simple time conversion function - NO REGEX!
+        # Simple time conversion function - FIXED VERSION
         def convert_time_to_hour(time_str):
             time_str = str(time_str)
             if time_str == 'OPEN':
                 return 'OPEN'
-            elif time_str.startswith('9') and len(time_str) <= 4:  # 930-959
+            elif time_str in ['930', '940', '950', '959']:  # Specific 9:30 hour times
                 return '0900'
-            elif time_str.startswith('10') and len(time_str) <= 4:  # 1000-1059
+            elif time_str.startswith('10'):  # 1000-1059
                 return '1000'
-            elif time_str.startswith('11') and len(time_str) <= 4:  # 1100-1159
+            elif time_str.startswith('11'):  # 1100-1159
                 return '1100'
-            elif time_str.startswith('12') and len(time_str) <= 4:  # 1200-1259
+            elif time_str.startswith('12'):  # 1200-1259
                 return '1200'
-            elif time_str.startswith('13') and len(time_str) <= 4:  # 1300-1359
+            elif time_str.startswith('13'):  # 1300-1359
                 return '1300'
-            elif time_str.startswith('14') and len(time_str) <= 4:  # 1400-1459
+            elif time_str.startswith('14'):  # 1400-1459
                 return '1400'
-            elif time_str.startswith('15') and len(time_str) <= 4:  # 1500-1559
+            elif time_str.startswith('15'):  # 1500-1559
                 return '1500'
             else:
                 return time_str  # Keep as-is if doesn't match
