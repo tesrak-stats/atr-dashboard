@@ -51,12 +51,18 @@ if len(display_data) > 0:
 # Convert the filtered data to a lookup dict: (GoalLevel, GoalTime) -> (NumHits, NumTriggers, PctCompletion)
 data_lookup = {}
 for _, row in display_data.iterrows():
-    key = (row["GoalLevel"], row["GoalTime"])
+    # Convert GoalTime to string to match chart expectations
+    goal_time_str = str(row["GoalTime"]) if pd.notna(row["GoalTime"]) else "Unknown"
+    key = (row["GoalLevel"], goal_time_str)
     data_lookup[key] = {
         "hits": row["NumHits"],
         "triggers": row["NumTriggers"], 
         "pct": row["PctCompletion"]
     }
+
+# Debug: Show what keys we created
+st.write("### Lookup Keys Created:")
+st.write(list(data_lookup.keys())[:10])
 
 # --- Build Visualization ---
 fig = go.Figure()
