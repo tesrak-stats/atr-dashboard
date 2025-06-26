@@ -51,8 +51,16 @@ if len(display_data) > 0:
 # Convert the filtered data to a lookup dict: (GoalLevel, GoalTime) -> (NumHits, NumTriggers, PctCompletion)
 data_lookup = {}
 for _, row in display_data.iterrows():
-    # Convert GoalTime to string to match chart expectations
-    goal_time_str = str(row["GoalTime"]) if pd.notna(row["GoalTime"]) else "Unknown"
+    # Convert GoalTime to string and remove decimal if it's a float
+    goal_time = row["GoalTime"]
+    if pd.notna(goal_time):
+        if isinstance(goal_time, (int, float)):
+            goal_time_str = str(int(goal_time))  # Convert 1000.0 -> "1000"
+        else:
+            goal_time_str = str(goal_time)
+    else:
+        goal_time_str = "Unknown"
+        
     key = (row["GoalLevel"], goal_time_str)
     data_lookup[key] = {
         "hits": row["NumHits"],
