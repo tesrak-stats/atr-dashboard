@@ -63,8 +63,17 @@ else:
     grouped = pd.DataFrame(columns=["GoalLevel", "GoalTime", "NumHits", "NumTriggers", "PctCompletion"])
 
 # --- Create lookup dictionary ---
-data_lookup = {}
 st.write("### Debug: Creating Lookup Dictionary")
+st.write(f"Grouped dataframe shape: {grouped.shape}")
+st.write(f"Grouped dataframe columns: {list(grouped.columns)}")
+
+if len(grouped) > 0:
+    st.write("Sample grouped data:")
+    st.dataframe(grouped.head())
+else:
+    st.error("❌ Grouped dataframe is empty!")
+
+data_lookup = {}
 
 for i, (_, row) in enumerate(grouped.iterrows()):
     if i < 5:  # Debug first 5 rows
@@ -99,6 +108,9 @@ for i, (_, row) in enumerate(grouped.iterrows()):
     
     if i < 5:  # Debug first 5 keys
         st.write(f"  Created key: {key}")
+        st.write(f"  Lookup size now: {len(data_lookup)}")
+
+st.write(f"Final lookup size: {len(data_lookup)}")
 
 st.write(f"Total lookup keys created: {len(data_lookup)}")
 st.write(f"First 5 keys: {list(data_lookup.keys())[:5]}")
