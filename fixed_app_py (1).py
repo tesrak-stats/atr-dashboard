@@ -99,7 +99,7 @@ for i, (_, row) in enumerate(grouped.iterrows()):
     if i < 5:  # Debug first 5 conversions
         st.write(f"  Converted to: '{goal_time_str}'")
         
-    key = (row["GoalLevel"], goal_time_str)
+    key = (float(row["GoalLevel"]), goal_time_str)  # Ensure GoalLevel is float
     data_lookup[key] = {
         "hits": row["NumHits"],
         "triggers": row["NumTriggers"], 
