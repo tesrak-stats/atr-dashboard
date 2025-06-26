@@ -109,11 +109,15 @@ for level in fib_levels:
         key = (level, t)
         
         # Debug for a few specific cases that should work
-        if level in [0.5, 0.382] and t in ["0900", "1000", "1200"]:
+        if (level == -0.382 and t in ["1000", "1100"]) or (level in [0.5, 0.382] and t in ["0900", "1000", "1200"]):
             st.write(f"🔍 Chart looking for: {key}")
             st.write(f"🔍 Key exists: {key in data_lookup}")
             if key in data_lookup:
                 st.write(f"🔍 Found data: {data_lookup[key]}")
+            else:
+                # Show what keys ARE available for this level
+                available_for_level = [k for k in data_lookup.keys() if k[0] == level]
+                st.write(f"🔍 Available keys for level {level}: {available_for_level}")
         
         if key in data_lookup:
             data = data_lookup[key]
