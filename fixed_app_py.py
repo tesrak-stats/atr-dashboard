@@ -83,6 +83,14 @@ for level in fib_levels:
             
         # Simple lookup - no calculations
         key = (level, t)
+        
+        # Debug for first few lookups
+        if level == 0.0 and t in ["0900", "1000", "1100"]:
+            st.write(f"🔍 Looking for key: {key}")
+            st.write(f"🔍 Key exists: {key in data_lookup}")
+            if key in data_lookup:
+                st.write(f"🔍 Data: {data_lookup[key]}")
+        
         if key in data_lookup:
             data = data_lookup[key]
             pct = data["pct"]
