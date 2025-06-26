@@ -64,7 +64,12 @@ else:
 
 # --- Create lookup dictionary ---
 data_lookup = {}
-for _, row in grouped.iterrows():
+st.write("### Debug: Creating Lookup Dictionary")
+
+for i, (_, row) in enumerate(grouped.iterrows()):
+    if i < 5:  # Debug first 5 rows
+        st.write(f"Row {i}: GoalLevel={row['GoalLevel']}, GoalTime={row['GoalTime']} (type: {type(row['GoalTime'])})")
+    
     # Convert GoalTime to match chart time format
     goal_time = row["GoalTime"]
     if pd.notna(goal_time):
@@ -81,6 +86,9 @@ for _, row in grouped.iterrows():
             goal_time_str = str(goal_time)  # "OPEN" -> "OPEN"
     else:
         goal_time_str = "Unknown"
+    
+    if i < 5:  # Debug first 5 conversions
+        st.write(f"  Converted to: '{goal_time_str}'")
         
     key = (row["GoalLevel"], goal_time_str)
     data_lookup[key] = {
@@ -88,6 +96,12 @@ for _, row in grouped.iterrows():
         "triggers": row["NumTriggers"], 
         "pct": row["PctCompletion"]
     }
+    
+    if i < 5:  # Debug first 5 keys
+        st.write(f"  Created key: {key}")
+
+st.write(f"Total lookup keys created: {len(data_lookup)}")
+st.write(f"First 5 keys: {list(data_lookup.keys())[:5]}")
 
 # Debug: Show what keys we're creating
 st.write("### Sample Lookup Keys:")
