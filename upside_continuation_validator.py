@@ -2,146 +2,207 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-st.title("🔍 Upside Continuation Validator")
-st.write("Step-by-step validation of upside continuation logic against known Excel results")
+def calculate_atr(df, period=14):
+    """Calculate Wilder's ATR"""
+    df = df.copy()
+    df['High-Low'] = df['High'] - df['Low']
+    df['High-PrevClose'] = abs(df['High'] - df['Close'].shift(1))
+    df['Low-PrevClose'] = abs(df['Low'] - df['Close'].shift(1))
+    df['TR'] = df[['High-Low', 'High-PrevClose', 'Low-PrevClose']].max(axis=1)
+    df['ATR'] = df['TR'].ewm(alpha=1/period, adjust=False).mean()
+    return df
 
-uploaded_file = st.file_uploader("Upload combined_trigger_goal_results.csv", type="csv")
+def get_fib_levels(prev_close, atr):
+    """Generate Fibonacci-based ATR levels"""
+    fib_ratios = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+    levels = {}
+    for ratio in fib_ratios:
+        levels[ratio] = prev_close + (atr * ratio)
+    return levels
 
-if uploaded_file is not None:
-    # Load the raw data
-    df = pd.read_csv(uploaded_file)
-    st.success(f"📊 Loaded {len(df)} total records")
+st.title("🔍 Core Logic Validator - From Raw Data")
+st.write("Validate the fundamental trigger detection and goal classification logic")
+
+# File uploads
+col1, col2 = st.columns(2)
+with col1:
+    daily_file = st.file_uploader("Upload SPXdailycandles.xlsx", type="xlsx")
+with col2:
+    intraday_file = st.file_uploader("Upload SPX_10min.csv", type="csv")
+
+if daily_file is not None and intraday_file is not None:
+    # Load daily data for ATR calculation
+    st.write("## Step 1: Load and Process Daily Data")
     
-    # Step 1: Filter for Upside Continuation only
-    st.write("## Step 1: Filter for Upside Continuation")
-    
-    upside_continuation = df[
-        (df['Direction'] == 'Upside') & 
-        (df['GoalClassification'] == 'Continuation')
-    ].copy()
-    
-    st.write(f"✅ Found {len(upside_continuation)} Upside Continuation records")
-    st.write(f"📊 That's {len(upside_continuation)/len(df)*100:.1f}% of total data")
-    
-    # Step 2: Examine the trigger levels
-    st.write("## Step 2: Analyze Trigger Levels")
-    
-    trigger_summary = upside_continuation.groupby('TriggerLevel').size().reset_index(name='Count')
-    trigger_summary = trigger_summary.sort_values('TriggerLevel')
-    st.write("### Trigger Level Distribution:")
-    st.dataframe(trigger_summary)
-    
-    # Focus on 0.0 level (Previous Close) - your main validation case
-    st.write("## Step 3: Focus on 0.0 (Previous Close) Triggers")
-    
-    zero_triggers = upside_continuation[upside_continuation['TriggerLevel'] == 0.0].copy()
-    st.write(f"🎯 Found {len(zero_triggers)} records with 0.0 triggers")
-    
-    if len(zero_triggers) > 0:
-        # Check trigger times
-        trigger_times = zero_triggers['TriggerTime'].value_counts()
-        st.write("### 0.0 Trigger Time Distribution:")
-        st.write(trigger_times)
+    try:
+        # Read Excel file (assuming header on row 5 as mentioned)
+        daily_df = pd.read_excel(daily_file, header=4)
+        st.write(f"✅ Loaded daily data: {len(daily_df)} rows")
+        st.write("Daily data columns:", list(daily_df.columns))
+        st.dataframe(daily_df.head())
         
-        # Check goal levels for 0.0 triggers
-        goal_levels = zero_triggers['GoalLevel'].value_counts().sort_index()
-        st.write("### Goal Levels for 0.0 Triggers:")
-        st.write(goal_levels)
+        # Calculate ATR
+        daily_with_atr = calculate_atr(daily_df)
+        st.write("✅ ATR calculated")
         
-        # Step 4: Validate against your Excel - 0.0 to 0.236
-        st.write("## Step 4: Validate Key Scenario - 0.0 → 0.236")
+    except Exception as e:
+        st.error(f"Error loading daily data: {e}")
+        st.stop()
+    
+    # Load intraday data
+    st.write("## Step 2: Load Intraday Data")
+    
+    try:
+        intraday_df = pd.read_csv(intraday_file)
+        st.write(f"✅ Loaded intraday data: {len(intraday_df)} rows")
+        st.write("Intraday data columns:", list(intraday_df.columns))
+        st.dataframe(intraday_df.head())
         
-        zero_to_236 = zero_triggers[zero_triggers['GoalLevel'] == 0.236].copy()
-        st.write(f"📈 Found {len(zero_to_236)} records: 0.0 trigger → 0.236 goal")
+    except Exception as e:
+        st.error(f"Error loading intraday data: {e}")
+        st.stop()
+    
+    # Step 3: Pick a specific test date
+    st.write("## Step 3: Test Specific Date")
+    
+    # Let user pick a test date
+    available_dates = sorted(daily_with_atr['Date'].unique()) if 'Date' in daily_with_atr.columns else []
+    
+    if available_dates:
+        test_date = st.selectbox("Select test date:", available_dates[-30:])  # Last 30 dates
         
-        if len(zero_to_236) > 0:
-            # Show sample records
-            st.write("### Sample 0.0 → 0.236 Records:")
-            st.dataframe(zero_to_236[['Date', 'TriggerTime', 'GoalTime', 'GoalHit']].head(10))
+        if test_date:
+            st.write(f"### Testing date: {test_date}")
             
-            # Calculate success rates by trigger time
-            trigger_time_analysis = []
+            # Get daily data for test date
+            daily_row = daily_with_atr[daily_with_atr['Date'] == test_date]
             
-            for trigger_time in zero_to_236['TriggerTime'].unique():
-                subset = zero_to_236[zero_to_236['TriggerTime'] == trigger_time]
-                total_triggers = len(subset)
-                successful = len(subset[subset['GoalHit'] == 'Yes'])
-                success_rate = (successful / total_triggers * 100) if total_triggers > 0 else 0
+            if len(daily_row) > 0:
+                daily_row = daily_row.iloc[0]
+                prev_close = daily_row['Close']
+                atr = daily_row['ATR']
                 
-                trigger_time_analysis.append({
-                    'TriggerTime': trigger_time,
-                    'TotalTriggers': total_triggers,
-                    'Successful': successful,
-                    'SuccessRate': round(success_rate, 2)
-                })
-            
-            analysis_df = pd.DataFrame(trigger_time_analysis).sort_values('TriggerTime')
-            st.write("### 0.0 → 0.236 Success Rates by Trigger Time:")
-            st.dataframe(analysis_df)
-            
-            # Compare with your Excel results
-            st.write("### 🔍 Validation Check:")
-            open_result = analysis_df[analysis_df['TriggerTime'] == 'OPEN']
-            if len(open_result) > 0:
-                our_rate = open_result.iloc[0]['SuccessRate']
-                our_triggers = open_result.iloc[0]['TotalTriggers']
-                st.write(f"**Our calculation**: OPEN 0.0 → 0.236 = {our_rate}% ({our_triggers} triggers)")
-                st.write(f"**Your Excel**: OPEN 0.0 → 0.236 = 83.81% (976 triggers)")
+                st.write(f"**Previous Close**: {prev_close:.2f}")
+                st.write(f"**ATR**: {atr:.2f}")
                 
-                if abs(our_rate - 83.81) < 5:  # Within 5%
-                    st.success("✅ Results are close! Logic appears correct.")
+                # Generate Fibonacci levels
+                fib_levels = get_fib_levels(prev_close, atr)
+                
+                st.write("### Generated Fibonacci Levels:")
+                levels_df = pd.DataFrame([
+                    {'Ratio': k, 'Price Level': v} 
+                    for k, v in fib_levels.items()
+                ])
+                st.dataframe(levels_df)
+                
+                # Step 4: Analyze intraday data for this date
+                st.write("## Step 4: Analyze Intraday Price Action")
+                
+                # Filter intraday data for test date
+                intraday_day = intraday_df[intraday_df['Date'] == test_date] if 'Date' in intraday_df.columns else pd.DataFrame()
+                
+                if len(intraday_day) > 0:
+                    st.write(f"✅ Found {len(intraday_day)} intraday records for {test_date}")
+                    st.dataframe(intraday_day.head(10))
+                    
+                    # Step 5: Test trigger detection logic
+                    st.write("## Step 5: Test Trigger Detection")
+                    
+                    # For each Fibonacci level, check if price hit it
+                    triggers_found = []
+                    
+                    for ratio, level_price in fib_levels.items():
+                        # Check if high >= level (upside trigger) or low <= level (downside trigger)
+                        upside_hits = intraday_day[intraday_day['High'] >= level_price]
+                        downside_hits = intraday_day[intraday_day['Low'] <= level_price]
+                        
+                        if len(upside_hits) > 0:
+                            first_hit = upside_hits.iloc[0]
+                            triggers_found.append({
+                                'Level': ratio,
+                                'Price': level_price,
+                                'Direction': 'Upside',
+                                'TriggerTime': first_hit.get('Time', 'Unknown'),
+                                'ActualPrice': first_hit['High']
+                            })
+                        
+                        if len(downside_hits) > 0:
+                            first_hit = downside_hits.iloc[0]
+                            triggers_found.append({
+                                'Level': ratio,
+                                'Price': level_price,
+                                'Direction': 'Downside', 
+                                'TriggerTime': first_hit.get('Time', 'Unknown'),
+                                'ActualPrice': first_hit['Low']
+                            })
+                    
+                    if triggers_found:
+                        triggers_df = pd.DataFrame(triggers_found)
+                        st.write("### Triggers Found:")
+                        st.dataframe(triggers_df)
+                        
+                        # Step 6: Test goal classification logic
+                        st.write("## Step 6: Test Goal Classification")
+                        
+                        # For upside triggers, check which higher levels were hit
+                        upside_triggers = triggers_df[triggers_df['Direction'] == 'Upside']
+                        
+                        if len(upside_triggers) > 0:
+                            st.write("### Upside Trigger Analysis:")
+                            
+                            for _, trigger in upside_triggers.iterrows():
+                                trigger_level = trigger['Level']
+                                st.write(f"**Trigger**: {trigger_level} at {trigger['TriggerTime']}")
+                                
+                                # Find potential goals (levels higher than trigger for continuation)
+                                potential_goals = [lvl for lvl in fib_levels.keys() if lvl > trigger_level]
+                                
+                                goals_hit = []
+                                for goal_level in potential_goals:
+                                    goal_price = fib_levels[goal_level]
+                                    goal_hits = intraday_day[intraday_day['High'] >= goal_price]
+                                    
+                                    if len(goal_hits) > 0:
+                                        first_goal_hit = goal_hits.iloc[0]
+                                        goals_hit.append({
+                                            'GoalLevel': goal_level,
+                                            'GoalPrice': goal_price,
+                                            'GoalTime': first_goal_hit.get('Time', 'Unknown'),
+                                            'Classification': 'Continuation'
+                                        })
+                                
+                                if goals_hit:
+                                    goals_df = pd.DataFrame(goals_hit)
+                                    st.dataframe(goals_df)
+                                else:
+                                    st.write("  No continuation goals hit")
+                        
+                        # Summary for validation
+                        st.write("## Step 7: Validation Summary")
+                        st.write(f"**Test Date**: {test_date}")
+                        st.write(f"**Previous Close**: {prev_close:.2f}")
+                        st.write(f"**ATR**: {atr:.2f}")
+                        st.write(f"**Total Triggers**: {len(triggers_found)}")
+                        st.write(f"**Upside Triggers**: {len(upside_triggers)}")
+                        
+                        # Focus on 0.0 level
+                        zero_triggers = triggers_df[triggers_df['Level'] == 0.0]
+                        if len(zero_triggers) > 0:
+                            st.success(f"✅ Found {len(zero_triggers)} triggers at 0.0 (Previous Close)")
+                        else:
+                            st.warning("⚠️ No triggers found at 0.0 level")
+                    
+                    else:
+                        st.warning("No triggers found for this date")
                 else:
-                    st.error("❌ Significant difference - need to investigate logic")
+                    st.error(f"No intraday data found for {test_date}")
             else:
-                st.warning("⚠️ No OPEN trigger data found")
-        
-        # Step 5: Check for data quality issues
-        st.write("## Step 5: Data Quality Checks")
-        
-        # Check for same-time scenarios (should be filtered out)
-        same_time = zero_to_236[zero_to_236['TriggerTime'] == zero_to_236['GoalTime']]
-        st.write(f"🕐 Same-time scenarios (should be 0): {len(same_time)}")
-        
-        # Check date range
-        if len(zero_to_236) > 0:
-            min_date = zero_to_236['Date'].min()
-            max_date = zero_to_236['Date'].max()
-            st.write(f"📅 Date range: {min_date} to {max_date}")
-        
-        # Check for missing goal times
-        missing_goal_times = zero_to_236[zero_to_236['GoalTime'].isna()]
-        st.write(f"❓ Missing goal times: {len(missing_goal_times)}")
-        
+                st.error(f"No daily data found for {test_date}")
     else:
-        st.error("❌ No 0.0 trigger records found - check data generation logic")
-    
-    # Step 6: Generate focused validation CSV
-    st.write("## Step 6: Generate Validation Dataset")
-    
-    if st.button("📥 Generate Upside Continuation Validation CSV"):
-        # Create a focused dataset for manual validation
-        validation_data = upside_continuation[
-            upside_continuation['TriggerLevel'].isin([0.0, 0.236, 0.382]) &
-            upside_continuation['GoalLevel'].isin([0.236, 0.382, 0.5, 0.618, 0.786, 1.0])
-        ].copy()
-        
-        # Add helpful columns for validation
-        validation_data['TriggerLevelName'] = validation_data['TriggerLevel'].map({
-            0.0: 'Previous Close',
-            0.236: '0.236 ATR',
-            0.382: '0.382 ATR'
-        })
-        
-        csv_data = validation_data.to_csv(index=False)
-        st.download_button(
-            label="📥 Download Validation Dataset",
-            data=csv_data,
-            file_name="upside_continuation_validation.csv",
-            mime="text/csv"
-        )
-        
-        st.write(f"✅ Created validation dataset with {len(validation_data)} records")
-        st.write("This focused dataset contains only the scenarios you can verify against your Excel analysis")
+        st.error("No dates available in daily data")
 
 else:
-    st.info("👆 Upload your combined_trigger_goal_results.csv to begin validation")
+    st.info("👆 Please upload both files to begin validation")
+
+st.write("---")
+st.write("**Goal**: Verify that our logic matches your Excel methodology for detecting triggers and classifying goals")
