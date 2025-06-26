@@ -65,11 +65,18 @@ else:
 # --- Create lookup dictionary ---
 data_lookup = {}
 for _, row in grouped.iterrows():
-    # Convert GoalTime to string and handle numeric times properly
+    # Convert GoalTime to match chart time format
     goal_time = row["GoalTime"]
     if pd.notna(goal_time):
         if isinstance(goal_time, (int, float)):
-            goal_time_str = str(int(goal_time))  # 1000.0 -> "1000"
+            # Convert numeric times to 4-digit string format
+            time_int = int(goal_time)
+            if time_int == 900:
+                goal_time_str = "0900"  # 900 -> "0900"
+            elif time_int < 1000:
+                goal_time_str = f"0{time_int}"  # Handle other < 1000 times
+            else:
+                goal_time_str = str(time_int)  # 1000 -> "1000", 1100 -> "1100"
         else:
             goal_time_str = str(goal_time)  # "OPEN" -> "OPEN"
     else:
@@ -81,6 +88,13 @@ for _, row in grouped.iterrows():
         "triggers": row["NumTriggers"], 
         "pct": row["PctCompletion"]
     }
+
+# Debug: Show what keys we're creating
+st.write("### Sample Lookup Keys:")
+sample_keys = list(data_lookup.keys())[:10]
+for key in sample_keys:
+    data = data_lookup[key]
+    st.write(f"  {key} → {data['pct']}%")
 
 # --- Build Visualization ---
 fig = go.Figure()
