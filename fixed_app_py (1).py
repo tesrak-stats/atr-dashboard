@@ -107,6 +107,14 @@ for level in fib_levels:
             
         # Lookup pre-computed values
         key = (level, t)
+        
+        # Debug for a few specific cases that should work
+        if level in [0.5, 0.382] and t in ["0900", "1000", "1200"]:
+            st.write(f"🔍 Chart looking for: {key}")
+            st.write(f"🔍 Key exists: {key in data_lookup}")
+            if key in data_lookup:
+                st.write(f"🔍 Found data: {data_lookup[key]}")
+        
         if key in data_lookup:
             data = data_lookup[key]
             pct = data["pct"]
