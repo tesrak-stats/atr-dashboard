@@ -8,6 +8,9 @@ df = pd.read_csv("atr_dashboard_summary.csv")
 df["TriggerTime"] = df["TriggerTime"].astype(str)
 df["GoalTime"] = df["GoalTime"].astype(str)
 
+# Ensure TriggerLevel is float64 (in case of any conversion issues)
+df["TriggerLevel"] = df["TriggerLevel"].astype(float)
+
 # --- Load current ATR-based price levels ---
 try:
     atr_price_levels = get_latest_atr_levels()
@@ -36,10 +39,11 @@ trigger_level = col2.selectbox("Select Trigger Level", sorted(set(df["TriggerLev
 trigger_time = col3.selectbox("Select Trigger Time", ["OPEN"] + visible_hours, index=0)
 
 # Debug info
-st.write(f"🔍 Selected trigger level: {trigger_level}")
+st.write(f"🔍 Selected trigger level: {trigger_level} (type: {type(trigger_level).__name__})")
 csv_trigger_levels = sorted(df["TriggerLevel"].unique())
 st.write(f"🔍 Available in CSV: {csv_trigger_levels}")
 st.write(f"🔍 0.0 in CSV: {'✅ Yes' if 0.0 in csv_trigger_levels else '❌ No'}")
+st.write(f"🔍 CSV data types: TriggerLevel={df['TriggerLevel'].dtype}")
 
 # --- Filter for selection ---
 filtered = df[
