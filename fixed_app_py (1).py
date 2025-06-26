@@ -103,6 +103,20 @@ for i, (_, row) in enumerate(grouped.iterrows()):
 st.write(f"Total lookup keys created: {len(data_lookup)}")
 st.write(f"First 5 keys: {list(data_lookup.keys())[:5]}")
 
+# Show all unique goal levels in the lookup
+lookup_levels = sorted(set([key[0] for key in data_lookup.keys()]))
+st.write(f"### Unique GoalLevels in lookup: {lookup_levels}")
+
+# Show what the chart searches for
+chart_levels = [level for level in fib_levels if level in [-1.0, -0.786, -0.618, -0.5, -0.382, -0.236, 0.0, 0.236, 0.382, 0.5]]
+st.write(f"### Chart searches for levels: {chart_levels}")
+
+# Find the mismatch
+missing_from_chart = [level for level in lookup_levels if level not in fib_levels]
+missing_from_lookup = [level for level in fib_levels if level not in lookup_levels]
+st.write(f"### Levels in lookup but not in chart: {missing_from_chart}")
+st.write(f"### Levels chart searches for but not in lookup: {missing_from_lookup}")
+
 # Debug: Show what keys we're creating
 st.write("### Sample Lookup Keys:")
 sample_keys = list(data_lookup.keys())[:10]
