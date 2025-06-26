@@ -1,289 +1,212 @@
 import streamlit as st
 import pandas as pd
-import os
+import numpy as np
+import io
 
-def process_summary_data():
-    """
-    Process trigger/goal results with FORCED time conversion to hour buckets
-    """
-    try:
-        st.write("📊 Loading combined trigger/goal results...")
-        
-        # Try different possible filenames
-        possible_files = [
-            "combined_trigger_goal_results.csv",
-            "combined_trigger_goal_results 5.csv",
-            "combined_trigger_goal_results_5.csv"
-        ]
-        
-        df = None
-        used_file = None
-        
-        for filename in possible_files:
-            if os.path.exists(filename):
-                df = pd.read_csv(filename)
-                used_file = filename
-                st.success(f"✅ Found and loaded: {filename}")
-                break
-        
-        if df is None:
-            st.error("❌ No combined results file found.")
-            return None, []
-        
-        debug_info = []
-        debug_info.append(f"Loaded file: {used_file}")
-        debug_info.append(f"Total records: {len(df):,}")
-        
-        # FORCED TIME CONVERSION - Multiple approaches
-        def force_time_conversion(time_val):
-            """Convert any time format to hour bucket - AGGRESSIVE approach"""
-            
-            # Convert to string and clean up
-            time_str = str(time_val).replace('.0', '').replace('nan', '').strip()
-            
-            # Handle OPEN specially
-            if time_str.upper() == 'OPEN':
-                return 'OPEN'
-            
-            # Handle empty/null values
-            if not time_str or time_str == '' or time_str == 'nan':
-                return 'UNKNOWN'
-            
-            try:
-                # Try to convert to integer for processing
-                time_int = int(float(time_str))
-                
-                # Direct mapping approach
-                if time_int in [930, 935, 940, 945, 950, 955, 959]:
-                    return '0900'
-                elif 1000 <= time_int <= 1059:
-                    return '1000'
-                elif 1100 <= time_int <= 1159:
-                    return '1100'
-                elif 1200 <= time_int <= 1259:
-                    return '1200'
-                elif 1300 <= time_int <= 1359:
-                    return '1300'
-                elif 1400 <= time_int <= 1459:
-                    return '1400'
-                elif 1500 <= time_int <= 1559:
-                    return '1500'
-                elif 1600 <= time_int <= 1659:
-                    return '1600'
-                else:
-                    # Fallback: use first 2 digits + 00
-                    hour = time_int // 100
-                    if hour == 9:
-                        return '0900'
-                    elif 10 <= hour <= 15:
-                        return f'{hour}00'
-                    else:
-                        return str(time_int)  # Keep as-is if weird
-                        
-            except (ValueError, TypeError):
-                # If conversion fails, return as-is
-                return time_str
-        
-        # Show original time distributions
-        st.write("🕐 Original TriggerTime distribution:")
-        original_trigger_times = df['TriggerTime'].value_counts().head(10)
-        st.write(original_trigger_times.to_dict())
-        
-        st.write("🎯 Original GoalTime distribution:")
-        original_goal_times = df['GoalTime'].value_counts().head(10)
-        st.write(original_goal_times.to_dict())
-        
-        # Apply FORCED conversion
-        st.write("🔧 Applying FORCED time conversion...")
-        df['TriggerTime_Original'] = df['TriggerTime'].copy()  # Keep backup
-        df['GoalTime_Original'] = df['GoalTime'].copy()       # Keep backup
-        
-        df['TriggerTime'] = df['TriggerTime'].apply(force_time_conversion)
-        df['GoalTime'] = df['GoalTime'].apply(force_time_conversion)
-        
-        # Show converted time distributions
-        st.write("✅ Converted TriggerTime distribution:")
-        converted_trigger_times = df['TriggerTime'].value_counts()
-        st.write(converted_trigger_times.to_dict())
-        
-        st.write("✅ Converted GoalTime distribution:")
-        converted_goal_times = df['GoalTime'].value_counts()
-        st.write(converted_goal_times.to_dict())
-        
-        debug_info.append(f"Time conversion applied to all records")
-        debug_info.append(f"TriggerTime unique values: {df['TriggerTime'].unique()}")
-        debug_info.append(f"GoalTime unique values: {df['GoalTime'].unique()}")
-        
-        # Count unique triggers per day AFTER time conversion
-        st.write("🔍 Counting unique triggers per day (after conversion)...")
-        trigger_occurrences = df[['Date', 'TriggerLevel', 'TriggerTime', 'Direction']].drop_duplicates()
-        
-        trigger_counts = (
-            trigger_occurrences
-            .value_counts(subset=['TriggerLevel', 'TriggerTime', 'Direction'])
-            .reset_index()
-        )
-        
-        trigger_counts.columns = ['TriggerLevel', 'TriggerTime', 'Direction', 'NumTriggers']
-        debug_info.append(f"Unique trigger combinations: {len(trigger_counts):,}")
-        
-        # Count successful goal hits per group AFTER time conversion
-        st.write("🎯 Counting successful goal hits (after conversion)...")
-        goal_hits = df[df['GoalHit'] == 'Yes'].copy()
-        debug_info.append(f"Total goal hits: {len(goal_hits):,}")
-        
-        goal_counts = (
-            goal_hits
-            .groupby(['TriggerLevel', 'TriggerTime', 'Direction', 'GoalLevel', 'GoalTime'])
-            .size()
-            .reset_index(name='NumHits')
-        )
-        
-        debug_info.append(f"Unique goal hit combinations: {len(goal_counts):,}")
-        
-        # Merge hits with trigger totals
-        st.write("🔗 Merging trigger counts with goal hits...")
-        summary = pd.merge(
-            goal_counts,
-            trigger_counts,
-            on=['TriggerLevel', 'TriggerTime', 'Direction'],
-            how='left'
-        )
-        
-        # Calculate % completion
-        summary['PctCompletion'] = (summary['NumHits'] / summary['NumTriggers'] * 100).round(2)
-        
-        # Final column order
-        summary = summary[[
-            'Direction',
-            'TriggerLevel',
-            'TriggerTime',
-            'GoalLevel',
-            'GoalTime',
-            'NumTriggers',
-            'NumHits',
-            'PctCompletion'
-        ]]
-        
-        debug_info.append(f"Final summary records: {len(summary):,}")
-        
-        # Show sample of final results
-        st.write("📊 Sample final results:")
-        sample_results = summary.head(10)
-        st.dataframe(sample_results)
-        
-        # Basic statistics
-        avg_completion = summary['PctCompletion'].mean()
-        max_completion = summary['PctCompletion'].max()
-        nonzero_completions = len(summary[summary['PctCompletion'] > 0])
-        
-        debug_info.append(f"Average completion rate: {avg_completion:.1f}%")
-        debug_info.append(f"Maximum completion rate: {max_completion:.1f}%")
-        debug_info.append(f"Non-zero completions: {nonzero_completions:,} out of {len(summary):,}")
-        
-        st.success(f"✅ Summary processing complete! Generated {len(summary):,} summary records")
-        
-        return summary, debug_info
-        
-    except Exception as e:
-        st.error(f"❌ Error processing data: {str(e)}")
-        import traceback
-        st.text(traceback.format_exc())
-        return None, [f"Error: {str(e)}"]
+def bucket_time(time_value):
+    """Convert numeric times to hour buckets for dashboard display"""
+    if pd.isna(time_value):
+        return "Unknown"
+    
+    # Handle string times (like "OPEN")
+    if isinstance(time_value, str):
+        if time_value.upper() == "OPEN":
+            return "OPEN"
+        try:
+            time_value = float(time_value)
+        except:
+            return str(time_value)
+    
+    # Convert numeric times to hour buckets
+    if time_value < 930:
+        return "OPEN"
+    elif time_value < 1000:
+        return "0900"
+    elif time_value < 1100:
+        return "1000"
+    elif time_value < 1200:
+        return "1100"
+    elif time_value < 1300:
+        return "1200"
+    elif time_value < 1400:
+        return "1300"
+    elif time_value < 1500:
+        return "1400"
+    elif time_value < 1600:
+        return "1500"
+    else:
+        return "1600"
 
-# Streamlit App Interface
-st.title('🔧 FORCED Time Conversion Summary Generator')
-st.write('Aggressively converts minute times to hour buckets: 930→0900, 1540→1500, etc.')
+st.title("🔧 Fixed Summary Generator with Time Bucketing")
+st.write("Converts raw trigger/goal data into dashboard-ready format with proper time bucketing")
 
-if st.button('🚀 Generate Summary with FORCED Time Conversion'):
-    with st.spinner('Processing with forced time conversion...'):
-        summary_df, debug_messages = process_summary_data()
+uploaded_file = st.file_uploader("Upload combined_trigger_goal_results.csv", type="csv")
+
+if uploaded_file is not None:
+    # Load combined results
+    df = pd.read_csv(uploaded_file)
+    
+    st.success(f"📊 Loaded {len(df)} total records")
+    
+    # Show sample of raw time data
+    st.write("### Sample Raw Time Data:")
+    sample_times = df[['TriggerTime', 'GoalTime']].head(10)
+    st.dataframe(sample_times)
+    
+    # Apply time bucketing
+    st.write("🕐 Applying time bucketing...")
+    df['TriggerTimeBucket'] = df['TriggerTime'].apply(bucket_time)
+    df['GoalTimeBucket'] = df['GoalTime'].apply(bucket_time)
+    
+    # Show sample of bucketed times
+    st.write("### After Time Bucketing:")
+    sample_bucketed = df[['TriggerTime', 'TriggerTimeBucket', 'GoalTime', 'GoalTimeBucket']].head(10)
+    st.dataframe(sample_bucketed)
+    
+    # Count unique triggers per day (using bucketed times)
+    trigger_occurrences = df[['Date', 'TriggerLevel', 'TriggerTimeBucket', 'Direction']].drop_duplicates()
+
+    trigger_counts = (
+        trigger_occurrences
+        .value_counts(subset=['TriggerLevel', 'TriggerTimeBucket', 'Direction'])
+        .reset_index()
+    )
+    trigger_counts.columns = ['TriggerLevel', 'TriggerTime', 'Direction', 'NumTriggers']
+    
+    st.write(f"✅ Found {len(trigger_counts)} unique trigger combinations")
+    
+    # Check 0.0 in trigger counts
+    zero_triggers = trigger_counts[trigger_counts['TriggerLevel'] == 0.0]
+    st.write(f"🎯 0.0 trigger combinations: {len(zero_triggers)}")
+    
+    if len(zero_triggers) > 0:
+        st.write("### 0.0 Trigger Combinations:")
+        st.dataframe(zero_triggers)
+
+    # Count successful goal hits per group (using bucketed times)
+    goal_hits = df[df['GoalHit'] == 'Yes']
+    st.write(f"🎯 Total successful goal hits: {len(goal_hits)}")
+    
+    # Check 0.0 trigger successes
+    zero_successes = goal_hits[goal_hits['TriggerLevel'] == 0.0]
+    st.write(f"🎯 Successful hits FROM 0.0 triggers: {len(zero_successes)}")
+    
+    if len(zero_successes) > 0:
+        st.write("### Sample 0.0 Trigger Successes:")
+        st.dataframe(zero_successes[['Date', 'TriggerLevel', 'TriggerTimeBucket', 'GoalLevel', 'GoalTimeBucket']].head(10))
+
+    goal_counts = (
+        goal_hits
+        .groupby(['TriggerLevel', 'TriggerTimeBucket', 'Direction', 'GoalLevel', 'GoalTimeBucket'])
+        .size()
+        .reset_index(name='NumHits')
+    )
+    goal_counts.columns = ['TriggerLevel', 'TriggerTime', 'Direction', 'GoalLevel', 'GoalTime', 'NumHits']
+    
+    st.write(f"✅ Found {len(goal_counts)} goal hit combinations")
+    
+    # Check 0.0 in goal counts  
+    zero_goals = goal_counts[goal_counts['TriggerLevel'] == 0.0]
+    st.write(f"🎯 0.0 goal hit combinations: {len(zero_goals)}")
+    
+    if len(zero_goals) > 0:
+        st.write("### Sample 0.0 Goal Hit Combinations:")
+        st.dataframe(zero_goals.head(10))
+
+    # CORRECTED MERGE: Start with ALL triggers, add goal data where it exists
+    summary = pd.merge(
+        trigger_counts,   # ALL trigger combinations (including 0.0)
+        goal_counts,      # Goal hit data
+        on=['TriggerLevel', 'TriggerTime', 'Direction'],
+        how='left'        # Keep ALL triggers, even with 0 hits
+    )
+    
+    st.write(f"✅ Merged summary: {len(summary)} total combinations")
+    
+    # Fill missing values for combinations with no goal hits
+    summary['NumHits'] = summary['NumHits'].fillna(0).astype(int)
+    summary['GoalLevel'] = summary['GoalLevel'].fillna('No Goals Hit')
+    summary['GoalTime'] = summary['GoalTime'].fillna('N/A')
+
+    # Calculate % completion
+    summary['PctCompletion'] = (summary['NumHits'] / summary['NumTriggers'] * 100).round(2)
+
+    # Final column order
+    summary = summary[[
+        'Direction',
+        'TriggerLevel', 
+        'TriggerTime',
+        'GoalLevel',
+        'GoalTime',
+        'NumTriggers',
+        'NumHits',
+        'PctCompletion'
+    ]]
+    
+    # Check final result
+    zero_in_final = summary[summary['TriggerLevel'] == 0.0]
+    st.write(f"🎯 0.0 in final summary: {len(zero_in_final)} combinations")
+    
+    if len(zero_in_final) > 0:
+        st.success("✅ SUCCESS: 0.0 level preserved in final summary!")
+        st.write("### Sample 0.0 combinations in final summary:")
         
-        # Show debug information
-        with st.expander('📋 Processing Details'):
-            for msg in debug_messages:
-                st.write(msg)
-        
-        if summary_df is not None and not summary_df.empty:
-            # Save the summary file
-            output_filename = 'atr_dashboard_summary.csv'
-            summary_df.to_csv(output_filename, index=False)
-            
-            st.success(f'✅ Dashboard summary saved as {output_filename}')
-            
-            # Show summary statistics
-            st.subheader('📈 Summary Statistics')
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric('Total Combinations', f"{len(summary_df):,}")
-            with col2:
-                avg_completion = summary_df['PctCompletion'].mean()
-                st.metric('Avg Completion', f"{avg_completion:.1f}%")
-            with col3:
-                total_triggers = summary_df['NumTriggers'].sum()
-                st.metric('Total Triggers', f"{total_triggers:,}")
-            with col4:
-                total_hits = summary_df['NumHits'].sum()
-                st.metric('Total Hits', f"{total_hits:,}")
-            
-            # Show time conversion verification
-            st.subheader('🕐 Time Conversion Verification')
-            trigger_time_summary = summary_df['TriggerTime'].value_counts()
-            st.write("**TriggerTime values in final summary:**")
-            st.write(trigger_time_summary.to_dict())
-            
-            goal_time_summary = summary_df['GoalTime'].value_counts().head(10)
-            st.write("**GoalTime values in final summary (top 10):**")
-            st.write(goal_time_summary.to_dict())
-            
-            # Check for 0.0 level presence
-            st.subheader('🎯 Level 0.0 Check')
-            trigger_0_count = len(summary_df[summary_df['TriggerLevel'] == 0.0])
-            goal_0_count = len(summary_df[summary_df['GoalLevel'] == 0.0])
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric('0.0 as TriggerLevel', trigger_0_count)
-            with col2:
-                st.metric('0.0 as GoalLevel', goal_0_count)
-            
-            if trigger_0_count > 0:
-                st.success("✅ Level 0.0 found as trigger!")
-            else:
-                st.warning("⚠️ Level 0.0 not found as trigger")
-                
-            if goal_0_count > 0:
-                st.success("✅ Level 0.0 found as goal!")
-            else:
-                st.warning("⚠️ Level 0.0 not found as goal")
-            
-            # Preview of summary data
-            st.subheader('🔍 Preview of Summary Data')
-            st.dataframe(summary_df.head(20))
-            
-            # Download button
-            st.download_button(
-                label='⬇️ Download FIXED Dashboard Summary CSV',
-                data=summary_df.to_csv(index=False),
-                file_name=output_filename,
-                mime='text/csv'
-            )
-            
-            st.info('💡 **Next Step:** Use this summary file with your dashboard. Should now show real completion percentages!')
-            
+        # Show specifically OPEN triggers with actual hits
+        zero_open_hits = zero_in_final[(zero_in_final['TriggerTime'] == 'OPEN') & (zero_in_final['NumHits'] > 0)]
+        if len(zero_open_hits) > 0:
+            st.write("🔥 **0.0 OPEN triggers with SUCCESSFUL hits:**")
+            st.dataframe(zero_open_hits)
         else:
-            st.warning('⚠️ No summary data generated. Please check the processing details above.')
+            st.write("Sample 0.0 combinations:")
+            st.dataframe(zero_in_final.head(10))
+    else:
+        st.error("❌ PROBLEM: 0.0 level still missing from final summary")
 
-st.markdown("""
----
-**🔧 This FORCED version:**
-1. 📊 Shows original time distributions before conversion
-2. 🔧 Applies aggressive time conversion (930/940/950 → 0900)
-3. ✅ Shows converted time distributions after conversion  
-4. 🎯 Verifies 0.0 level presence in final data
-5. 💾 Saves properly formatted summary for dashboard
-6. ⬇️ Provides download button for remote access
+    # Show unique trigger levels and times
+    unique_levels = sorted([x for x in summary['TriggerLevel'].unique() if pd.notna(x)])
+    unique_times = sorted([x for x in summary['TriggerTime'].unique() if pd.notna(x)])
+    
+    st.write(f"### Final Unique Trigger Levels ({len(unique_levels)}):")
+    st.write(unique_levels)
+    
+    st.write(f"### Final Unique Times ({len(unique_times)}):")
+    st.write(unique_times)
+    
+    # Highlight if 0.0 is included
+    if 0.0 in unique_levels:
+        st.success("✅ 0.0 level is included in final summary!")
+    else:
+        st.error("❌ 0.0 level is missing from final summary")
 
-**Expected result:** Dashboard should finally show real completion percentages instead of zeros!
-""")
+    # Show summary statistics
+    st.write("### Summary Statistics:")
+    total_hits = summary['NumHits'].sum()
+    total_triggers = summary['NumTriggers'].sum()
+    overall_pct = (total_hits / total_triggers * 100) if total_triggers > 0 else 0
+    
+    st.write(f"- **Total combinations**: {len(summary)}")
+    st.write(f"- **Total triggers**: {total_triggers:,}")
+    st.write(f"- **Total hits**: {total_hits:,}")
+    st.write(f"- **Overall success rate**: {overall_pct:.2f}%")
+    
+    # Download button
+    csv_buffer = io.StringIO()
+    summary.to_csv(csv_buffer, index=False)
+    
+    st.download_button(
+        label="📥 Download Fixed Summary CSV",
+        data=csv_buffer.getvalue(),
+        file_name="atr_dashboard_summary_fixed.csv", 
+        mime="text/csv"
+    )
+    
+    # Show sample of final data with successful hits
+    successful_combos = summary[summary['NumHits'] > 0].head(20)
+    if len(successful_combos) > 0:
+        st.write("### Sample Successful Combinations:")
+        st.dataframe(successful_combos)
+    else:
+        st.warning("No successful combinations found in sample data")
+
+else:
+    st.info("👆 Please upload your combined_trigger_goal_results.csv file to generate the fixed summary")
