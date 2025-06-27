@@ -42,13 +42,13 @@ except:
 
 # --- Display configuration ---
 visible_hours = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
-invisible_fillers = ["0830", "0930", "1030", "1130", "1230", "1330", "1430", "1530", "1580"]  # Added 0830 and 1580
+invisible_fillers = ["0830", "0930", "1030", "1130", "1230", "1330", "1430", "1530", "SPACER"]  # Use explicit name
 time_order = ["OPEN", "0830"]  # Add spacer between OPEN and 0900
 for hour in visible_hours:
     time_order.append(hour)
     filler = f"{str(int(hour[:2])+1).zfill(2)}30"
     time_order.append(filler)
-time_order.append("1580")  # Spacer before TOTAL
+time_order.append("SPACER")  # Spacer before TOTAL
 time_order.append("TOTAL")
 
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
@@ -150,6 +150,7 @@ fig = go.Figure()
 for level in fib_levels:
     for t in time_order:
         if t in invisible_fillers:
+            # Skip invisible filler columns completely - don't add any trace
             continue
             
         # Handle OPEN column specially - blank text but show goal-specific tooltip
