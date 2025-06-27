@@ -6,7 +6,7 @@ from generate_daily_atr_levels import get_latest_atr_levels
 # --- Ticker Configuration (expandable for future tickers) ---
 ticker_config = {
     "SPX": {
-        "summary_file": "atr_dashboard_summary_GOAL_SPECIFIC.csv",
+        "summary_file": "atr_dashboard_summary_ENHANCED.csv",
         "display_name": "S&P 500 (SPX)"
     }
     # Future tickers can be added here:
@@ -116,11 +116,15 @@ if len(filtered) > 0:
     # --- Get OPEN trigger data for tooltip ---
 open_trigger_data = {}
 if trigger_time == "OPEN":
-    # For OPEN triggers, get the trigger count (should be same for all goals of same trigger)
+    # For OPEN triggers, get the trigger count and OPEN completions from enhanced data
     if len(filtered) > 0:
         open_triggers = filtered['NumTriggers'].iloc[0]
-        # Count completed at OPEN (same-time scenarios)
-        open_completions = len(filtered[(filtered['GoalTime'] == 'OPEN')])
+        # Get OPEN completions from the TotalOpenCompletions column
+        if 'TotalOpenCompletions' in filtered.columns:
+            open_completions = filtered['TotalOpenCompletions'].iloc[0]
+        else:
+            open_completions = "N/A"
+        
         open_trigger_data = {
             "triggers": open_triggers,
             "completions": open_completions
@@ -158,7 +162,7 @@ for level in fib_levels:
                     x=[t], y=[level + 0.015],
                     mode="text", text=[""],  # Blank text
                     hovertext=[hover], hoverinfo="text",
-                    textfont=dict(color="white", size=12),
+                    textfont=dict(color="white", size=13),
                     showlegend=False
                 ))
             else:
@@ -167,7 +171,7 @@ for level in fib_levels:
                     x=[t], y=[level + 0.015],
                     mode="text", text=[""],
                     hoverinfo="skip",
-                    textfont=dict(color="white", size=12),
+                    textfont=dict(color="white", size=13),
                     showlegend=False
                 ))
             continue
@@ -277,6 +281,12 @@ for level, (color, width) in fibo_styles.items():
         type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
         line=dict(color=color, width=width), layer="below"
     )
+
+# --- Vertical line to separate TOTAL column ---
+fig.add_shape(
+    type="line", x0="1500", x1="1500", xref="x", y0=-1.2, y1=1.2, yref="y",
+    line=dict(color="lightgray", width=1), layer="below"
+)
 
 # --- Chart layout ---
 fig.update_layout(
