@@ -48,7 +48,7 @@ for hour in visible_hours:
     time_order.append(hour)
     filler = f"{str(int(hour[:2])+1).zfill(2)}30"
     time_order.append(filler)
-time_order.append("1600")
+time_order.append("TOTAL")  # Changed from 1600 to TOTAL
 
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
@@ -101,7 +101,30 @@ for _, row in filtered.iterrows():
         "pct": row["PctCompletion"]
     }
 
-# --- Get OPEN trigger data for tooltip ---
+# --- Calculate total completion rate for each goal level ---
+goal_totals = {}
+if len(filtered) > 0:
+    for goal_level in fib_levels:
+        if goal_level == trigger_level:
+            continue
+        # Sum all hits for this goal across all times
+        goal_data = filtered[filtered['GoalLevel'] == goal_level]
+        if len(goal_data) > 0:
+            total_hits = goal_data['NumHits'].sum()
+            total_triggers = goal_data['NumTriggers'].iloc[0]  # Should be same for all goals of same trigger
+            total_pct = (total_hits / total_triggers * 100) if total_triggers > 0 else 0
+    # --- Get OPEN trigger data for tooltip ---
+open_trigger_data = {}
+if trigger_time == "OPEN":
+    # For OPEN triggers, get the trigger count (should be same for all goals of same trigger)
+    if len(filtered) > 0:
+        open_triggers = filtered['NumTriggers'].iloc[0]
+        # Count completed at OPEN (same-time scenarios)
+        open_completions = len(filtered[(filtered['GoalTime'] == 'OPEN')])
+        open_trigger_data = {
+            "triggers": open_triggers,
+            "completions": open_completions
+        }
 open_trigger_data = {}
 if trigger_time == "OPEN":
     # For OPEN triggers, get the trigger count (should be same for all goals of same trigger)
@@ -120,26 +143,56 @@ fig = go.Figure()
 # --- Matrix cells ---
 for level in fib_levels:
     for t in time_order:
-        if t in invisible_fillers or t == "1600":
+        if t in invisible_fillers:
             continue
             
-        # Handle OPEN column specially
+        # Handle OPEN column specially - blank text but keep tooltip
         if t == "OPEN":
             if trigger_time == "OPEN" and len(open_trigger_data) > 0:
-                # Show OPEN trigger info with tooltip
+                # Blank text but show tooltip with OPEN trigger info
                 triggers = open_trigger_data["triggers"]
                 completions = open_trigger_data["completions"]
                 hover = f"OPEN Triggers: {triggers}, Completed at OPEN: {completions}"
                 
                 fig.add_trace(go.Scatter(
                     x=[t], y=[level + 0.015],
-                    mode="text", text=["OPEN"],
+                    mode="text", text=[""],  # Blank text
                     hovertext=[hover], hoverinfo="text",
                     textfont=dict(color="white", size=12),
                     showlegend=False
                 ))
             else:
                 # Empty OPEN column for non-OPEN triggers
+                fig.add_trace(go.Scatter(
+                    x=[t], y=[level + 0.015],
+                    mode="text", text=[""],
+                    hoverinfo="skip",
+                    textfont=dict(color="white", size=12),
+                    showlegend=False
+                ))
+            continue
+        
+        # Handle TOTAL column - show total completion rate for each goal
+        if t == "TOTAL":
+            if level in goal_totals:
+                total_data = goal_totals[level]
+                pct = total_data["pct"]
+                hits = total_data["hits"]
+                triggers = total_data["triggers"]
+                
+                warn = " ⚠️" if triggers < 30 else ""
+                display_text = f"{pct:.1f}%"
+                hover = f"Total: {pct:.1f}% ({hits}/{triggers}){warn}"
+                
+                fig.add_trace(go.Scatter(
+                    x=[t], y=[level + 0.015],
+                    mode="text", text=[display_text],
+                    hovertext=[hover], hoverinfo="text",
+                    textfont=dict(color="white", size=12),
+                    showlegend=False
+                ))
+            else:
+                # Same level as trigger or no data
                 fig.add_trace(go.Scatter(
                     x=[t], y=[level + 0.015],
                     mode="text", text=[""],
@@ -233,7 +286,7 @@ fig.update_layout(
         categoryorder="array",
         categoryarray=time_order,
         tickmode="array",
-        tickvals=["OPEN"] + visible_hours + ["1600"],
+        tickvals=["OPEN"] + visible_hours + ["TOTAL"],
         tickfont=dict(color="white")
     ),
     yaxis=dict(
