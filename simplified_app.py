@@ -298,9 +298,9 @@ fig.add_shape(
     line=dict(color="lightgray", width=1), layer="below"
 )
 
-# Separator between 1500 and TOTAL (trying 7.5)
+# Separator between 1500 and TOTAL (trying 17)
 fig.add_shape(
-    type="line", x0=7.5, x1=7.5, xref="x", y0=-1.2, y1=1.2, yref="y",
+    type="line", x0=17, x1=17, xref="x", y0=-1.2, y1=1.2, yref="y",
     line=dict(color="lightgray", width=1), layer="below"
 )
 
