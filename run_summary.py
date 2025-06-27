@@ -37,16 +37,32 @@ def bucket_time(time_value):
     else:
         return "1600"
 
-st.title("🎯 Corrected Summary with Goal-Specific Denominators")
-st.write("**Calculates proper denominators by removing OPEN completions per goal**")
+st.title("🎯 Goal-Specific Denominators Summary")
+st.write("**Calculates different denominators per goal by removing goal-specific OPEN completions**")
 
-uploaded_file = st.file_uploader("Upload combined_trigger_goal_results_CLEAN.csv", type="csv")
+uploaded_file = st.file_uploader("Upload combined_trigger_goal_results_CORRECTED.csv", type="csv")
 
 if uploaded_file is not None:
-    # Load clean results
+    # Load corrected results with OPEN completions
     df = pd.read_csv(uploaded_file)
     
-    st.success(f"📊 Loaded {len(df)} clean records")
+    st.success(f"📊 Loaded {len(df)} records with OPEN completions")
+    
+    # Verify this has OPEN completions
+    same_time_count = len(df[df['SameTime'] == True]) if 'SameTime' in df.columns else 0
+    open_goals = len(df[df['GoalTime'] == 'OPEN']) if 'GoalTime' in df.columns else 0
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Same-Time Records", same_time_count)
+    with col2:
+        st.metric("OPEN Goal Records", open_goals)
+    
+    if same_time_count == 0 and open_goals == 0:
+        st.error("❌ This doesn't appear to be the corrected data with OPEN completions!")
+        st.info("Make sure you're uploading the output from the corrected run_generate.py")
+    else:
+        st.success("✅ Confirmed data has OPEN completions for processing")
     
     # Apply time bucketing
     st.write("🕐 Applying time bucketing...")
@@ -243,9 +259,9 @@ if uploaded_file is not None:
     dashboard_summary.to_csv(csv_buffer, index=False)
     
     st.download_button(
-        label="📥 Download Corrected Summary CSV",
+        label="📥 Download Goal-Specific Summary CSV",
         data=csv_buffer.getvalue(),
-        file_name="atr_dashboard_summary_CORRECTED.csv",
+        file_name="atr_dashboard_summary_GOAL_SPECIFIC.csv",
         mime="text/csv"
     )
     
@@ -265,8 +281,8 @@ if uploaded_file is not None:
         overall_rate = (total_hits / total_actionable * 100) if total_actionable > 0 else 0
         st.metric("Overall Actionable Rate", f"{overall_rate:.1f}%")
     
-    st.success("🎉 **Corrected summary complete!** Each goal now has its own proper denominator.")
+    st.success("🎉 **Goal-specific summary complete!** Each goal now has its own proper denominator.")
     st.write("**Key improvement:** Denominators are now goal-specific, accounting for different OPEN completion rates per goal.")
 
 else:
-    st.info("👆 Upload your clean trigger-goal results CSV to generate corrected summary")
+    st.info("👆 Upload your corrected trigger-goal results CSV (with OPEN completions) to generate goal-specific summary")
