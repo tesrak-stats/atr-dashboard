@@ -39,11 +39,12 @@ def generate_atr_levels(close_price, atr_value):
 
 def detect_triggers_and_goals(daily, intraday):
     """
-    CORRECTED LOGIC:
-    1. Generate ALL triggers (including OPEN→OPEN completions)
-    2. Flag same-time completions with SameTime=True  
-    3. Prevent intraday double-counting (don't trigger at 0900 if already triggered at OPEN)
-    4. Keep OPEN→OPEN data for proper denominator calculations in summary
+    SYSTEMATIC LOGIC:
+    1. Loop through each level systematically
+    2. Check OPEN candle with open_price 
+    3. Check intraday candles with high/low based on direction
+    4. Use Above/Below terminology instead of Upside/Downside
+    5. Generate all trigger-goal combinations with proper same-time flagging
     """
     fib_levels = [0.236, 0.382, 0.500, 0.618, 0.786, 1.000, 
                  -0.236, -0.382, -0.500, -0.618, -0.786, -1.000, 0.000]
@@ -85,307 +86,145 @@ def detect_triggers_and_goals(daily, intraday):
             day_data['Time'] = day_data['Datetime'].dt.strftime('%H%M')
             day_data.reset_index(drop=True, inplace=True)
 
-            # STEP 1: Identify what triggers at OPEN
             open_candle = day_data.iloc[0]
             open_price = open_candle['Open']
             
-            open_triggered_up = set()
-            open_triggered_down = set()
-            
-            # Check what triggers at OPEN
-            for level in [lvl for lvl in fib_levels if lvl >= 0]:
-                if open_price >= level_map[level]:
-                    open_triggered_up.add(level)
-            
-            for level in [lvl for lvl in fib_levels if lvl <= 0]:
-                if open_price <= level_map[level]:
-                    open_triggered_down.add(level)
-
-            # STEP 2: Process ALL OPEN triggers (including same-time completions)
-            for level in open_triggered_up:
-                for goal_level in fib_levels:
-                    if goal_level == level:  # Skip same level
-                        continue
-                    
-                    if goal_level not in level_map:
-                        continue
-                        
-                    goal_price = level_map[goal_level]
-                    goal_hit = False
-                    goal_time = ''
-                    is_same_time = False
-                    
-                    # Determine if this is continuation or retracement
-                    if goal_level > level:
-                        goal_type = 'Continuation'
-                        
-                        # Check if goal completes at OPEN (same-time scenario)
-                        if open_price >= goal_price:
-                            goal_hit = True
-                            goal_time = 'OPEN'
-                            is_same_time = True
-                        else:
-                            # Check subsequent candles for upside goal
-                            for _, row in day_data.iloc[1:].iterrows():  # Skip OPEN candle
-                                if row['High'] >= goal_price:
-                                    goal_hit = True
-                                    goal_time = row['Time']
-                                    break
-                    else:
-                        goal_type = 'Retracement'
-                        
-                        # Check if goal completes at OPEN (same-time scenario)
-                        if open_price <= goal_price:
-                            goal_hit = True
-                            goal_time = 'OPEN'
-                            is_same_time = True
-                        else:
-                            # Check subsequent candles for downside goal
-                            for _, row in day_data.iloc[1:].iterrows():  # Skip OPEN candle
-                                if row['Low'] <= goal_price:
-                                    goal_hit = True
-                                    goal_time = row['Time']
-                                    break
-                    
-                    # Record ALL OPEN triggers (including same-time)
-                    results.append({
-                        'Date': trading_date,
-                        'Direction': 'Upside',
-                        'TriggerLevel': level,
-                        'TriggerTime': 'OPEN',
-                        'TriggerPrice': round(level_map[level], 2),
-                        'GoalLevel': goal_level,
-                        'GoalPrice': round(goal_price, 2),
-                        'GoalHit': 'Yes' if goal_hit else 'No',
-                        'GoalTime': goal_time if goal_hit else '',
-                        'GoalClassification': goal_type,
-                        'PreviousClose': round(previous_close, 2),
-                        'PreviousATR': round(previous_atr, 2),
-                        'SameTime': is_same_time,  # Flag same-time scenarios
-                        'RetestedTrigger': 'No'
-                    })
-
-            # Process ALL OPEN downside triggers (including same-time completions)
-            for level in open_triggered_down:
-                for goal_level in fib_levels:
-                    if goal_level == level:  # Skip same level
-                        continue
-                    
-                    if goal_level not in level_map:
-                        continue
-                        
-                    goal_price = level_map[goal_level]
-                    goal_hit = False
-                    goal_time = ''
-                    is_same_time = False
-                    
-                    # Determine if this is continuation or retracement
-                    if goal_level < level:
-                        goal_type = 'Continuation'
-                        
-                        # Check if goal completes at OPEN (same-time scenario)
-                        if open_price <= goal_price:
-                            goal_hit = True
-                            goal_time = 'OPEN'
-                            is_same_time = True
-                        else:
-                            # Check subsequent candles for downside goal
-                            for _, row in day_data.iloc[1:].iterrows():  # Skip OPEN candle
-                                if row['Low'] <= goal_price:
-                                    goal_hit = True
-                                    goal_time = row['Time']
-                                    break
-                    else:
-                        goal_type = 'Retracement'
-                        
-                        # Check if goal completes at OPEN (same-time scenario)
-                        if open_price >= goal_price:
-                            goal_hit = True
-                            goal_time = 'OPEN'
-                            is_same_time = True
-                        else:
-                            # Check subsequent candles for upside goal
-                            for _, row in day_data.iloc[1:].iterrows():  # Skip OPEN candle
-                                if row['High'] >= goal_price:
-                                    goal_hit = True
-                                    goal_time = row['Time']
-                                    break
-                    
-                    # Record ALL OPEN triggers (including same-time)
-                    results.append({
-                        'Date': trading_date,
-                        'Direction': 'Downside',
-                        'TriggerLevel': level,
-                        'TriggerTime': 'OPEN',
-                        'TriggerPrice': round(level_map[level], 2),
-                        'GoalLevel': goal_level,
-                        'GoalPrice': round(goal_price, 2),
-                        'GoalHit': 'Yes' if goal_hit else 'No',
-                        'GoalTime': goal_time if goal_hit else '',
-                        'GoalClassification': goal_type,
-                        'PreviousClose': round(previous_close, 2),
-                        'PreviousATR': round(previous_atr, 2),
-                        'SameTime': is_same_time,  # Flag same-time scenarios
-                        'RetestedTrigger': 'No'
-                    })
-
-            # STEP 3: Process INTRADAY triggers (only if not already triggered at OPEN)
-            intraday_triggered_up = {}
-            intraday_triggered_down = {}
-
-            # Process each intraday candle (skip OPEN candle)
-            for idx, row in day_data.iloc[1:].iterrows():
-                high = row['High']
-                low = row['Low']
-                time_label = row['Time']
-
-                # Check upside triggers (only if not already triggered at OPEN)
-                for level in [lvl for lvl in fib_levels if lvl >= 0]:
-                    if level in open_triggered_up:  # Skip if already triggered at OPEN
-                        continue
-                    if level in intraday_triggered_up:  # Skip if already triggered intraday
-                        continue
-                    
-                    trigger_price = level_map[level]
-                    if high >= trigger_price:
-                        intraday_triggered_up[level] = {
-                            'TriggerLevel': level,
-                            'TriggerTime': time_label,
-                            'TriggeredRow': idx,
-                            'TriggerPrice': trigger_price
-                        }
-
-                # Check downside triggers (only if not already triggered at OPEN)
-                for level in [lvl for lvl in fib_levels if lvl <= 0]:
-                    if level in open_triggered_down:  # Skip if already triggered at OPEN
-                        continue
-                    if level in intraday_triggered_down:  # Skip if already triggered intraday
-                        continue
-                    
-                    trigger_price = level_map[level]
-                    if low <= trigger_price:
-                        intraday_triggered_down[level] = {
-                            'TriggerLevel': level,
-                            'TriggerTime': time_label,
-                            'TriggeredRow': idx,
-                            'TriggerPrice': trigger_price
-                        }
-
-            # Process intraday upside triggers and goals
-            for level, trigger_info in intraday_triggered_up.items():
-                trigger_row = trigger_info['TriggeredRow']
-                trigger_candle = day_data.iloc[trigger_row]
+            # SYSTEMATIC APPROACH: Loop through each level individually
+            for trigger_level in fib_levels:
+                triggered = False
+                trigger_time = None
+                trigger_row = None
+                direction = None
                 
-                for goal_level in fib_levels:
-                    if goal_level == level:  # Skip same level
-                        continue
-                    
-                    if goal_level not in level_map:
-                        continue
-                        
-                    goal_price = level_map[goal_level]
-                    goal_hit = False
-                    goal_time = ''
-                    
-                    # Determine if this is continuation or retracement
-                    if goal_level > level:
-                        goal_type = 'Continuation'
-                        
-                        # Check if goal is hit on same candle as trigger
-                        if trigger_candle['High'] >= goal_price:
-                            goal_hit = True
-                            goal_time = trigger_info['TriggerTime']
-                        else:
-                            # Check subsequent candles for upside goal
-                            for _, row in day_data.iloc[trigger_row + 1:].iterrows():
-                                if row['High'] >= goal_price:
-                                    goal_hit = True
-                                    goal_time = row['Time']
-                                    break
-                    else:
-                        goal_type = 'Retracement'
-                        
-                        # Check subsequent candles for downside goal
-                        for _, row in day_data.iloc[trigger_row + 1:].iterrows():
-                            if row['Low'] <= goal_price:
-                                goal_hit = True
-                                goal_time = row['Time']
-                                break
-                    
-                    results.append({
-                        'Date': trading_date,
-                        'Direction': 'Upside',
-                        'TriggerLevel': level,
-                        'TriggerTime': trigger_info['TriggerTime'],
-                        'TriggerPrice': round(trigger_info['TriggerPrice'], 2),
-                        'GoalLevel': goal_level,
-                        'GoalPrice': round(goal_price, 2),
-                        'GoalHit': 'Yes' if goal_hit else 'No',
-                        'GoalTime': goal_time if goal_hit else '',
-                        'GoalClassification': goal_type,
-                        'PreviousClose': round(previous_close, 2),
-                        'PreviousATR': round(previous_atr, 2),
-                        'SameTime': False,  # Intraday triggers are never same-time
-                        'RetestedTrigger': 'No'
-                    })
-
-            # Process intraday downside triggers and goals
-            for level, trigger_info in intraday_triggered_down.items():
-                trigger_row = trigger_info['TriggeredRow']
-                trigger_candle = day_data.iloc[trigger_row]
+                trigger_price = level_map[trigger_level]
                 
-                for goal_level in fib_levels:
-                    if goal_level == level:  # Skip same level
-                        continue
-                    
-                    if goal_level not in level_map:
-                        continue
-                        
-                    goal_price = level_map[goal_level]
-                    goal_hit = False
-                    goal_time = ''
-                    
-                    # Determine if this is continuation or retracement
-                    if goal_level < level:
-                        goal_type = 'Continuation'
-                        
-                        # Check if goal is hit on same candle as trigger
-                        if trigger_candle['Low'] <= goal_price:
-                            goal_hit = True
-                            goal_time = trigger_info['TriggerTime']
-                        else:
-                            # Check subsequent candles for downside goal
-                            for _, row in day_data.iloc[trigger_row + 1:].iterrows():
-                                if row['Low'] <= goal_price:
-                                    goal_hit = True
-                                    goal_time = row['Time']
-                                    break
-                    else:
-                        goal_type = 'Retracement'
-                        
-                        # Check subsequent candles for upside goal
-                        for _, row in day_data.iloc[trigger_row + 1:].iterrows():
-                            if row['High'] >= goal_price:
-                                goal_hit = True
-                                goal_time = row['Time']
+                # Check OPEN candle first
+                if trigger_level >= 0:  # Above levels (use >= logic)
+                    if open_price >= trigger_price:
+                        triggered = True
+                        trigger_time = 'OPEN'
+                        trigger_row = 0
+                        direction = 'Above'
+                else:  # Below levels (use <= logic)
+                    if open_price <= trigger_price:
+                        triggered = True
+                        trigger_time = 'OPEN'
+                        trigger_row = 0
+                        direction = 'Below'
+                
+                # Check intraday candles if not already triggered at OPEN
+                if not triggered:
+                    for idx, row in day_data.iloc[1:].iterrows():
+                        if trigger_level >= 0:  # Above levels
+                            if row['High'] >= trigger_price:
+                                triggered = True
+                                trigger_time = row['Time']
+                                trigger_row = idx
+                                direction = 'Above'
                                 break
+                        else:  # Below levels
+                            if row['Low'] <= trigger_price:
+                                triggered = True
+                                trigger_time = row['Time']
+                                trigger_row = idx
+                                direction = 'Below'
+                                break
+                
+                # If this level triggered, process all possible goals
+                if triggered:
+                    trigger_candle = day_data.iloc[trigger_row]
                     
-                    results.append({
-                        'Date': trading_date,
-                        'Direction': 'Downside',
-                        'TriggerLevel': level,
-                        'TriggerTime': trigger_info['TriggerTime'],
-                        'TriggerPrice': round(trigger_info['TriggerPrice'], 2),
-                        'GoalLevel': goal_level,
-                        'GoalPrice': round(goal_price, 2),
-                        'GoalHit': 'Yes' if goal_hit else 'No',
-                        'GoalTime': goal_time if goal_hit else '',
-                        'GoalClassification': goal_type,
-                        'PreviousClose': round(previous_close, 2),
-                        'PreviousATR': round(previous_atr, 2),
-                        'SameTime': False,  # Intraday triggers are never same-time
-                        'RetestedTrigger': 'No'
-                    })
+                    for goal_level in fib_levels:
+                        if goal_level == trigger_level:  # Skip same level
+                            continue
+                        
+                        goal_price = level_map[goal_level]
+                        goal_hit = False
+                        goal_time = ''
+                        is_same_time = False
+                        
+                        # Determine goal type: Continuation vs Retracement
+                        if direction == 'Above':
+                            if goal_level > trigger_level:
+                                goal_type = 'Continuation'  # Further above
+                            else:
+                                goal_type = 'Retracement'   # Back below (includes cross-zero)
+                        else:  # direction == 'Below'
+                            if goal_level < trigger_level:
+                                goal_type = 'Continuation'  # Further below
+                            else:
+                                goal_type = 'Retracement'   # Back above (includes cross-zero)
+                        
+                        # Check for goal completion
+                        if trigger_time == 'OPEN':
+                            # Check if goal completes at OPEN (same-time scenario)
+                            if goal_level >= 0:  # Above goal
+                                if open_price >= goal_price:
+                                    goal_hit = True
+                                    goal_time = 'OPEN'
+                                    is_same_time = True
+                            else:  # Below goal
+                                if open_price <= goal_price:
+                                    goal_hit = True
+                                    goal_time = 'OPEN'
+                                    is_same_time = True
+                            
+                            # Check subsequent candles if not completed at OPEN
+                            if not goal_hit:
+                                for _, row in day_data.iloc[1:].iterrows():
+                                    if goal_level >= 0:  # Above goal
+                                        if row['High'] >= goal_price:
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    else:  # Below goal
+                                        if row['Low'] <= goal_price:
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                        
+                        else:  # Intraday trigger
+                            # Check if goal completes on same candle as trigger
+                            if goal_level >= 0:  # Above goal
+                                if trigger_candle['High'] >= goal_price:
+                                    goal_hit = True
+                                    goal_time = trigger_time
+                            else:  # Below goal
+                                if trigger_candle['Low'] <= goal_price:
+                                    goal_hit = True
+                                    goal_time = trigger_time
+                            
+                            # Check subsequent candles if not completed on trigger candle
+                            if not goal_hit:
+                                for _, row in day_data.iloc[trigger_row + 1:].iterrows():
+                                    if goal_level >= 0:  # Above goal
+                                        if row['High'] >= goal_price:
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    else:  # Below goal
+                                        if row['Low'] <= goal_price:
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                        
+                        # Record this trigger-goal combination
+                        results.append({
+                            'Date': trading_date,
+                            'Direction': direction,
+                            'TriggerLevel': trigger_level,
+                            'TriggerTime': trigger_time,
+                            'TriggerPrice': round(trigger_price, 2),
+                            'GoalLevel': goal_level,
+                            'GoalPrice': round(goal_price, 2),
+                            'GoalHit': 'Yes' if goal_hit else 'No',
+                            'GoalTime': goal_time if goal_hit else '',
+                            'GoalClassification': goal_type,
+                            'PreviousClose': round(previous_close, 2),
+                            'PreviousATR': round(previous_atr, 2),
+                            'SameTime': is_same_time,
+                            'RetestedTrigger': 'No'
+                        })
 
         except Exception as e:
             st.write(f"⚠️ Error processing {trading_date}: {str(e)}")
@@ -395,7 +234,7 @@ def detect_triggers_and_goals(daily, intraday):
 
 def main():
     """
-    CORRECTED: Keeps OPEN→OPEN data with SameTime flags for proper denominator calculations
+    SYSTEMATIC: Clean level-by-level trigger detection with Above/Below terminology
     """
     debug_info = []
     
@@ -432,7 +271,7 @@ def main():
                 debug_info.append(f"Previous day ({prev_row['Date']}): Close={prev_row['Close']:.2f}, ATR={prev_row['ATR']:.2f}")
                 debug_info.append(f"0.0 level for current day: {test_levels[0.0]:.2f} (should equal previous close)")
         
-        debug_info.append("🎯 Running CORRECTED trigger and goal detection with OPEN→OPEN data...")
+        debug_info.append("🎯 Running SYSTEMATIC trigger and goal detection...")
         df = detect_triggers_and_goals(daily, intraday)
         debug_info.append(f"✅ Detection complete: {len(df)} trigger-goal combinations found")
         
@@ -447,15 +286,16 @@ def main():
             open_goals = len(df[df['GoalTime'] == 'OPEN'])
             debug_info.append(f"✅ Records with GoalTime=OPEN: {open_goals}")
             
-            downside_zero_open = len(df[(df['Direction'] == 'Downside') & 
-                                       (df['TriggerLevel'] == 0.0) & 
-                                       (df['TriggerTime'] == 'OPEN')])
-            debug_info.append(f"✅ Downside 0.0 OPEN triggers found: {downside_zero_open}")
+            # Check cross-zero scenarios
+            cross_zero_above = len(df[(df['Direction'] == 'Above') & (df['TriggerLevel'] < 0) & (df['GoalLevel'] > 0)])
+            cross_zero_below = len(df[(df['Direction'] == 'Below') & (df['TriggerLevel'] > 0) & (df['GoalLevel'] < 0)])
+            debug_info.append(f"✅ Cross-zero scenarios - Above triggers to below goals: {cross_zero_above}")
+            debug_info.append(f"✅ Cross-zero scenarios - Below triggers to above goals: {cross_zero_below}")
             
-            upside_zero_open = len(df[(df['Direction'] == 'Upside') & 
-                                     (df['TriggerLevel'] == 0.0) & 
-                                     (df['TriggerTime'] == 'OPEN')])
-            debug_info.append(f"✅ Upside 0.0 OPEN triggers found: {upside_zero_open}")
+            # Direction breakdown
+            above_triggers = len(df[df['Direction'] == 'Above'])
+            below_triggers = len(df[df['Direction'] == 'Below'])
+            debug_info.append(f"✅ Above triggers: {above_triggers}, Below triggers: {below_triggers}")
             
             open_triggers = len(df[df['TriggerTime'] == 'OPEN'])
             intraday_triggers = len(df[df['TriggerTime'] != 'OPEN'])
@@ -470,13 +310,13 @@ def main():
         return pd.DataFrame(), debug_info
 
 # Streamlit Interface
-st.title('🎯 CORRECTED ATR Trigger & Goal Generator')
-st.write('**CORRECTED: Keeps OPEN→OPEN data with flags for proper denominator calculations**')
+st.title('🎯 SYSTEMATIC ATR Trigger & Goal Generator')
+st.write('**SYSTEMATIC: Clean level-by-level detection with Above/Below terminology**')
 
-output_path = 'combined_trigger_goal_results_CORRECTED.csv'
+output_path = 'combined_trigger_goal_results_SYSTEMATIC.csv'
 
-if st.button('🚀 Generate CORRECTED Results'):
-    with st.spinner('Calculating with CORRECTED logic...'):
+if st.button('🚀 Generate SYSTEMATIC Results'):
+    with st.spinner('Calculating with SYSTEMATIC logic...'):
         try:
             result_df, debug_messages = main()
             
@@ -486,9 +326,9 @@ if st.button('🚀 Generate CORRECTED Results'):
                     st.write(msg)
             
             if not result_df.empty:
-                result_df['Source'] = 'Corrected_With_SameTime_Flags'
+                result_df['Source'] = 'Systematic_Level_Detection'
                 result_df.to_csv(output_path, index=False)
-                st.success('✅ CORRECTED Results generated!')
+                st.success('✅ SYSTEMATIC Results generated!')
                 
                 # Show summary stats
                 st.subheader('📊 Summary Statistics')
@@ -503,6 +343,39 @@ if st.button('🚀 Generate CORRECTED Results'):
                     hit_rate = len(result_df[result_df['GoalHit'] == 'Yes']) / len(result_df) * 100
                     st.metric('Hit Rate', f'{hit_rate:.1f}%')
                 
+                # Show direction analysis
+                st.subheader('📊 Direction Analysis')
+                col1, col2 = st.columns(2)
+                with col1:
+                    above_count = len(result_df[result_df['Direction'] == 'Above'])
+                    st.metric('Above Triggers', above_count)
+                with col2:
+                    below_count = len(result_df[result_df['Direction'] == 'Below'])
+                    st.metric('Below Triggers', below_count)
+                
+                # Show cross-zero analysis
+                st.subheader('🔄 Cross-Zero Analysis')
+                cross_zero_data = result_df[
+                    ((result_df['Direction'] == 'Above') & (result_df['TriggerLevel'] < 0) & (result_df['GoalLevel'] > 0)) |
+                    ((result_df['Direction'] == 'Below') & (result_df['TriggerLevel'] > 0) & (result_df['GoalLevel'] < 0))
+                ]
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric('Cross-Zero Records', len(cross_zero_data))
+                with col2:
+                    cross_zero_hits = len(cross_zero_data[cross_zero_data['GoalHit'] == 'Yes'])
+                    st.metric('Cross-Zero Hits', cross_zero_hits)
+                
+                if len(cross_zero_data) > 0:
+                    cross_zero_rate = cross_zero_hits / len(cross_zero_data) * 100
+                    st.metric('Cross-Zero Hit Rate', f'{cross_zero_rate:.1f}%')
+                    
+                    # Show sample cross-zero scenarios
+                    st.write("### Sample Cross-Zero Scenarios:")
+                    sample_cross = cross_zero_data.head(10)[['Direction', 'TriggerLevel', 'TriggerTime', 'GoalLevel', 'GoalTime', 'GoalHit']]
+                    st.dataframe(sample_cross)
+                
                 # Show same-time analysis
                 st.subheader('🕐 Same-Time Analysis')
                 same_time_data = result_df[result_df['SameTime'] == True]
@@ -516,32 +389,15 @@ if st.button('🚀 Generate CORRECTED Results'):
                     open_goal_records = len(result_df[result_df['GoalTime'] == 'OPEN'])
                     st.metric('OPEN Goal Records', open_goal_records)
                 
-                # Show key scenarios
-                st.subheader('🎯 Key Level Validation')
-                downside_zero = len(result_df[(result_df['Direction'] == 'Downside') & 
-                                            (result_df['TriggerLevel'] == 0.0) & 
-                                            (result_df['TriggerTime'] == 'OPEN')])
-                
-                upside_zero = len(result_df[(result_df['Direction'] == 'Upside') & 
-                                          (result_df['TriggerLevel'] == 0.0) & 
-                                          (result_df['TriggerTime'] == 'OPEN')])
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric('Downside 0.0 OPEN', downside_zero)
-                        
-                with col2:
-                    st.metric('Upside 0.0 OPEN', upside_zero)
-                
                 # Download button
                 st.download_button(
-                    '⬇️ Download CORRECTED Results CSV', 
+                    '⬇️ Download SYSTEMATIC Results CSV', 
                     data=result_df.to_csv(index=False), 
                     file_name=output_path, 
                     mime='text/csv'
                 )
                 
-                st.success('🎉 **CORRECTED DATA READY!** Includes OPEN→OPEN data with SameTime flags!')
+                st.success('🎉 **SYSTEMATIC DATA READY!** Clean level-by-level detection with proper cross-zero handling!')
                 
             else:
                 st.warning('⚠️ No results generated - check debug info above')
@@ -551,11 +407,12 @@ if st.button('🚀 Generate CORRECTED Results'):
 
 st.markdown("""
 ---
-**🔧 CORRECTED Logic Applied:**
-- ✅ **Keeps OPEN→OPEN completions** with SameTime=True flags
-- ✅ **Prevents intraday double-counting** (no 0900 trigger if already triggered at OPEN)
-- ✅ **Provides data needed** for goal-specific denominator calculations
-- ✅ **Records with GoalTime=OPEN** will be available for summary processing
+**🔧 SYSTEMATIC Logic Applied:**
+- ✅ **Level-by-level detection** for each Fibonacci level individually
+- ✅ **Above/Below terminology** instead of Upside/Downside
+- ✅ **OPEN candle uses open_price**, intraday uses high/low appropriately
+- ✅ **Proper cross-zero handling** for all retracement scenarios
+- ✅ **Same-time flagging** preserved for summary processing
 
-**🎯 This Provides All Data Needed for Proper Summary Calculations!**
+**🎯 This Should Fix Cross-Zero Detection Issues!**
 """)
