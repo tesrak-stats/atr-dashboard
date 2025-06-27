@@ -39,25 +39,24 @@ def generate_atr_levels(close_price, atr_value):
 
 def detect_triggers_and_goals(daily, intraday):
     """
-    CORRECTED: Use PREVIOUS day's close and ATR to calculate TODAY's levels
+    CORRECTED: 
+    1. Fixed OPEN detection to include 0.0 level
+    2. NO same-time filtering - generate all records
+    3. FLAG same-time scenarios for later processing
     """
     fib_levels = [0.236, 0.382, 0.500, 0.618, 0.786, 1.000, 
                  -0.236, -0.382, -0.500, -0.618, -0.786, -1.000, 0.000]
     
     results = []
     
-    # FIXED: Start from index 1 (need previous day data)
     for i in range(1, len(daily)):
         try:
-            # CORRECTED LOGIC:
-            previous_row = daily.iloc[i-1]  # Previous day (for level calculation)
-            current_row = daily.iloc[i]     # Current day (trading day)
-            
             # Use PREVIOUS day's data for level calculation
-            previous_close = previous_row['Close']  # Known at market open
-            previous_atr = previous_row['ATR']      # Known at market open
+            previous_row = daily.iloc[i-1]  
+            current_row = daily.iloc[i]     
             
-            # Trading occurs on CURRENT day
+            previous_close = previous_row['Close']  
+            previous_atr = previous_row['ATR']      
             trading_date = current_row['Date']
             
             # Date filtering
@@ -74,10 +73,10 @@ def detect_triggers_and_goals(daily, intraday):
             if pd.isna(previous_atr) or pd.isna(previous_close):
                 continue
             
-            # CORRECTED: Generate levels using PREVIOUS day's close + ATR
+            # Generate levels using PREVIOUS day's close + ATR
             level_map = generate_atr_levels(previous_close, previous_atr)
             
-            # Get intraday data for CURRENT trading date
+            # Get intraday data for trading date
             day_data = intraday[intraday['Date'] == pd.to_datetime(trading_date).date()].copy()
             if day_data.empty:
                 continue
@@ -94,10 +93,10 @@ def detect_triggers_and_goals(daily, intraday):
                 high = row['High']
                 low = row['Low']
                 
-                # Determine time label
+                # FIXED: Include 0.0 level in OPEN detection
                 time_label = 'OPEN' if idx == 0 and (
-                    any(open_price >= level_map[level] for level in fib_levels if level > 0) or
-                    any(open_price <= level_map[level] for level in fib_levels if level < 0)
+                    any(open_price >= level_map[level] for level in fib_levels if level >= 0) or  # Include 0.0
+                    any(open_price <= level_map[level] for level in fib_levels if level <= 0)     # Include 0.0
                 ) else row['Time']
 
                 # Check upside triggers (include 0.0 level)
@@ -115,8 +114,8 @@ def detect_triggers_and_goals(daily, intraday):
                             'TriggerPrice': trigger_price
                         }
 
-                # Check downside triggers
-                for level in [lvl for lvl in fib_levels if lvl < 0]:
+                # Check downside triggers (include 0.0 level)
+                for level in [lvl for lvl in fib_levels if lvl <= 0]:
                     if level in triggered_down:
                         continue
                     
@@ -170,6 +169,9 @@ def detect_triggers_and_goals(daily, intraday):
                                 goal_time = row['Time']
                                 break
                     
+                    # CHANGED: Don't filter out same-time scenarios - FLAG them instead
+                    is_same_time = (trigger_info['TriggerTime'] == 'OPEN' and goal_time == 'OPEN')
+                    
                     results.append({
                         'Date': trading_date,
                         'Direction': 'Upside',
@@ -181,8 +183,9 @@ def detect_triggers_and_goals(daily, intraday):
                         'GoalHit': 'Yes' if goal_hit else 'No',
                         'GoalTime': goal_time if goal_hit else '',
                         'GoalClassification': goal_type,
-                        'PreviousClose': round(previous_close, 2),  # CORRECTED: Previous day's close
-                        'PreviousATR': round(previous_atr, 2),      # CORRECTED: Previous day's ATR
+                        'PreviousClose': round(previous_close, 2),
+                        'PreviousATR': round(previous_atr, 2),
+                        'SameTime': is_same_time,  # NEW: Flag for same-time scenarios
                         'RetestedTrigger': 'No'
                     })
 
@@ -226,6 +229,9 @@ def detect_triggers_and_goals(daily, intraday):
                                 goal_time = row['Time']
                                 break
                     
+                    # CHANGED: Don't filter out same-time scenarios - FLAG them instead
+                    is_same_time = (trigger_info['TriggerTime'] == 'OPEN' and goal_time == 'OPEN')
+                    
                     results.append({
                         'Date': trading_date,
                         'Direction': 'Downside',
@@ -237,8 +243,9 @@ def detect_triggers_and_goals(daily, intraday):
                         'GoalHit': 'Yes' if goal_hit else 'No',
                         'GoalTime': goal_time if goal_hit else '',
                         'GoalClassification': goal_type,
-                        'PreviousClose': round(previous_close, 2),  # CORRECTED: Previous day's close
-                        'PreviousATR': round(previous_atr, 2),      # CORRECTED: Previous day's ATR
+                        'PreviousClose': round(previous_close, 2),
+                        'PreviousATR': round(previous_atr, 2),
+                        'SameTime': is_same_time,  # NEW: Flag for same-time scenarios
                         'RetestedTrigger': 'No'
                     })
 
@@ -250,7 +257,7 @@ def detect_triggers_and_goals(daily, intraday):
 
 def main():
     """
-    CORRECTED: Main function using previous day's data for level calculation
+    CORRECTED: No same-time filtering, added SameTime flag
     """
     debug_info = []
     
@@ -277,19 +284,34 @@ def main():
         debug_info.append(f"Intraday data loaded: {intraday.shape}")
         debug_info.append(f"Intraday date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
         
-        # CORRECTED: Test level generation using PREVIOUS day data
+        # Test level generation
         if len(daily) >= 2:
-            prev_row = daily.iloc[-2]  # Previous day
-            curr_row = daily.iloc[-1]  # Current day
+            prev_row = daily.iloc[-2]
+            curr_row = daily.iloc[-1]
             if not pd.isna(prev_row['ATR']):
                 test_levels = generate_atr_levels(prev_row['Close'], prev_row['ATR'])
-                debug_info.append(f"✅ CORRECTED Level generation test:")
+                debug_info.append(f"✅ Level generation test:")
                 debug_info.append(f"Previous day ({prev_row['Date']}): Close={prev_row['Close']:.2f}, ATR={prev_row['ATR']:.2f}")
-                debug_info.append(f"Levels for current day ({curr_row['Date']}): +0.382={test_levels[0.382]:.2f}, 0.0={test_levels[0.0]:.2f}")
+                debug_info.append(f"0.0 level for current day: {test_levels[0.0]:.2f} (should equal previous close)")
         
-        debug_info.append("🎯 Running CORRECTED trigger and goal detection...")
+        debug_info.append("🎯 Running trigger and goal detection with SameTime flags...")
         df = detect_triggers_and_goals(daily, intraday)
         debug_info.append(f"✅ Detection complete: {len(df)} trigger-goal combinations found")
+        
+        # Additional validation
+        if not df.empty:
+            same_time_count = len(df[df['SameTime'] == True])
+            debug_info.append(f"✅ Same-time scenarios flagged: {same_time_count}")
+            
+            downside_zero_open = len(df[(df['Direction'] == 'Downside') & 
+                                       (df['TriggerLevel'] == 0.0) & 
+                                       (df['TriggerTime'] == 'OPEN')])
+            debug_info.append(f"✅ Downside 0.0 OPEN triggers found: {downside_zero_open}")
+            
+            upside_zero_open = len(df[(df['Direction'] == 'Upside') & 
+                                     (df['TriggerLevel'] == 0.0) & 
+                                     (df['TriggerTime'] == 'OPEN')])
+            debug_info.append(f"✅ Upside 0.0 OPEN triggers found: {upside_zero_open}")
         
         return df, debug_info
         
@@ -300,13 +322,13 @@ def main():
         return pd.DataFrame(), debug_info
 
 # Streamlit Interface
-st.title('🎯 CORRECTED ATR Trigger & Goal Generator')
-st.write('**FIXED: Uses PREVIOUS day close + ATR for level calculation**')
+st.title('🎯 FINAL ATR Trigger & Goal Generator')
+st.write('**FINAL: Fixed OPEN detection + SameTime flag (no filtering)**')
 
-output_path = 'combined_trigger_goal_results_CORRECTED.csv'
+output_path = 'combined_trigger_goal_results_FINAL.csv'
 
-if st.button('🚀 Generate CORRECTED Results'):
-    with st.spinner('Calculating with CORRECTED logic...'):
+if st.button('🚀 Generate FINAL Results'):
+    with st.spinner('Calculating with FINAL logic...'):
         try:
             result_df, debug_messages = main()
             
@@ -316,9 +338,9 @@ if st.button('🚀 Generate CORRECTED Results'):
                     st.write(msg)
             
             if not result_df.empty:
-                result_df['Source'] = 'Corrected_Previous_Day_Logic'
+                result_df['Source'] = 'Final_With_SameTime_Flag'
                 result_df.to_csv(output_path, index=False)
-                st.success('✅ CORRECTED Results generated!')
+                st.success('✅ FINAL Results generated!')
                 
                 # Show summary stats
                 st.subheader('📊 Summary Statistics')
@@ -333,27 +355,50 @@ if st.button('🚀 Generate CORRECTED Results'):
                     hit_rate = len(result_df[result_df['GoalHit'] == 'Yes']) / len(result_df) * 100
                     st.metric('Hit Rate', f'{hit_rate:.1f}%')
                 
-                # Show key correction info
-                st.subheader('🔧 Key Corrections Made')
-                st.success("✅ **FIXED**: Now uses PREVIOUS day's close as reference (not current day)")
-                st.success("✅ **FIXED**: ATR levels calculated using known data at market open")
-                st.success("✅ **FIXED**: Logic now matches real-world trading scenario")
+                # Show same-time statistics
+                st.subheader('🕐 Same-Time Analysis')
+                same_time_data = result_df[result_df['SameTime'] == True]
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric('Same-Time Records', len(same_time_data))
+                with col2:
+                    same_time_hits = len(same_time_data[same_time_data['GoalHit'] == 'Yes'])
+                    st.metric('Same-Time Hits', same_time_hits)
                 
-                # Show sample to verify correction
-                st.subheader('🔍 Sample Results (Verify Previous Close)')
-                sample = result_df[['Date', 'PreviousClose', 'PreviousATR', 'TriggerLevel', 'TriggerPrice']].head(10)
-                st.dataframe(sample)
-                st.write("**Verify**: TriggerPrice should equal PreviousClose + (TriggerLevel × PreviousATR)")
+                # Show key scenarios
+                st.subheader('🎯 Key Scenarios Validation')
+                downside_zero = len(result_df[(result_df['Direction'] == 'Downside') & 
+                                            (result_df['TriggerLevel'] == 0.0) & 
+                                            (result_df['TriggerTime'] == 'OPEN')])
+                
+                upside_zero = len(result_df[(result_df['Direction'] == 'Upside') & 
+                                          (result_df['TriggerLevel'] == 0.0) & 
+                                          (result_df['TriggerTime'] == 'OPEN')])
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric('Downside 0.0 OPEN', downside_zero)
+                    if downside_zero > 0:
+                        st.success("✅ Found!")
+                    else:
+                        st.error("❌ Still missing")
+                        
+                with col2:
+                    st.metric('Upside 0.0 OPEN', upside_zero)
+                    if upside_zero > 0:
+                        st.success("✅ Found!")
+                    else:
+                        st.error("❌ Missing")
                 
                 # Download button
                 st.download_button(
-                    '⬇️ Download CORRECTED Results CSV', 
+                    '⬇️ Download FINAL Results CSV', 
                     data=result_df.to_csv(index=False), 
                     file_name=output_path, 
                     mime='text/csv'
                 )
                 
-                st.success('🎉 **CORRECTED LOGIC APPLIED!** Now uses previous day data like real trading!')
+                st.success('🎉 **READY FOR SUMMARY PROCESSING!** Data includes SameTime flags for denominator adjustment.')
                 
             else:
                 st.warning('⚠️ No results generated - check debug info above')
@@ -363,11 +408,11 @@ if st.button('🚀 Generate CORRECTED Results'):
 
 st.markdown("""
 ---
-**🔧 Key Correction Made:**
-- ✅ **OLD (WRONG)**: Used current day's close to calculate current day's levels  
-- ✅ **NEW (CORRECT)**: Uses previous day's close to calculate current day's levels
-- ✅ **Why this matters**: At market open, you only know yesterday's data, not today's final close
-- ✅ **Result**: Levels now match what traders would actually calculate in real-time
+**🔧 Final Configuration:**
+- ✅ **Fixed OPEN Detection**: 0.0 level included in trigger detection
+- ✅ **No Same-Time Filtering**: All records generated (including OPEN→OPEN)
+- ✅ **SameTime Flag**: Added for summary script to handle denominator adjustment
+- ✅ **Ready for Summary**: Implements your Excel methodology exactly
 
-**🎯 This Should Now Match Your Excel Analysis!**
+**🎯 Next Step: Update summary script to handle denominator adjustment!**
 """)
