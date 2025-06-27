@@ -41,16 +41,20 @@ except:
     atr_price_levels = {}
 
 # --- Display configuration ---
-visible_hours = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
-invisible_fillers = ["0830", "0930", "1030", "1130", "1230", "1330", "1430", "1530", "SPACER"]  # Removed 1600
-time_order = ["OPEN", "0830"]  # Add spacer between OPEN and 0900
-for hour in visible_hours:
+# Only include the exact columns we want to display
+display_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "TOTAL"]
+
+# Create time_order with proper spacing
+time_order = ["OPEN", "0830"]  # OPEN + spacer
+for hour in ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]:
     time_order.append(hour)
-    filler = f"{str(int(hour[:2])+1).zfill(2)}30"
-    time_order.append(filler)
-time_order.append("SPACER")  # Spacer before TOTAL
+    time_order.append(f"{str(int(hour[:2])+1).zfill(2)}30")  # Add spacer after each hour
+time_order.append("SPACER")  # Final spacer before TOTAL
 time_order.append("TOTAL")
-# Note: 1600 is completely excluded from time_order
+
+# Debug: Print what we're working with
+print("Display columns:", display_columns)
+print("Time order:", time_order)
 
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
@@ -150,9 +154,9 @@ fig = go.Figure()
 # --- Matrix cells ---
 for level in fib_levels:
     for t in time_order:
-        # Skip all invisible filler columns and 1600 data completely
-        if t in ["0830", "0930", "1030", "1130", "1230", "1330", "1430", "1530", "SPACER", "1600"]:
-            continue
+        # Only process columns we want to display
+        if t not in display_columns:
+            continue  # Skip all spacer columns and any other unwanted columns
             
         # Handle OPEN column specially - blank text but show goal-specific tooltip
         if t == "OPEN":
@@ -295,8 +299,8 @@ fig.update_layout(
         categoryorder="array",
         categoryarray=time_order,
         tickmode="array",
-        tickvals=["OPEN"] + visible_hours + ["TOTAL"],
-        ticktext=["OPEN"] + visible_hours + ["TOTAL"],  # Explicitly set tick text
+        tickvals=display_columns,
+        ticktext=display_columns,  # Explicitly set tick text
         tickfont=dict(color="white")
     ),
     yaxis=dict(
