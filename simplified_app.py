@@ -42,7 +42,7 @@ except:
 
 # --- Display configuration ---
 visible_hours = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
-invisible_fillers = ["0830", "0930", "1030", "1130", "1230", "1330", "1430", "1530", "SPACER"]  # Use explicit name
+invisible_fillers = ["0830", "0930", "1030", "1130", "1230", "1330", "1430", "1530", "SPACER"]  # Removed 1600
 time_order = ["OPEN", "0830"]  # Add spacer between OPEN and 0900
 for hour in visible_hours:
     time_order.append(hour)
@@ -50,6 +50,7 @@ for hour in visible_hours:
     time_order.append(filler)
 time_order.append("SPACER")  # Spacer before TOTAL
 time_order.append("TOTAL")
+# Note: 1600 is completely excluded from time_order
 
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
@@ -149,8 +150,8 @@ fig = go.Figure()
 # --- Matrix cells ---
 for level in fib_levels:
     for t in time_order:
-        # Skip all invisible filler columns completely
-        if t in ["0830", "0930", "1030", "1130", "1230", "1330", "1430", "1530", "SPACER"]:
+        # Skip all invisible filler columns and 1600 data completely
+        if t in ["0830", "0930", "1030", "1130", "1230", "1330", "1430", "1530", "SPACER", "1600"]:
             continue
             
         # Handle OPEN column specially - blank text but show goal-specific tooltip
@@ -239,27 +240,28 @@ for level in fib_levels:
                 showlegend=False
             ))
         else:
-            # No data for this combination
-            if level == trigger_level:
-                # Blank out same level
-                display = ""
-                hover = "Same level as trigger"
-            elif time_order.index(t) < time_order.index(trigger_time):
-                # Blank out times before trigger time
-                display = ""
-                hover = "Before trigger time"
-            else:
-                # Show 0.0% for valid but no-data combinations
-                display = "0.0%"
-                hover = "No data available"
-                
-            fig.add_trace(go.Scatter(
-                x=[t], y=[level + 0.015],
-                mode="text", text=[display],
-                hovertext=[hover], hoverinfo="text",
-                textfont=dict(color="white", size=12),
-                showlegend=False
-            ))
+            # No data for this combination - but only show for actual time columns
+            if t not in ["OPEN", "TOTAL"]:  # Don't show 0.0% for special columns
+                if level == trigger_level:
+                    # Blank out same level
+                    display = ""
+                    hover = "Same level as trigger"
+                elif time_order.index(t) < time_order.index(trigger_time):
+                    # Blank out times before trigger time
+                    display = ""
+                    hover = "Before trigger time"
+                else:
+                    # Only show 0.0% for valid time columns
+                    display = "0.0%"
+                    hover = "No data available"
+                    
+                fig.add_trace(go.Scatter(
+                    x=[t], y=[level + 0.015],
+                    mode="text", text=[display],
+                    hovertext=[hover], hoverinfo="text",
+                    textfont=dict(color="white", size=12),
+                    showlegend=False
+                ))
 
 # --- Anchor invisible point for OPEN ---
 fig.add_trace(go.Scatter(
@@ -294,6 +296,7 @@ fig.update_layout(
         categoryarray=time_order,
         tickmode="array",
         tickvals=["OPEN"] + visible_hours + ["TOTAL"],
+        ticktext=["OPEN"] + visible_hours + ["TOTAL"],  # Explicitly set tick text
         tickfont=dict(color="white")
     ),
     yaxis=dict(
