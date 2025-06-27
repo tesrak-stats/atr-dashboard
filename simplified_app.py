@@ -32,7 +32,7 @@ st.title("📈 ATR Levels Roadmap")
 col1, col2, col3 = st.columns(3)
 
 direction = col1.selectbox("Direction", sorted(df["Direction"].unique()), 
-                          index=sorted(df["Direction"].unique()).index("Upside"))
+                          index=sorted(df["Direction"].unique()).index("Above"))
 
 trigger_level = col2.selectbox("Trigger Level", sorted(set(df["TriggerLevel"]).union(fib_levels)), 
                               index=sorted(set(df["TriggerLevel"]).union(fib_levels)).index(0.0))
