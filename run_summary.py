@@ -37,195 +37,172 @@ def bucket_time(time_value):
     else:
         return "1600"
 
-st.title("🔧 Corrected Summary Generator")
-st.write("**Applies Your Excel Methodology: Adjusted denominators for same-time scenarios**")
+st.title("🔧 Simple Summary Generator for Clean Data")
+st.write("**For use with the new clean trigger data - no complex adjustments needed**")
 
-uploaded_file = st.file_uploader("Upload combined_trigger_goal_results_ACTUALLY_FINAL.csv", type="csv")
+uploaded_file = st.file_uploader("Upload combined_trigger_goal_results_CLEAN.csv", type="csv")
 
 if uploaded_file is not None:
-    # Load combined results
+    # Load clean results
     df = pd.read_csv(uploaded_file)
     
-    st.success(f"📊 Loaded {len(df)} total records")
+    st.success(f"📊 Loaded {len(df)} clean records")
+    
+    # Verify this is clean data
+    same_time_count = len(df[df['SameTime'] == True]) if 'SameTime' in df.columns else 0
+    if same_time_count > 0:
+        st.warning(f"⚠️ Found {same_time_count} same-time records - this may not be clean data!")
+    else:
+        st.success("✅ Confirmed clean data - no same-time scenarios")
     
     # Apply time bucketing
     st.write("🕐 Applying time bucketing...")
     df['TriggerTimeBucket'] = df['TriggerTime'].apply(bucket_time)
-    df['GoalTimeBucket'] = df['GoalTime'].apply(bucket_time)
+    df['GoalTimeBucket'] = df['GoalTime'].apply(lambda x: bucket_time(x) if pd.notna(x) and x != '' else 'N/A')
     
-    # Show same-time analysis
-    st.write("## Same-Time Analysis")
-    same_time_data = df[df['SameTime'] == True]
-    col1, col2, col3 = st.columns(3)
+    # Show basic stats
+    st.write("## Basic Statistics")
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("Total Same-Time Records", len(same_time_data))
+        st.metric("Total Records", len(df))
     with col2:
-        same_time_hits = len(same_time_data[same_time_data['GoalHit'] == 'Yes'])
-        st.metric("Same-Time Hits", same_time_hits)
+        st.metric("Unique Dates", df['Date'].nunique())
     with col3:
-        same_time_triggers = same_time_data.groupby(['Direction', 'TriggerLevel', 'TriggerTimeBucket']).size().sum()
-        st.metric("Same-Time Trigger Events", same_time_triggers)
+        total_hits = len(df[df['GoalHit'] == 'Yes'])
+        st.metric("Total Goal Hits", total_hits)
+    with col4:
+        hit_rate = (total_hits / len(df) * 100) if len(df) > 0 else 0
+        st.metric("Overall Hit Rate", f"{hit_rate:.1f}%")
     
-    # Show breakdown by trigger type
-    st.write("### Same-Time Breakdown by Trigger:")
-    same_time_breakdown = same_time_data.groupby(['Direction', 'TriggerLevel', 'TriggerTimeBucket']).agg({
-        'GoalHit': lambda x: (x == 'Yes').sum(),
-        'Date': 'nunique'
-    }).reset_index()
-    same_time_breakdown.columns = ['Direction', 'TriggerLevel', 'TriggerTime', 'SameTimeHits', 'UniqueDates']
-    st.dataframe(same_time_breakdown)
+    # STEP 1: Count unique triggers per trigger combination
+    st.write("## Step 1: Count Unique Triggers")
     
-    # STEP 1: Count ALL triggers (including same-time)
-    st.write("## Step 1: Count All Triggers")
+    # Get unique trigger events (one per date/trigger combination)
+    trigger_events = df[['Date', 'TriggerLevel', 'TriggerTimeBucket', 'Direction']].drop_duplicates()
     
-    trigger_occurrences = df[['Date', 'TriggerLevel', 'TriggerTimeBucket', 'Direction']].drop_duplicates()
-    
-    all_trigger_counts = (
-        trigger_occurrences
-        .value_counts(subset=['TriggerLevel', 'TriggerTimeBucket', 'Direction'])
-        .reset_index()
-    )
-    all_trigger_counts.columns = ['TriggerLevel', 'TriggerTime', 'Direction', 'AllTriggers']
-    
-    st.write(f"✅ Found {len(all_trigger_counts)} unique trigger combinations")
-    
-    # STEP 2: Count same-time triggers that need to be subtracted
-    st.write("## Step 2: Count Same-Time Triggers (for subtraction)")
-    
-    # Count same-time triggers by combination
-    same_time_trigger_counts = (
-        same_time_data[same_time_data['GoalHit'] == 'Yes']
+    trigger_counts = (
+        trigger_events
         .groupby(['TriggerLevel', 'TriggerTimeBucket', 'Direction'])
         .size()
-        .reset_index(name='SameTimeTriggers')
+        .reset_index(name='NumTriggers')
     )
-    same_time_trigger_counts.columns = ['TriggerLevel', 'TriggerTime', 'Direction', 'SameTimeTriggers']
+    trigger_counts.columns = ['TriggerLevel', 'TriggerTime', 'Direction', 'NumTriggers']
     
-    st.write(f"✅ Found {len(same_time_trigger_counts)} same-time trigger combinations to subtract")
+    st.write(f"✅ Found {len(trigger_counts)} unique trigger combinations")
+    st.write(f"✅ Total trigger events: {trigger_counts['NumTriggers'].sum():,}")
     
-    # STEP 3: Calculate adjusted trigger counts (YOUR EXCEL METHODOLOGY)
-    st.write("## Step 3: Apply Your Excel Methodology")
-    st.write("**Formula: Adjusted Triggers = All Triggers - Same-Time Triggers**")
+    # STEP 2: Count goal hits per trigger-goal-time combination
+    st.write("## Step 2: Count Goal Hits")
     
-    # Merge to get adjusted counts
-    adjusted_trigger_counts = pd.merge(
-        all_trigger_counts,
-        same_time_trigger_counts,
-        on=['TriggerLevel', 'TriggerTime', 'Direction'],
-        how='left'
-    )
-    
-    # Fill missing same-time counts with 0
-    adjusted_trigger_counts['SameTimeTriggers'] = adjusted_trigger_counts['SameTimeTriggers'].fillna(0)
-    
-    # Apply your Excel methodology: subtract same-time triggers
-    adjusted_trigger_counts['AdjustedTriggers'] = adjusted_trigger_counts['AllTriggers'] - adjusted_trigger_counts['SameTimeTriggers']
-    
-    # Ensure no negative values
-    adjusted_trigger_counts['AdjustedTriggers'] = adjusted_trigger_counts['AdjustedTriggers'].clip(lower=0)
-    
-    # Show adjustment examples
-    st.write("### Sample Adjustments:")
-    adjustments = adjusted_trigger_counts[adjusted_trigger_counts['SameTimeTriggers'] > 0].head(10)
-    st.dataframe(adjustments[['TriggerLevel', 'TriggerTime', 'Direction', 'AllTriggers', 'SameTimeTriggers', 'AdjustedTriggers']])
-    
-    # STEP 4: Count successful goals (excluding same-time)
-    st.write("## Step 4: Count Successful Goals (Excluding Same-Time)")
-    
-    # Filter out same-time scenarios from goal hits
-    valid_goal_hits = df[(df['GoalHit'] == 'Yes') & (df['SameTime'] == False)]
+    goal_hits = df[df['GoalHit'] == 'Yes'].copy()
     
     goal_counts = (
-        valid_goal_hits
+        goal_hits
         .groupby(['TriggerLevel', 'TriggerTimeBucket', 'Direction', 'GoalLevel', 'GoalTimeBucket'])
         .size()
         .reset_index(name='NumHits')
     )
     goal_counts.columns = ['TriggerLevel', 'TriggerTime', 'Direction', 'GoalLevel', 'GoalTime', 'NumHits']
     
-    st.write(f"✅ Found {len(goal_counts)} valid goal hit combinations (same-time excluded)")
+    st.write(f"✅ Found {len(goal_counts)} goal hit combinations")
+    st.write(f"✅ Total goal hits: {goal_counts['NumHits'].sum():,}")
     
-    # STEP 5: Create final summary with adjusted denominators
-    st.write("## Step 5: Create Summary with Adjusted Denominators")
+    # STEP 3: Create complete summary with all combinations
+    st.write("## Step 3: Create Complete Summary")
     
-    # Merge adjusted trigger counts with goal hits
-    summary = pd.merge(
-        adjusted_trigger_counts[['TriggerLevel', 'TriggerTime', 'Direction', 'AdjustedTriggers']],
-        goal_counts,
-        on=['TriggerLevel', 'TriggerTime', 'Direction'],
-        how='left'
-    )
+    # Start with trigger counts as base
+    summary_base = trigger_counts.copy()
     
-    # Fill missing values for combinations with no goal hits
-    summary['NumHits'] = summary['NumHits'].fillna(0).astype(int)
-    summary['GoalLevel'] = summary['GoalLevel'].fillna('No Goals Hit')
-    summary['GoalTime'] = summary['GoalTime'].fillna('N/A')
+    # Get all possible goals from the data
+    all_goals = df['GoalLevel'].unique()
+    all_goal_times = df['GoalTimeBucket'].unique()
+    all_goal_times = [t for t in all_goal_times if t != 'N/A']  # Remove N/A times
     
-    # Calculate corrected percentages using adjusted denominators
-    summary['PctCompletion'] = np.where(
-        summary['AdjustedTriggers'] > 0,
-        (summary['NumHits'] / summary['AdjustedTriggers'] * 100).round(2),
-        0.0
-    )
+    # Create complete summary with all trigger-goal-time combinations
+    summary_rows = []
     
-    # Rename for final output
-    summary['NumTriggers'] = summary['AdjustedTriggers']
+    for _, trigger_row in summary_base.iterrows():
+        trigger_level = trigger_row['TriggerLevel']
+        trigger_time = trigger_row['TriggerTime']
+        direction = trigger_row['Direction']
+        num_triggers = trigger_row['NumTriggers']
+        
+        for goal_level in all_goals:
+            if goal_level == trigger_level:  # Skip same level
+                continue
+                
+            for goal_time in all_goal_times:
+                # Look for hits for this combination
+                hit_record = goal_counts[
+                    (goal_counts['TriggerLevel'] == trigger_level) &
+                    (goal_counts['TriggerTime'] == trigger_time) &
+                    (goal_counts['Direction'] == direction) &
+                    (goal_counts['GoalLevel'] == goal_level) &
+                    (goal_counts['GoalTime'] == goal_time)
+                ]
+                
+                num_hits = hit_record['NumHits'].iloc[0] if len(hit_record) > 0 else 0
+                
+                # Calculate percentage
+                pct_completion = (num_hits / num_triggers * 100) if num_triggers > 0 else 0.0
+                
+                summary_rows.append({
+                    'Direction': direction,
+                    'TriggerLevel': trigger_level,
+                    'TriggerTime': trigger_time,
+                    'GoalLevel': goal_level,
+                    'GoalTime': goal_time,
+                    'NumTriggers': num_triggers,
+                    'NumHits': num_hits,
+                    'PctCompletion': round(pct_completion, 2)
+                })
     
-    # Final column order
-    summary = summary[[
-        'Direction',
-        'TriggerLevel', 
-        'TriggerTime',
-        'GoalLevel',
-        'GoalTime',
-        'NumTriggers',
-        'NumHits',
-        'PctCompletion'
-    ]]
+    summary = pd.DataFrame(summary_rows)
     
-    # Remove combinations with 0 adjusted triggers
-    summary = summary[summary['NumTriggers'] > 0]
+    # Remove combinations with 0 hits (optional - keeps file smaller)
+    # summary = summary[summary['NumHits'] > 0]  # Uncomment to remove zero-hit combinations
     
-    st.write(f"✅ Final summary: {len(summary)} combinations with adjusted denominators")
+    st.write(f"✅ Complete summary: {len(summary)} combinations")
     
     # Show validation examples
     st.write("## Validation Examples")
     
-    # Focus on OPEN scenarios that should show higher success rates
-    open_examples = summary[
-        (summary['TriggerTime'] == 'OPEN') & 
-        (summary['NumHits'] > 0)
-    ].head(10)
+    # Show some high-percentage examples
+    high_success = summary[summary['PctCompletion'] > 50].head(10)
+    if len(high_success) > 0:
+        st.write("### High Success Rate Examples:")
+        st.dataframe(high_success[['Direction', 'TriggerLevel', 'TriggerTime', 'GoalLevel', 'GoalTime', 'NumTriggers', 'NumHits', 'PctCompletion']])
     
-    if len(open_examples) > 0:
-        st.write("### OPEN Scenarios (Should show higher success rates):")
-        st.dataframe(open_examples)
-        
-        avg_open_success = open_examples['PctCompletion'].mean()
-        st.success(f"Average OPEN success rate: {avg_open_success:.1f}% (should be higher than before)")
+    # Check for any >100% (shouldn't exist with clean data)
+    over_100 = summary[summary['PctCompletion'] > 100]
+    if len(over_100) > 0:
+        st.error(f"❌ Found {len(over_100)} combinations with >100% completion - clean data issue!")
+        st.dataframe(over_100)
+    else:
+        st.success("✅ All completion rates ≤ 100% - clean data confirmed!")
     
-    # Show comparison with unadjusted rates
-    st.write("### Methodology Comparison:")
+    # Show breakdown by trigger type
+    st.write("### Summary by Trigger Type:")
+    trigger_summary = (
+        summary.groupby(['Direction', 'TriggerTime'])
+        .agg({
+            'NumTriggers': 'first',  # Same for all goals of same trigger
+            'NumHits': 'sum',
+            'PctCompletion': 'mean'
+        })
+        .reset_index()
+    )
+    st.dataframe(trigger_summary)
     
-    # Calculate what the old method would give
-    old_summary_sample = summary.head(5).copy()
-    old_summary_sample['OldDenominator'] = old_summary_sample['NumTriggers'] + 10  # Simulate higher denominator
-    old_summary_sample['OldPctCompletion'] = (old_summary_sample['NumHits'] / old_summary_sample['OldDenominator'] * 100).round(2)
-    
-    comparison = old_summary_sample[['TriggerLevel', 'TriggerTime', 'PctCompletion', 'OldPctCompletion']].copy()
-    comparison.columns = ['TriggerLevel', 'TriggerTime', 'YourExcelMethod', 'OldMethod']
-    st.dataframe(comparison)
-    st.write("**Your Excel Method should show higher success rates (more realistic for trading)**")
-    
-    # Save corrected summary
+    # Save summary
     csv_buffer = io.StringIO()
     summary.to_csv(csv_buffer, index=False)
     
     st.download_button(
-        label="📥 Download Corrected Summary CSV",
+        label="📥 Download Clean Summary CSV",
         data=csv_buffer.getvalue(),
-        file_name="atr_dashboard_summary_CORRECTED.csv",
+        file_name="atr_dashboard_summary_SIMPLE.csv",
         mime="text/csv"
     )
     
@@ -236,20 +213,16 @@ if uploaded_file is not None:
     with col1:
         st.metric("Summary Records", len(summary))
     with col2:
-        total_adjusted_triggers = summary['NumTriggers'].sum()
-        st.metric("Total Adjusted Triggers", f"{total_adjusted_triggers:,}")
+        unique_triggers = summary.groupby(['Direction', 'TriggerLevel', 'TriggerTime'])['NumTriggers'].first().sum()
+        st.metric("Total Triggers", f"{unique_triggers:,}")
     with col3:
         total_hits = summary['NumHits'].sum()
-        st.metric("Total Valid Hits", f"{total_hits:,}")
+        st.metric("Total Hits", f"{total_hits:,}")
     with col4:
-        overall_rate = (total_hits / total_adjusted_triggers * 100) if total_adjusted_triggers > 0 else 0
+        overall_rate = (total_hits / unique_triggers * 100) if unique_triggers > 0 else 0
         st.metric("Overall Success Rate", f"{overall_rate:.1f}%")
     
-    st.success("🎉 **SUCCESS!** Summary generated using your Excel methodology!")
-    st.write("**Key improvements:**")
-    st.write("✅ Same-time triggers subtracted from denominators")
-    st.write("✅ Same-time goals excluded from numerators") 
-    st.write("✅ Success rates should now match your Excel analysis")
+    st.success("🎉 **Simple summary complete!** Ready for dashboard consumption.")
 
 else:
-    st.info("👆 Upload your combined_trigger_goal_results_ACTUALLY_FINAL.csv to generate corrected summary")
+    st.info("👆 Upload your clean trigger-goal results CSV to generate simple summary")
