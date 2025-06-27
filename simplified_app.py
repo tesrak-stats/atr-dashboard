@@ -170,7 +170,7 @@ for level in fib_levels:
                     x=[t], y=[level + 0.015],
                     mode="text", text=[""],  # Blank text
                     hovertext=[hover], hoverinfo="text",
-                    textfont=dict(color="white", size=12),
+                    textfont=dict(color="white", size=13),
                     showlegend=False
                 ))
             else:
@@ -179,7 +179,7 @@ for level in fib_levels:
                     x=[t], y=[level + 0.015],
                     mode="text", text=[""],
                     hoverinfo="skip",
-                    textfont=dict(color="white", size=12),
+                    textfont=dict(color="white", size=13),
                     showlegend=False
                 ))
             continue
@@ -200,7 +200,7 @@ for level in fib_levels:
                     x=[t], y=[level + 0.015],
                     mode="text", text=[display_text],
                     hovertext=[hover], hoverinfo="text",
-                    textfont=dict(color="white", size=12),
+                    textfont=dict(color="white", size=13),
                     showlegend=False
                 ))
             else:
@@ -263,7 +263,7 @@ for level in fib_levels:
                     x=[t], y=[level + 0.015],
                     mode="text", text=[display],
                     hovertext=[hover], hoverinfo="text",
-                    textfont=dict(color="white", size=12),
+                    textfont=dict(color="white", size=13),
                     showlegend=False
                 ))
 
