@@ -266,7 +266,7 @@ if uploaded_file is not None:
     st.dataframe(top_performers[['Direction', 'TriggerLevel', 'TriggerTime', 'GoalLevel', 'GoalTime', 'ActionableTriggers', 'NumHits', 'PctCompletion']])
     
     # Create final summary for dashboard (with OPEN completion data)
-    dashboard_summary = summary[['Direction', 'TriggerLevel', 'TriggerTime', 'GoalLevel', 'GoalTime', 'ActionableTriggers', 'NumHits', 'PctCompletion', 'TotalOpenCompletions']].copy()
+    dashboard_summary = summary[['Direction', 'TriggerLevel', 'TriggerTime', 'GoalLevel', 'GoalTime', 'ActionableTriggers', 'NumHits', 'PctCompletion', 'OpenCompletions', 'TotalOpenCompletions']].copy()
     dashboard_summary = dashboard_summary.rename(columns={'ActionableTriggers': 'NumTriggers'})
     
     # Save enhanced summary
