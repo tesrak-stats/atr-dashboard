@@ -37,13 +37,13 @@ def bucket_time(time_value):
     else:
         return "1600"
 
-st.title("🎯 Goal-Specific Denominators Summary")
-st.write("**Calculates different denominators per goal by removing goal-specific OPEN completions**")
+st.title("🎯 Enhanced Summary with OPEN Completion Data")
+st.write("**Includes OPEN completion counts for dashboard tooltips**")
 
-uploaded_file = st.file_uploader("Upload combined_trigger_goal_results_CORRECTED.csv", type="csv")
+uploaded_file = st.file_uploader("Upload combined_trigger_goal_results_PERFECT.csv", type="csv")
 
 if uploaded_file is not None:
-    # Load corrected results with OPEN completions
+    # Load results with OPEN completions
     df = pd.read_csv(uploaded_file)
     
     st.success(f"📊 Loaded {len(df)} records with OPEN completions")
@@ -59,8 +59,8 @@ if uploaded_file is not None:
         st.metric("OPEN Goal Records", open_goals)
     
     if same_time_count == 0 and open_goals == 0:
-        st.error("❌ This doesn't appear to be the corrected data with OPEN completions!")
-        st.info("Make sure you're uploading the output from the corrected run_generate.py")
+        st.error("❌ This doesn't appear to have OPEN completion data!")
+        st.info("Make sure you're uploading the output from the PERFECT systematic generator")
     else:
         st.success("✅ Confirmed data has OPEN completions for processing")
     
@@ -116,11 +116,17 @@ if uploaded_file is not None:
     st.write(f"✅ Found {len(open_completion_counts)} trigger-goal combinations with OPEN completions")
     st.write(f"✅ Total OPEN completions: {open_completion_counts['OpenCompletions'].sum():,}")
     
-    # Show sample OPEN completions
-    if len(open_completion_counts) > 0:
-        st.write("### Sample OPEN Completions:")
-        sample_open = open_completion_counts.head(10)
-        st.dataframe(sample_open)
+    # STEP 2.5: Count total OPEN completions per trigger (for dashboard tooltip)
+    st.write("## Step 2.5: Count Total OPEN Completions per Trigger")
+    
+    open_completions_per_trigger = (
+        open_completions
+        .groupby(['TriggerLevel', 'TriggerTimeBucket', 'Direction'])
+        .size()
+        .reset_index(name='TotalOpenCompletions')
+    )
+    
+    st.write(f"✅ OPEN completions per trigger calculated")
     
     # STEP 3: Count non-OPEN goal hits per trigger-goal-time combination
     st.write("## Step 3: Count Non-OPEN Goal Hits")
@@ -163,6 +169,14 @@ if uploaded_file is not None:
             (total_trigger_counts['TriggerTimeBucket'] == trigger_time) &
             (total_trigger_counts['Direction'] == direction)
         ]['TotalTriggers'].iloc[0]
+        
+        # Get total OPEN completions for this trigger (for dashboard tooltip)
+        total_open_comps = open_completions_per_trigger[
+            (open_completions_per_trigger['TriggerLevel'] == trigger_level) &
+            (open_completions_per_trigger['TriggerTimeBucket'] == trigger_time) &
+            (open_completions_per_trigger['Direction'] == direction)
+        ]
+        total_open_completions = total_open_comps['TotalOpenCompletions'].iloc[0] if len(total_open_comps) > 0 else 0
         
         for goal_level in all_goals:
             if goal_level == trigger_level:  # Skip same level
@@ -209,7 +223,8 @@ if uploaded_file is not None:
                     'OpenCompletions': open_completions_count,
                     'ActionableTriggers': actionable_triggers,
                     'NumHits': num_hits,
-                    'PctCompletion': round(pct_completion, 2)
+                    'PctCompletion': round(pct_completion, 2),
+                    'TotalOpenCompletions': total_open_completions  # For dashboard tooltip
                 })
     
     summary = pd.DataFrame(summary_rows)
@@ -229,39 +244,39 @@ if uploaded_file is not None:
     
     # Show validation example
     st.write("## Validation Example")
-    st.write("**Compare the 0.382 OPEN → 0.5 vs 0.618 example:**")
+    st.write("**Compare the -1 OPEN → 1 vs other goals example:**")
     
     example_filter = (
-        (summary['Direction'] == 'Upside') &
-        (summary['TriggerLevel'] == 0.382) &
+        (summary['Direction'] == 'Below') &
+        (summary['TriggerLevel'] == -1.0) &
         (summary['TriggerTime'] == 'OPEN') &
         (summary['GoalTime'] == '0900') &
-        (summary['GoalLevel'].isin([0.5, 0.618]))
+        (summary['GoalLevel'].isin([0.236, 1.0]))
     )
     
-    example_data = summary[example_filter][['GoalLevel', 'TotalTriggers', 'OpenCompletions', 'ActionableTriggers', 'NumHits', 'PctCompletion']]
+    example_data = summary[example_filter][['GoalLevel', 'TotalTriggers', 'OpenCompletions', 'ActionableTriggers', 'NumHits', 'PctCompletion', 'TotalOpenCompletions']]
     
     if len(example_data) > 0:
         st.dataframe(example_data)
-        st.write("**Key insight:** Different ActionableTriggers denominators explain the counter-intuitive percentages!")
+        st.write("**Key insight:** Different ActionableTriggers denominators with OPEN completion data!")
     
     # Show top performing combinations
     st.write("### Top Performing Combinations:")
     top_performers = summary[summary['ActionableTriggers'] >= 20].nlargest(10, 'PctCompletion')
     st.dataframe(top_performers[['Direction', 'TriggerLevel', 'TriggerTime', 'GoalLevel', 'GoalTime', 'ActionableTriggers', 'NumHits', 'PctCompletion']])
     
-    # Create final summary for dashboard (simplified columns)
-    dashboard_summary = summary[['Direction', 'TriggerLevel', 'TriggerTime', 'GoalLevel', 'GoalTime', 'ActionableTriggers', 'NumHits', 'PctCompletion']].copy()
+    # Create final summary for dashboard (with OPEN completion data)
+    dashboard_summary = summary[['Direction', 'TriggerLevel', 'TriggerTime', 'GoalLevel', 'GoalTime', 'ActionableTriggers', 'NumHits', 'PctCompletion', 'TotalOpenCompletions']].copy()
     dashboard_summary = dashboard_summary.rename(columns={'ActionableTriggers': 'NumTriggers'})
     
-    # Save corrected summary
+    # Save enhanced summary
     csv_buffer = io.StringIO()
     dashboard_summary.to_csv(csv_buffer, index=False)
     
     st.download_button(
-        label="📥 Download Goal-Specific Summary CSV",
+        label="📥 Download Enhanced Summary CSV",
         data=csv_buffer.getvalue(),
-        file_name="atr_dashboard_summary_GOAL_SPECIFIC.csv",
+        file_name="atr_dashboard_summary_ENHANCED.csv",
         mime="text/csv"
     )
     
@@ -281,8 +296,8 @@ if uploaded_file is not None:
         overall_rate = (total_hits / total_actionable * 100) if total_actionable > 0 else 0
         st.metric("Overall Actionable Rate", f"{overall_rate:.1f}%")
     
-    st.success("🎉 **Goal-specific summary complete!** Each goal now has its own proper denominator.")
-    st.write("**Key improvement:** Denominators are now goal-specific, accounting for different OPEN completion rates per goal.")
+    st.success("🎉 **Enhanced summary complete!** Includes OPEN completion data for dashboard tooltips.")
+    st.write("**Key improvement:** Dashboard can now show accurate OPEN completion counts in tooltips.")
 
 else:
-    st.info("👆 Upload your corrected trigger-goal results CSV (with OPEN completions) to generate goal-specific summary")
+    st.info("👆 Upload your PERFECT trigger-goal results CSV to generate enhanced summary")
