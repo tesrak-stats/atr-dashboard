@@ -101,19 +101,21 @@ for _, row in filtered.iterrows():
         "pct": row["PctCompletion"]
     }
 
-# --- Get OPEN trigger data for tooltip ---
+# --- Get OPEN trigger data for tooltip (goal-specific) ---
 open_trigger_data = {}
-if trigger_time == "OPEN":
-    # For OPEN triggers, get the trigger count and OPEN completions from enhanced data
-    if len(filtered) > 0:
-        open_triggers = filtered['NumTriggers'].iloc[0]
-        # Get OPEN completions from the TotalOpenCompletions column
-        if 'TotalOpenCompletions' in filtered.columns:
-            open_completions = filtered['TotalOpenCompletions'].iloc[0]
+if trigger_time == "OPEN" and len(filtered) > 0:
+    # Get trigger count (same for all goals)
+    open_triggers = filtered['NumTriggers'].iloc[0]
+    
+    # Create goal-specific OPEN completion data
+    for _, row in filtered.iterrows():
+        goal_level = row['GoalLevel']
+        if 'OpenCompletions' in row:
+            open_completions = row['OpenCompletions']
         else:
             open_completions = "N/A"
         
-        open_trigger_data = {
+        open_trigger_data[goal_level] = {
             "triggers": open_triggers,
             "completions": open_completions
         }
@@ -127,13 +129,13 @@ for level in fib_levels:
         if t in invisible_fillers or t == "1600":
             continue
             
-        # Handle OPEN column specially - blank text but keep tooltip
+        # Handle OPEN column specially - blank text but show goal-specific tooltip
         if t == "OPEN":
-            if trigger_time == "OPEN" and len(open_trigger_data) > 0:
-                # Blank text but show tooltip with OPEN trigger info
-                triggers = open_trigger_data["triggers"]
-                completions = open_trigger_data["completions"]
-                hover = f"OPEN Triggers: {triggers}, Completed at OPEN: {completions}"
+            if trigger_time == "OPEN" and level in open_trigger_data:
+                # Show goal-specific OPEN completion data
+                triggers = open_trigger_data[level]["triggers"]
+                completions = open_trigger_data[level]["completions"]
+                hover = f"OPEN Triggers: {triggers}, Goal {level} Completed at OPEN: {completions}"
                 
                 fig.add_trace(go.Scatter(
                     x=[t], y=[level + 0.015],
@@ -143,7 +145,7 @@ for level in fib_levels:
                     showlegend=False
                 ))
             else:
-                # Empty OPEN column for non-OPEN triggers
+                # Empty OPEN column for non-OPEN triggers or missing data
                 fig.add_trace(go.Scatter(
                     x=[t], y=[level + 0.015],
                     mode="text", text=[""],
