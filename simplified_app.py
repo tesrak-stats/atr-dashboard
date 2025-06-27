@@ -72,7 +72,7 @@ price_direction = col1.selectbox("Price", sorted(df["Direction"].unique()),
 trigger_level = col2.selectbox("Trigger Level", sorted(set(df["TriggerLevel"]).union(fib_levels)), 
                               index=sorted(set(df["TriggerLevel"]).union(fib_levels)).index(0.0))
 
-trigger_time = col3.selectbox("Trigger Time", ["OPEN"] + visible_hours, index=0)
+trigger_time = col3.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
 
 # --- Filter and simple lookup ---
 filtered = df[
