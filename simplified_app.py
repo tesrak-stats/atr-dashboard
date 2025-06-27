@@ -291,6 +291,19 @@ for level, (color, width) in fibo_styles.items():
         line=dict(color=color, width=width), layer="below"
     )
 
+# --- Vertical separator lines ---
+# Separator between OPEN and 0900 (in the 0830 spacer position)
+fig.add_shape(
+    type="line", x0=0.08, x1=0.08, xref="paper", y0=-1.2, y1=1.2, yref="y",
+    line=dict(color="lightgray", width=1), layer="below"
+)
+
+# Separator between 1500 and TOTAL (in the spacer position)
+fig.add_shape(
+    type="line", x0=0.85, x1=0.85, xref="paper", y0=-1.2, y1=1.2, yref="y",
+    line=dict(color="lightgray", width=1), layer="below"
+)
+
 # --- Chart layout ---
 fig.update_layout(
     title=f"{price_direction} | Trigger {trigger_level} at {trigger_time}",
