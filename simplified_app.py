@@ -149,8 +149,8 @@ fig = go.Figure()
 # --- Matrix cells ---
 for level in fib_levels:
     for t in time_order:
-        if t in invisible_fillers:
-            # Skip invisible filler columns completely - don't add any trace
+        # Skip all invisible filler columns completely
+        if t in ["0830", "0930", "1030", "1130", "1230", "1330", "1430", "1530", "SPACER"]:
             continue
             
         # Handle OPEN column specially - blank text but show goal-specific tooltip
@@ -307,7 +307,7 @@ fig.update_layout(
     plot_bgcolor="black",
     paper_bgcolor="black",
     font=dict(color="white"),
-    height=900,
+    height=700,  # Reduced from 900
     width=1400,
     margin=dict(l=80, r=60, t=60, b=60)
 )
