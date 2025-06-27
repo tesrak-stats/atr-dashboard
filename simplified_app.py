@@ -292,15 +292,15 @@ for level, (color, width) in fibo_styles.items():
     )
 
 # --- Vertical separator lines ---
-# Separator between OPEN and 0900 
+# Separator between OPEN and 0900 (moved right)
 fig.add_shape(
-    type="line", x0=0.5, x1=0.5, xref="x", y0=-1.2, y1=1.2, yref="y",
+    type="line", x0=1.5, x1=1.5, xref="x", y0=-1.2, y1=1.2, yref="y",
     line=dict(color="lightgray", width=1), layer="below"
 )
 
-# Separator between 1500 and TOTAL (trying 17)
+# Separator between 1500 and TOTAL (trying 16)
 fig.add_shape(
-    type="line", x0=17, x1=17, xref="x", y0=-1.2, y1=1.2, yref="y",
+    type="line", x0=16, x1=16, xref="x", y0=-1.2, y1=1.2, yref="y",
     line=dict(color="lightgray", width=1), layer="below"
 )
 
