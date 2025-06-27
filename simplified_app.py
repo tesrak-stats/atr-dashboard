@@ -3,12 +3,40 @@ import pandas as pd
 import plotly.graph_objects as go
 from generate_daily_atr_levels import get_latest_atr_levels
 
-# --- Load pre-calculated summary data ---
-df = pd.read_csv("atr_dashboard_summary_SIMPLE.csv")
+# --- Ticker Configuration (expandable for future tickers) ---
+ticker_config = {
+    "SPX": {
+        "summary_file": "atr_dashboard_summary_GOAL_SPECIFIC.csv",
+        "display_name": "S&P 500 (SPX)"
+    }
+    # Future tickers can be added here:
+    # "QQQ": {
+    #     "summary_file": "atr_dashboard_summary_QQQ.csv", 
+    #     "display_name": "Nasdaq 100 (QQQ)"
+    # }
+}
+
+# --- Page Layout with Ticker Selector ---
+col_title1, col_title2 = st.columns([4, 1])
+with col_title1:
+    st.title("📈 ATR Levels Roadmap")
+with col_title2:
+    selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
+
+# --- Load data based on selected ticker ---
+try:
+    df = pd.read_csv(ticker_config[selected_ticker]["summary_file"])
+    st.success(f"✅ Loaded data for {ticker_config[selected_ticker]['display_name']}")
+except FileNotFoundError:
+    st.error(f"❌ Data file not found for {selected_ticker}")
+    st.stop()
+except Exception as e:
+    st.error(f"❌ Error loading data for {selected_ticker}: {str(e)}")
+    st.stop()
 
 # --- Load current ATR-based price levels ---
 try:
-    atr_price_levels = get_latest_atr_levels()
+    atr_price_levels = get_latest_atr_levels()  # Could be ticker-specific in future
 except:
     atr_price_levels = {}
 
@@ -31,17 +59,18 @@ st.title("📈 ATR Levels Roadmap")
 # --- Controls ---
 col1, col2, col3 = st.columns(3)
 
-direction = col1.selectbox("Direction", sorted(df["Direction"].unique()), 
-                          index=sorted(df["Direction"].unique()).index("Above"))
+# Changed Direction to Price
+price_direction = col1.selectbox("Price", sorted(df["Direction"].unique()), 
+                                index=sorted(df["Direction"].unique()).index("Above"))
 
 trigger_level = col2.selectbox("Trigger Level", sorted(set(df["TriggerLevel"]).union(fib_levels)), 
                               index=sorted(set(df["TriggerLevel"]).union(fib_levels)).index(0.0))
 
 trigger_time = col3.selectbox("Trigger Time", ["OPEN"] + visible_hours, index=0)
 
-# --- Simple filter (no aggregation needed) ---
+# --- Filter and simple lookup ---
 filtered = df[
-    (df["Direction"] == direction) &
+    (df["Direction"] == price_direction) &
     (df["TriggerLevel"] == trigger_level) &
     (df["TriggerTime"] == trigger_time)
 ].copy()
@@ -72,42 +101,102 @@ for _, row in filtered.iterrows():
         "pct": row["PctCompletion"]
     }
 
+# --- Get OPEN trigger data for tooltip ---
+open_trigger_data = {}
+if trigger_time == "OPEN":
+    # For OPEN triggers, get the trigger count (should be same for all goals of same trigger)
+    if len(filtered) > 0:
+        open_triggers = filtered['NumTriggers'].iloc[0]
+        # Count completed at OPEN (same-time scenarios)
+        open_completions = len(filtered[(filtered['GoalTime'] == 'OPEN')])
+        open_trigger_data = {
+            "triggers": open_triggers,
+            "completions": open_completions
+        }
+
 # --- Build chart ---
 fig = go.Figure()
 
 # --- Matrix cells ---
 for level in fib_levels:
     for t in time_order:
-        if t in invisible_fillers or t in ["OPEN", "1600"]:
+        if t in invisible_fillers or t == "1600":
             continue
             
+        # Handle OPEN column specially
+        if t == "OPEN":
+            if trigger_time == "OPEN" and len(open_trigger_data) > 0:
+                # Show OPEN trigger info with tooltip
+                triggers = open_trigger_data["triggers"]
+                completions = open_trigger_data["completions"]
+                hover = f"OPEN Triggers: {triggers}, Completed at OPEN: {completions}"
+                
+                fig.add_trace(go.Scatter(
+                    x=[t], y=[level + 0.015],
+                    mode="text", text=["OPEN"],
+                    hovertext=[hover], hoverinfo="text",
+                    textfont=dict(color="white", size=12),
+                    showlegend=False
+                ))
+            else:
+                # Empty OPEN column for non-OPEN triggers
+                fig.add_trace(go.Scatter(
+                    x=[t], y=[level + 0.015],
+                    mode="text", text=[""],
+                    hoverinfo="skip",
+                    textfont=dict(color="white", size=12),
+                    showlegend=False
+                ))
+            continue
+        
+        # Regular time columns
         key = (level, t)
         if key in data_lookup:
             data = data_lookup[key]
             pct = data["pct"]
             hits = data["hits"]
             total = data["triggers"]
-            warn = " ⚠️" if total < 30 else ""
-            hover = f"{pct:.1f}% ({hits}/{total}){warn}"
+            
+            # Blank out same level (trigger level = goal level)
+            if level == trigger_level:
+                display_text = ""
+                hover = "Same level as trigger"
+            # Blank out times before selected trigger time
+            elif time_order.index(t) < time_order.index(trigger_time):
+                display_text = ""
+                hover = "Before trigger time"
+            # Show percentage for valid combinations
+            else:
+                warn = " ⚠️" if total < 30 else ""
+                display_text = f"{pct:.1f}%"
+                hover = f"{pct:.1f}% ({hits}/{total}){warn}"
             
             fig.add_trace(go.Scatter(
                 x=[t], y=[level + 0.015],
-                mode="text", text=[f"{pct:.1f}%"],
+                mode="text", text=[display_text],
                 hovertext=[hover], hoverinfo="text",
                 textfont=dict(color="white", size=12),
                 showlegend=False
             ))
         else:
             # No data for this combination
-            if time_order.index(t) < time_order.index(trigger_time):
+            if level == trigger_level:
+                # Blank out same level
                 display = ""
+                hover = "Same level as trigger"
+            elif time_order.index(t) < time_order.index(trigger_time):
+                # Blank out times before trigger time
+                display = ""
+                hover = "Before trigger time"
             else:
+                # Show 0.0% for valid but no-data combinations
                 display = "0.0%"
+                hover = "No data available"
                 
             fig.add_trace(go.Scatter(
                 x=[t], y=[level + 0.015],
                 mode="text", text=[display],
-                hoverinfo="skip",
+                hovertext=[hover], hoverinfo="text",
                 textfont=dict(color="white", size=12),
                 showlegend=False
             ))
@@ -138,7 +227,7 @@ for level, (color, width) in fibo_styles.items():
 
 # --- Chart layout ---
 fig.update_layout(
-    title=f"{direction} | Trigger {trigger_level} at {trigger_time}",
+    title=f"{price_direction} | Trigger {trigger_level} at {trigger_time}",
     xaxis=dict(
         title="Hour Goal Was Reached",
         categoryorder="array",
