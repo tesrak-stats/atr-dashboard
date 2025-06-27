@@ -298,9 +298,9 @@ fig.add_shape(
     line=dict(color="lightgray", width=1), layer="below"
 )
 
-# Separator between 1500 and TOTAL (trying 15)
+# Separator between 1500 and TOTAL (trying 14.5)
 fig.add_shape(
-    type="line", x0=15, x1=15, xref="x", y0=-1.2, y1=1.2, yref="y",
+    type="line", x0=14.5, x1=14.5, xref="x", y0=-1.2, y1=1.2, yref="y",
     line=dict(color="lightgray", width=1), layer="below"
 )
 
@@ -357,25 +357,3 @@ if atr_price_levels:
     )
 
 st.plotly_chart(fig, use_container_width=False)
-
-# --- Optional: Show filtered data summary ---
-if len(filtered) > 0:
-    with st.expander("📊 Data Summary for Current Selection"):
-        total_triggers = filtered['NumTriggers'].iloc[0] if len(filtered) > 0 else 0
-        total_hits = filtered['NumHits'].sum()
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Total Triggers", total_triggers)
-        with col2:
-            st.metric("Total Hits", total_hits)
-        with col3:
-            avg_hit_rate = filtered['PctCompletion'].mean()
-            st.metric("Avg Hit Rate", f"{avg_hit_rate:.1f}%")
-        
-        # Show top performing goals
-        top_goals = filtered.nlargest(5, 'PctCompletion')[['GoalLevel', 'GoalTime', 'NumHits', 'PctCompletion']]
-        st.write("**Top 5 Goal Combinations:**")
-        st.dataframe(top_goals, hide_index=True)
-else:
-    st.info("No data available for this trigger combination.")
