@@ -476,19 +476,34 @@ if price_levels_dict:
         level_key = f"{level:+.3f}"
         price_val = price_levels_dict.get(level_key, 0)
         
-        # Add price text at the same Y-position as percentage text
+        # Add price text positioned to the right of TOTAL column
         fig.add_trace(go.Scatter(
-            x=["TOTAL"],  # Position at far right
+            x=[1.05],  # Position beyond the right edge of the chart
             y=[level + text_offset],  # Same offset as percentage text
             mode="text",
             text=[f"{price_val:.2f}"],
             textfont=dict(color="lightgray", size=10 * font_size_multiplier),
-            textposition="middle right",
+            textposition="middle left",
             showlegend=False,
             hoverinfo="skip",
             xaxis="x",
-            yaxis="y"  # Use main Y-axis so it moves with panning
+            yaxis="y",
+            xref="paper"  # Use paper coordinates so it's always at the right edge
         ))
+
+# Add "Price Levels" title on the right
+fig.add_annotation(
+    text="Price Levels",
+    x=1.05,
+    y=0.5,
+    xref="paper",
+    yref="paper",
+    showarrow=False,
+    textangle=90,
+    font=dict(color="white", size=12 * font_size_multiplier),
+    xanchor="center",
+    yanchor="middle"
+)
 
 st.plotly_chart(fig, use_container_width=use_container_width)
 
