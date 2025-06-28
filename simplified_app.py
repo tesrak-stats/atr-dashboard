@@ -436,40 +436,6 @@ fig.update_layout(
     margin=dict(l=60 if not show_expanded_view else 80, r=100 if not show_expanded_view else 150, t=40 if not show_expanded_view else 60, b=40 if not show_expanded_view else 60)
 )
 
-# --- Price ladder on right Y-axis ---
-if price_levels_dict:
-    price_values = []
-    for level in display_fib_levels:
-        level_key = f"{level:+.3f}"
-        price_val = price_levels_dict.get(level_key, 0)
-        price_values.append(price_val)
-    
-    fig.add_trace(go.Scatter(
-        x=["OPEN"], y=[0.0],
-        mode="markers",
-        marker=dict(opacity=0, size=1),
-        yaxis="y2",
-        showlegend=False,
-        hoverinfo="skip"
-    ))
-    
-    fig.update_layout(
-        yaxis2=dict(
-            title="Price Levels",
-            overlaying="y",
-            side="right",
-            tickmode="array",
-            tickvals=display_fib_levels,  # Align with horizontal lines, not offset text
-            ticktext=[f"{p:.2f}" for p in price_values],
-            tickfont=dict(color="white", size=10 * font_size_multiplier),
-            showgrid=False,
-            range=[min(display_fib_levels)-0.1, max(display_fib_levels)+0.1],
-            fixedrange=True,
-            anchor="free",
-            position=1.0
-        )
-    )
-
 # --- Price labels as text annotations (locked to lines) ---
 if price_levels_dict:
     for level in display_fib_levels:
