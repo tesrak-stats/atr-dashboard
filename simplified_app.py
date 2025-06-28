@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.17 - Fixed Coordinates System") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.18 - Adjusted Positioning for Mobile") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -445,7 +445,7 @@ if price_levels_dict:
         # Use annotations with paper coordinates for proper positioning
         fig.add_annotation(
             text=f"{price_val:.2f}",
-            x=1.15,  # 15% beyond right edge in paper coordinates
+            x=1.08,  # Reduced from 1.15 to 1.08 (8% beyond right edge)
             y=level + text_offset,  # Y in data coordinates (aligned with lines)
             xref="paper",
             yref="y",  # Y follows the data coordinate system
@@ -458,7 +458,7 @@ if price_levels_dict:
 # Add "Price Level" title on the far right using paper coordinates
 fig.add_annotation(
     text="Price Level",
-    x=1.15,  # Same position as price values
+    x=1.05,  # Even closer - 5% beyond right edge
     y=0.5,   # Middle of chart in paper coordinates
     xref="paper",
     yref="paper",
