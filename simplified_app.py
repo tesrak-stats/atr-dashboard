@@ -464,7 +464,7 @@ if price_levels_dict:
             side="right",
             tickmode="array",
             tickvals=fib_levels,  # Align with actual Fib levels, not offset text
-            ticktext=[f"{p:.0f}" for p in price_values],
+            ticktext=[f"{p:.2f}" for p in price_values],
             tickfont=dict(color="white", size=11),
             showgrid=False,
             range=[min(fib_levels)-0.1, max(fib_levels)+0.1],
