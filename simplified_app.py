@@ -476,9 +476,9 @@ if price_levels_dict:
         level_key = f"{level:+.3f}"
         price_val = price_levels_dict.get(level_key, 0)
         
-        # Add price text positioned to the right of TOTAL column
+        # Add price text positioned far to the right
         fig.add_trace(go.Scatter(
-            x=[1.05],  # Position beyond the right edge of the chart
+            x=[len(display_columns) + 0.5],  # Position beyond last column
             y=[level + text_offset],  # Same offset as percentage text
             mode="text",
             text=[f"{price_val:.2f}"],
@@ -487,17 +487,16 @@ if price_levels_dict:
             showlegend=False,
             hoverinfo="skip",
             xaxis="x",
-            yaxis="y",
-            xref="paper"  # Use paper coordinates so it's always at the right edge
+            yaxis="y"
         ))
 
 # Add "Price Levels" title on the right
 fig.add_annotation(
     text="Price Levels",
-    x=1.05,
-    y=0.5,
-    xref="paper",
-    yref="paper",
+    x=len(display_columns) + 0.5,
+    y=sum(display_fib_levels) / len(display_fib_levels),  # Center vertically
+    xref="x",
+    yref="y", 
     showarrow=False,
     textangle=90,
     font=dict(color="white", size=12 * font_size_multiplier),
