@@ -83,6 +83,17 @@ def calculate_atr_levels(ticker="^GSPC", atr_window=14):
         # Use latest complete day's data (must have valid ATR)
         # Find the latest row with a valid ATR value
         valid_atr_rows = df[df["ATR"].notna()]
+        
+        # DEBUG: Check what's happening with valid ATR rows
+        print(f"🔍 DEBUG INFO:")
+        print(f"   Total downloaded rows: {len(df)}")
+        print(f"   Valid ATR rows: {len(valid_atr_rows)}")
+        if not valid_atr_rows.empty:
+            print(f"   First valid ATR date: {valid_atr_rows.iloc[0].name.strftime('%Y-%m-%d')}")
+            print(f"   Last valid ATR date: {valid_atr_rows.iloc[-1].name.strftime('%Y-%m-%d')}")
+            print(f"   First valid ATR value: {valid_atr_rows.iloc[0]['ATR']:.4f}")
+            print(f"   Last valid ATR value: {valid_atr_rows.iloc[-1]['ATR']:.4f}")
+        
         if valid_atr_rows.empty:
             raise ValueError(f"No valid ATR values found. Need at least {atr_window + 1} days of data.")
         
