@@ -52,7 +52,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.6 - Fixed Positioning & Text") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.7 - Fixed Count & Positioning") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -82,8 +82,10 @@ else:
 
 # --- What's This? Section (Request #7) ---
 with st.expander("❓ What's This? - How to Use This Chart"):
+    # Get actual unique trading days count
+    unique_days = df['Date'].nunique() if 'Date' in df.columns else len(df)
     st.markdown(f"""
-    **This chart shows the probability of reaching price levels based on historical data from {len(df)} trading days.**
+    **This chart shows the probability of reaching price levels based on historical data from {unique_days:,} trading days.**
     
     📊 **How to Read:**
     - **Rows (Fib Levels):** Target price levels based on ATR (Average True Range)
@@ -101,7 +103,8 @@ with st.expander("❓ What's This? - How to Use This Chart"):
     """)
 
 # --- Chart Title and Labels (Request #8) ---
-st.subheader(f"📈 Probability of Reaching Price Levels (%) - Based on {len(df):,} Trading Days")
+unique_days = df['Date'].nunique() if 'Date' in df.columns else len(df)
+st.subheader(f"📈 Probability of Reaching Price Levels (%) - Based on {unique_days:,} Trading Days")
 st.caption("Historical success rates based on S&P 500 data")
 
 # --- Display configuration ---
@@ -274,7 +277,7 @@ for level in fib_levels:
                 hover = f"Total: {pct:.1f}% ({hits}/{triggers}){warn}"
                 
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + 0.015],  # Add offset back
+                    x=[t], y=[level + 0.03],  # Match increased offset
                     mode="text", text=[display_text],
                     hovertext=[hover], hoverinfo="text",
                     textfont=dict(color=line_color, size=font_size),
@@ -343,7 +346,7 @@ for level in fib_levels:
                     hover = "No data available"
                     
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + 0.015],  # Add offset back
+                    x=[t], y=[level + 0.03],  # Match increased offset
                     mode="text", text=[display],
                     hovertext=[hover], hoverinfo="text",
                     textfont=dict(color=line_color, size=font_size),
@@ -422,14 +425,14 @@ if price_levels_dict:
             overlaying="y",
             side="right",
             tickmode="array",
-            tickvals=[level + 0.015 for level in fib_levels],  # Offset price levels up
+            tickvals=[level + 0.03 for level in fib_levels],  # Match text offset
             ticktext=[f"{p:.0f}" for p in price_values],
             tickfont=dict(color="white", size=11),  # White per request #3
             showgrid=False,
             range=[min(fib_levels)-0.1, max(fib_levels)+0.1],
             fixedrange=True,  # Lock axis in place per request #4
             anchor="free",
-            position=0.95  # Move further left to avoid overlap with TOTAL column
+            position=0.88  # Move much further left to avoid TOTAL overlap
         )
     )
 
