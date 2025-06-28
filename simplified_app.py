@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.24 - Fixed OPEN Trigger Time Logic") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.25 - Fixed TOTAL Column Positioning") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -209,8 +209,9 @@ if show_expanded_view:
     time_order.append("SPACER")
     time_order.append("TOTAL")
 else:
-    # Simplified time_order for focused view - no spacers
-    time_order = display_columns
+    # Focused view - include spacer before TOTAL for proper positioning
+    time_columns_without_total = [col for col in display_columns if col != "TOTAL"]
+    time_order = time_columns_without_total + ["SPACER", "TOTAL"]
 
 # --- Filter and simple lookup ---
 filtered = df[
