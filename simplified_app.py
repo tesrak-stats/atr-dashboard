@@ -78,8 +78,12 @@ if atr_data.get("status") == "success":
     data_age = atr_data.get('data_age_days', 0)
     if data_age > 0:
         st.warning(f"⚠️ ATR data is {data_age} day(s) old")
+        
+    # Extract price levels for later use
+    price_levels_dict = atr_data.get("levels", {})
 else:
     atr_price_levels = {}
+    price_levels_dict = {}
     st.error(f"❌ Could not load ATR levels: {atr_data.get('error', 'Unknown error')}")
 
 # --- Display configuration ---
