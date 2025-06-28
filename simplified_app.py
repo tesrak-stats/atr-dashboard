@@ -353,14 +353,17 @@ fig.update_layout(
     plot_bgcolor="black",
     paper_bgcolor="black",
     font=dict(color="white"),
-    height=700,  # Reduced from 900
-    width=1400,
-    margin=dict(l=80, r=60, t=60, b=60)
+    height=700,
+    width=1600,  # Increased width to make room for right axis
+    margin=dict(l=80, r=150, t=60, b=60)  # Much larger right margin for price labels
 )
 
 # --- Price ladder on right Y-axis ---
 if atr_price_levels and atr_price_levels.get("status") == "success":
     levels_dict = atr_price_levels.get("levels", {})
+    
+    # DEBUG: Print what we're working with
+    st.write("🔍 DEBUG - Available levels keys:", list(levels_dict.keys())[:5])
     
     # Create price labels for each fib level
     price_labels = []
@@ -369,6 +372,9 @@ if atr_price_levels and atr_price_levels.get("status") == "success":
         level_key = f"{level:+.3f}"
         price_value = levels_dict.get(level_key, "")
         price_labels.append(price_value)
+        
+    # DEBUG: Show some price labels
+    st.write("🔍 DEBUG - Sample price labels:", price_labels[:5])
 
     fig.update_layout(
         yaxis=dict(
@@ -382,15 +388,18 @@ if atr_price_levels and atr_price_levels.get("status") == "success":
             side="right",
             tickvals=fib_levels,
             ticktext=[
-                f"{price:.2f}" if isinstance(price, (int, float)) else ""
+                f"{price:.2f}" if isinstance(price, (int, float)) else f"{price}"
                 for price in price_labels
             ],
-            tickfont=dict(color="lightgray"),
-            showgrid=False
+            tickfont=dict(color="lightgray", size=12),
+            showgrid=False,
+            showline=True,
+            linecolor="white"
         )
     )
 else:
     # No ATR data available - show message
     st.warning("⚠️ ATR price levels not available")
+    st.write("🔍 DEBUG - ATR data:", atr_price_levels)
 
 st.plotly_chart(fig, use_container_width=False)
