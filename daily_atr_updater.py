@@ -54,27 +54,20 @@ def calculate_atr_levels(ticker="^GSPC", atr_window=14):
     Uses today's close + ATR to generate tomorrow's levels
     """
     try:
-        # Fetch data - GET 6 MONTHS EXTRA for proper ATR baseline
-        # Based on testing: 3-4 months needed for convergence, 6 months for safety
-        from datetime import datetime, timedelta
+        # Fetch data - GET 6 MONTHS using period parameter
+        # Yahoo Finance sometimes limits start/end date ranges, so use period instead
         
-        # Calculate start date: 6 months ago (use 200 days to be safe)
-        today = datetime.now()
-        six_months_ago = today - timedelta(days=200)  # Extra buffer for weekends/holidays
-        start_date = six_months_ago.strftime("%Y-%m-%d")
-        
-        print(f"🔍 DEBUG: Today is {today.strftime('%Y-%m-%d')}")
-        print(f"🔍 DEBUG: Requesting data from {start_date} onwards")
+        print(f"🔍 DEBUG: Requesting 6 months of data using period='6mo'")
         
         spx = yf.Ticker(ticker)
-        df = spx.history(start=start_date, end=None)
+        df = spx.history(period="6mo")  # Use period instead of start/end dates
         
         if len(df) < atr_window + 1:
             raise ValueError(f"Not enough data. Got {len(df)} days, need {atr_window + 1}")
         
         print(f"📊 Downloaded {len(df)} days of data for proper ATR baseline")
         print(f"📅 Date range: {df.index[0].strftime('%Y-%m-%d')} to {df.index[-1].strftime('%Y-%m-%d')}")
-        print(f"🔄 Using 6+ months of historical data for ATR convergence")
+        print(f"🔄 Using 6 months of historical data for ATR convergence")
         
         # Calculate ATR using TRUE Wilder's method (Excel-matching)
         df["Prev_Close"] = df["Close"].shift(1)
