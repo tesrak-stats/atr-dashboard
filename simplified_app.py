@@ -1,20 +1,52 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
-from generate_daily_atr_levels import get_latest_atr_levels
+import json
+import os
+from daily_atr_updater import calculate_atr_levels
 
 # --- Ticker Configuration (expandable for future tickers) ---
 ticker_config = {
     "SPX": {
         "summary_file": "atr_dashboard_summary_ENHANCED.csv",
-        "display_name": "S&P 500 (SPX)"
+        "display_name": "S&P 500 (SPX)",
+        "ticker_symbol": "^GSPC"
     }
     # Future tickers can be added here:
     # "QQQ": {
     #     "summary_file": "atr_dashboard_summary_QQQ.csv", 
-    #     "display_name": "Nasdaq 100 (QQQ)"
+    #     "display_name": "Nasdaq 100 (QQQ)",
+    #     "ticker_symbol": "QQQ"
     # }
 }
+
+def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
+    """
+    Get ATR levels using the daily_atr_updater function
+    Returns the levels data or empty dict if error
+    """
+    try:
+        # Try to load from saved JSON file first (if exists and recent)
+        json_file = "atr_levels.json"
+        if os.path.exists(json_file):
+            with open(json_file, 'r') as f:
+                saved_data = json.load(f)
+                if saved_data.get("status") == "success":
+                    return saved_data
+        
+        # If no saved file or error, calculate fresh
+        levels_data = calculate_atr_levels(ticker=ticker_symbol)
+        
+        # Save the calculated data for future use
+        if levels_data.get("status") == "success":
+            with open(json_file, 'w') as f:
+                json.dump(levels_data, f, indent=2)
+        
+        return levels_data
+        
+    except Exception as e:
+        st.error(f"Error getting ATR levels: {str(e)}")
+        return {"status": "error", "error": str(e)}
 
 # --- Page Layout with Ticker Selector ---
 col_title1, col_title2 = st.columns([4, 1])
@@ -35,10 +67,20 @@ except Exception as e:
     st.stop()
 
 # --- Load current ATR-based price levels ---
-try:
-    atr_price_levels = get_latest_atr_levels()  # Could be ticker-specific in future
-except:
+ticker_symbol = ticker_config[selected_ticker]["ticker_symbol"]
+atr_data = get_atr_levels_for_ticker(ticker_symbol)
+
+if atr_data.get("status") == "success":
+    atr_price_levels = atr_data
+    st.info(f"📊 ATR levels from {atr_data.get('reference_date', 'unknown date')} | Close: {atr_data.get('reference_close', 'N/A')} | ATR: {atr_data.get('reference_atr', 'N/A')}")
+    
+    # Show data freshness warning if needed
+    data_age = atr_data.get('data_age_days', 0)
+    if data_age > 0:
+        st.warning(f"⚠️ ATR data is {data_age} day(s) old")
+else:
     atr_price_levels = {}
+    st.error(f"❌ Could not load ATR levels: {atr_data.get('error', 'Unknown error')}")
 
 # --- Display configuration ---
 # Only include the exact columns we want to display
@@ -58,9 +100,6 @@ print("Time order:", time_order)
 
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
-
-# --- Page Layout ---
-st.title("📈 ATR Levels Roadmap")
 
 # --- Controls ---
 col1, col2, col3 = st.columns(3)
@@ -291,8 +330,6 @@ for level, (color, width) in fibo_styles.items():
         line=dict(color=color, width=width), layer="below"
 )
 
-# Note: Vertical separator lines removed - positions were 1.5 and 14.5 if needed later
-
 # --- Chart layout ---
 fig.update_layout(
     title=f"{price_direction} | Trigger {trigger_level} at {trigger_time}",
@@ -322,8 +359,9 @@ fig.update_layout(
 )
 
 # --- Price ladder on right Y-axis ---
-if atr_price_levels:
-    price_labels = [atr_price_levels["levels"].get(f"{level:+.3f}", "") for level in fib_levels]
+if atr_price_levels and atr_price_levels.get("status") == "success":
+    levels_dict = atr_price_levels.get("levels", {})
+    price_labels = [levels_dict.get(f"{level:+.3f}", "") for level in fib_levels]
 
     fig.update_layout(
         yaxis=dict(
