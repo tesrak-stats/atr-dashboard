@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.34 - Enable Y-Axis Panning & Load All Data") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.35 - Fixed: Load All Data, Show Focused View") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -290,10 +290,8 @@ fig = go.Figure()
 text_offset = 0.03
 
 # --- Matrix cells ---
-# Load data for all fib levels so they're available when panning
-all_fib_levels = fib_levels if not show_expanded_view else display_fib_levels
-
-for level in all_fib_levels:
+# Load data for all fib levels so they're available when panning, but only show focused ones initially
+for level in fib_levels:  # Load ALL data
     # Always create TOTAL column data, even if not initially visible
     all_possible_columns = display_columns + ["TOTAL"] if "TOTAL" not in display_columns else display_columns
     
