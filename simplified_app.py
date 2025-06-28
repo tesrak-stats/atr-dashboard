@@ -52,7 +52,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.1 - Fixed Styling Error") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.2 - All Styling Fixed") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -233,7 +233,7 @@ for level in fib_levels:
             else:
                 # Empty OPEN column for non-OPEN triggers or missing data
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + 0.015],
+                    x=[t], y=[level],
                     mode="text", text=[""],
                     hoverinfo="skip",
                     textfont=dict(color="white", size=13),
@@ -249,21 +249,33 @@ for level in fib_levels:
                 hits = total_data["hits"]
                 triggers = total_data["triggers"]
                 
+                # Get text styling
+                if level == 0.236:
+                    text_color, font_size = "cyan", 14
+                elif level == -0.236:
+                    text_color, font_size = "yellow", 14
+                elif level in [0.618, -0.618]:
+                    text_color, font_size = "lightgray", 14
+                elif level in [1.0, -1.0]:
+                    text_color, font_size = "lightgray", 16
+                else:
+                    text_color, font_size = "lightgray", 12
+                
                 warn = " ⚠️" if triggers < 30 else ""
                 display_text = f"{pct:.1f}%"
                 hover = f"Total: {pct:.1f}% ({hits}/{triggers}){warn}"
                 
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + 0.015],
+                    x=[t], y=[level],
                     mode="text", text=[display_text],
                     hovertext=[hover], hoverinfo="text",
-                    textfont=dict(color="white", size=13),
+                    textfont=dict(color=text_color, size=font_size),
                     showlegend=False
                 ))
             else:
                 # Same level as trigger or no data
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + 0.015],
+                    x=[t], y=[level],
                     mode="text", text=[""],
                     hoverinfo="skip",
                     textfont=dict(color="white", size=12),
@@ -306,6 +318,18 @@ for level in fib_levels:
         else:
             # No data for this combination - but only show for actual time columns
             if t not in ["OPEN", "TOTAL"]:  # Don't show 0.0% for special columns
+                # Get text styling
+                if level == 0.236:
+                    text_color, font_size = "cyan", 14
+                elif level == -0.236:
+                    text_color, font_size = "yellow", 14
+                elif level in [0.618, -0.618]:
+                    text_color, font_size = "lightgray", 14
+                elif level in [1.0, -1.0]:
+                    text_color, font_size = "lightgray", 16
+                else:
+                    text_color, font_size = "lightgray", 12
+                    
                 if level == trigger_level:
                     # Blank out same level
                     display = ""
@@ -320,10 +344,10 @@ for level in fib_levels:
                     hover = "No data available"
                     
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + 0.015],
+                    x=[t], y=[level],
                     mode="text", text=[display],
                     hovertext=[hover], hoverinfo="text",
-                    textfont=dict(color="white", size=13),
+                    textfont=dict(color=text_color, size=font_size),
                     showlegend=False
                 ))
 
