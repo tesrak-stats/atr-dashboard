@@ -470,6 +470,26 @@ if price_levels_dict:
         )
     )
 
+# --- Price labels as text annotations (locked to lines) ---
+if price_levels_dict:
+    for level in display_fib_levels:
+        level_key = f"{level:+.3f}"
+        price_val = price_levels_dict.get(level_key, 0)
+        
+        # Add price text at the same Y-position as percentage text
+        fig.add_trace(go.Scatter(
+            x=["TOTAL"],  # Position at far right
+            y=[level + text_offset],  # Same offset as percentage text
+            mode="text",
+            text=[f"{price_val:.2f}"],
+            textfont=dict(color="lightgray", size=10 * font_size_multiplier),
+            textposition="middle right",
+            showlegend=False,
+            hoverinfo="skip",
+            xaxis="x",
+            yaxis="y"  # Use main Y-axis so it moves with panning
+        ))
+
 st.plotly_chart(fig, use_container_width=use_container_width)
 
 # --- Chart Information Footer ---
