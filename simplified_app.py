@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.32 - Enable X-Axis Panning for Mobile") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.34 - Enable Y-Axis Panning & Load All Data") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -290,9 +290,16 @@ fig = go.Figure()
 text_offset = 0.03
 
 # --- Matrix cells ---
-for level in display_fib_levels:
+# Load data for all fib levels so they're available when panning
+all_fib_levels = fib_levels if not show_expanded_view else display_fib_levels
+
+for level in all_fib_levels:
+    # Always create TOTAL column data, even if not initially visible
+    all_possible_columns = display_columns + ["TOTAL"] if "TOTAL" not in display_columns else display_columns
+    
     for t in time_order:
-        if t not in display_columns:
+        # Skip spacers but allow all time columns
+        if t == "SPACER":
             continue
             
         if t == "OPEN":
@@ -455,7 +462,8 @@ fig.update_layout(
         tickvals=display_fib_levels,  # Align Y-axis labels with actual fib levels, not offset
         ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
         tickfont=dict(color="white", size=12 * font_size_multiplier),
-        side="left"
+        side="left",
+        fixedrange=False if not show_expanded_view else True  # Allow panning in mobile view
     ),
     plot_bgcolor="black",
     paper_bgcolor="black",
