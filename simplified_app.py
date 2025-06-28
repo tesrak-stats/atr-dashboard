@@ -361,7 +361,14 @@ fig.update_layout(
 # --- Price ladder on right Y-axis ---
 if atr_price_levels and atr_price_levels.get("status") == "success":
     levels_dict = atr_price_levels.get("levels", {})
-    price_labels = [levels_dict.get(f"{level:+.3f}", "") for level in fib_levels]
+    
+    # Create price labels for each fib level
+    price_labels = []
+    for level in fib_levels:
+        # Convert level to the key format used in JSON (e.g., +1.000, -0.236)
+        level_key = f"{level:+.3f}"
+        price_value = levels_dict.get(level_key, "")
+        price_labels.append(price_value)
 
     fig.update_layout(
         yaxis=dict(
@@ -382,5 +389,8 @@ if atr_price_levels and atr_price_levels.get("status") == "success":
             showgrid=False
         )
     )
+else:
+    # No ATR data available - show message
+    st.warning("⚠️ ATR price levels not available")
 
 st.plotly_chart(fig, use_container_width=False)
