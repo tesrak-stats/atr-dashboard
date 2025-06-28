@@ -52,7 +52,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.4 - Using fibo_styles Properly") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.5 - Fixed Order Issue") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -118,6 +118,23 @@ time_order.append("TOTAL")
 
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+
+# --- Define styling for lines and text (moved up for early access) ---
+fibo_styles = {
+    1.0: ("lightgray", 3, 16),      # 1s: 3pt
+    0.786: ("lightgray", 1, 12),    # Most: light gray 1pt
+    0.618: ("lightgray", 2, 14),    # 618s: 2pt gray
+    0.5: ("lightgray", 1, 12),      
+    0.382: ("lightgray", 1, 12),    
+    0.236: ("cyan", 2, 14),         # +.236: cyan 2pt
+    0.0: ("lightgray", 1, 12),      # Zero: light gray
+    -0.236: ("yellow", 2, 14),      # -.236: yellow 2pt  
+    -0.382: ("lightgray", 1, 12),   
+    -0.5: ("lightgray", 1, 12),     
+    -0.618: ("lightgray", 2, 14),   # 618s: 2pt gray
+    -0.786: ("lightgray", 1, 12),   
+    -1.0: ("lightgray", 3, 16),     # 1s: 3pt
+}
 
 # --- Controls ---
 col1, col2, col3 = st.columns(3)
@@ -342,23 +359,7 @@ fig.add_trace(go.Scatter(
     hoverinfo="skip"
 ))
 
-# --- Horizontal lines for Fibonacci levels with improved styling (Request #2) ---
-fibo_styles = {
-    1.0: ("lightgray", 3, 16),      # 1s: 3pt
-    0.786: ("lightgray", 1, 12),    # Most: light gray 1pt
-    0.618: ("lightgray", 2, 14),    # 618s: 2pt gray
-    0.5: ("lightgray", 1, 12),      
-    0.382: ("lightgray", 1, 12),    
-    0.236: ("cyan", 2, 14),         # +.236: cyan 2pt
-    0.0: ("lightgray", 1, 12),      # Zero: light gray
-    -0.236: ("yellow", 2, 14),      # -.236: yellow 2pt  
-    -0.382: ("lightgray", 1, 12),   
-    -0.5: ("lightgray", 1, 12),     
-    -0.618: ("lightgray", 2, 14),   # 618s: 2pt gray
-    -0.786: ("lightgray", 1, 12),   
-    -1.0: ("lightgray", 3, 16),     # 1s: 3pt
-}
-
+# --- Horizontal lines for Fibonacci levels (using pre-defined styles) ---
 for level, (color, width, font_size) in fibo_styles.items():
     fig.add_shape(
         type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
