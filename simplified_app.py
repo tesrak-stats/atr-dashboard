@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.36 - Fixed Y-Axis Range to Focused Levels") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.37 - Reverted to Working State") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -290,8 +290,7 @@ fig = go.Figure()
 text_offset = 0.03
 
 # --- Matrix cells ---
-# Load data for all fib levels so they're available when panning, but only show focused ones initially
-for level in fib_levels:  # Load ALL data
+for level in display_fib_levels:  # Back to only processing the levels we want to show
     # Always create TOTAL column data, even if not initially visible
     all_possible_columns = display_columns + ["TOTAL"] if "TOTAL" not in display_columns else display_columns
     
@@ -455,14 +454,13 @@ fig.update_layout(
     yaxis=dict(
         title="Fib Level",
         categoryorder="array",
-        categoryarray=display_fib_levels,  # Show only focused levels on axis
+        categoryarray=display_fib_levels,
         tickmode="array",
-        tickvals=display_fib_levels,  # Show only focused levels  
+        tickvals=display_fib_levels,
         ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
         tickfont=dict(color="white", size=12 * font_size_multiplier),
         side="left",
-        fixedrange=False if not show_expanded_view else True,  # Allow panning in mobile view
-        range=[min(display_fib_levels)-0.1, max(display_fib_levels)+0.1]  # Set visible range to focused levels
+        fixedrange=False if not show_expanded_view else True
     ),
     plot_bgcolor="black",
     paper_bgcolor="black",
