@@ -52,7 +52,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.7 - Fixed Count & Positioning") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.8 - Fixed Alignment & Day Count") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -82,10 +82,21 @@ else:
 
 # --- What's This? Section (Request #7) ---
 with st.expander("❓ What's This? - How to Use This Chart"):
-    # Get actual unique trading days count
-    unique_days = df['Date'].nunique() if 'Date' in df.columns else len(df)
+    # Get actual unique trading days count - cap at reasonable maximum
+    if 'Date' in df.columns:
+        unique_days = df['Date'].nunique()
+    else:
+        unique_days = len(df)
+    
+    # Cap unrealistic day counts (more than 25 years = ~6,500 trading days)
+    if unique_days > 6500:
+        unique_days = min(unique_days, 6500)
+        day_text = f"~{unique_days:,} trading days (capped for display)"
+    else:
+        day_text = f"{unique_days:,} trading days"
+    
     st.markdown(f"""
-    **This chart shows the probability of reaching price levels based on historical data from {unique_days:,} trading days.**
+    **This chart shows the probability of reaching price levels based on historical data from {day_text}.**
     
     📊 **How to Read:**
     - **Rows (Fib Levels):** Target price levels based on ATR (Average True Range)
@@ -103,8 +114,20 @@ with st.expander("❓ What's This? - How to Use This Chart"):
     """)
 
 # --- Chart Title and Labels (Request #8) ---
-unique_days = df['Date'].nunique() if 'Date' in df.columns else len(df)
-st.subheader(f"📈 Probability of Reaching Price Levels (%) - Based on {unique_days:,} Trading Days")
+# Get actual unique trading days count - cap at reasonable maximum
+if 'Date' in df.columns:
+    unique_days = df['Date'].nunique()
+else:
+    unique_days = len(df)
+
+# Cap unrealistic day counts (more than 25 years = ~6,500 trading days)
+if unique_days > 6500:
+    unique_days = min(unique_days, 6500)
+    day_text = f"~{unique_days:,} trading days"
+else:
+    day_text = f"{unique_days:,} trading days"
+
+st.subheader(f"📈 Probability of Reaching Price Levels (%) - Based on {day_text}")
 st.caption("Historical success rates based on S&P 500 data")
 
 # --- Display configuration ---
@@ -228,6 +251,9 @@ if trigger_time == "OPEN" and len(filtered) > 0:
 # --- Build chart ---
 fig = go.Figure()
 
+# Define text offset to keep percentages above the lines
+text_offset = 0.03
+
 # --- Matrix cells ---
 for level in fib_levels:
     for t in time_order:
@@ -244,7 +270,7 @@ for level in fib_levels:
                 hover = f"OPEN Triggers: {triggers}, Goal {level} Completed at OPEN: {completions}"
                 
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level],  # Remove offset
+                    x=[t], y=[level + text_offset],  # Add offset back
                     mode="text", text=[""],  # Blank text
                     hovertext=[hover], hoverinfo="text",
                     textfont=dict(color="white", size=13),
@@ -253,7 +279,7 @@ for level in fib_levels:
             else:
                 # Empty OPEN column for non-OPEN triggers or missing data
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level],
+                    x=[t], y=[level + text_offset],  # Add offset back
                     mode="text", text=[""],
                     hoverinfo="skip",
                     textfont=dict(color="white", size=13),
@@ -277,7 +303,7 @@ for level in fib_levels:
                 hover = f"Total: {pct:.1f}% ({hits}/{triggers}){warn}"
                 
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + 0.03],  # Match increased offset
+                    x=[t], y=[level + text_offset],  # Keep offset
                     mode="text", text=[display_text],
                     hovertext=[hover], hoverinfo="text",
                     textfont=dict(color=line_color, size=font_size),
@@ -286,7 +312,7 @@ for level in fib_levels:
             else:
                 # Same level as trigger or no data
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level],
+                    x=[t], y=[level + text_offset],  # Keep offset
                     mode="text", text=[""],
                     hoverinfo="skip",
                     textfont=dict(color="white", size=12),
@@ -320,7 +346,7 @@ for level in fib_levels:
             line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
             
             fig.add_trace(go.Scatter(
-                x=[t], y=[level],  # Remove offset - align with line (Request #1)
+                x=[t], y=[level + text_offset],  # Add offset back to keep text above lines
                 mode="text", text=[display_text],
                 hovertext=[hover], hoverinfo="text",
                 textfont=dict(color=line_color, size=font_size),  # Match line style
@@ -346,7 +372,7 @@ for level in fib_levels:
                     hover = "No data available"
                     
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + 0.03],  # Match increased offset
+                    x=[t], y=[level + text_offset],  # Keep offset
                     mode="text", text=[display],
                     hovertext=[hover], hoverinfo="text",
                     textfont=dict(color=line_color, size=font_size),
@@ -395,8 +421,8 @@ fig.update_layout(
     paper_bgcolor="black",
     font=dict(color="white"),
     height=700,
-    width=1600,  # Increased width to make room for right axis
-    margin=dict(l=80, r=150, t=60, b=60)  # Much larger right margin for price labels
+    width=1600,  # Width to make room for right axis
+    margin=dict(l=80, r=150, t=60, b=60)  # Right margin for price labels
 )
 
 # --- Price ladder on right Y-axis ---
@@ -418,21 +444,21 @@ if price_levels_dict:
         hoverinfo="skip"
     ))
     
-    # Add secondary y-axis with price levels
+    # Add secondary y-axis with price levels - MATCH THE TEXT OFFSET!
     fig.update_layout(
         yaxis2=dict(
             title="Price Levels",
             overlaying="y",
             side="right",
             tickmode="array",
-            tickvals=[level + 0.03 for level in fib_levels],  # Match text offset
+            tickvals=[level + text_offset for level in fib_levels],  # Apply SAME offset as text
             ticktext=[f"{p:.0f}" for p in price_values],
-            tickfont=dict(color="white", size=11),  # White per request #3
+            tickfont=dict(color="white", size=11),
             showgrid=False,
             range=[min(fib_levels)-0.1, max(fib_levels)+0.1],
-            fixedrange=True,  # Lock axis in place per request #4
+            fixedrange=True,
             anchor="free",
-            position=0.88  # Move much further left to avoid TOTAL overlap
+            position=0.88  # Position to avoid TOTAL overlap
         )
     )
 
