@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.15 - Fixed Price Positioning & Label") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.17 - Fixed Coordinates System") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -436,35 +436,34 @@ fig.update_layout(
     margin=dict(l=60 if not show_expanded_view else 80, r=100 if not show_expanded_view else 150, t=40 if not show_expanded_view else 60, b=40 if not show_expanded_view else 60)
 )
 
-# --- Price labels as text annotations (locked to lines) ---
+# --- Price labels as annotations (locked to lines) ---
 if price_levels_dict:
     for level in display_fib_levels:
         level_key = f"{level:+.3f}"
         price_val = price_levels_dict.get(level_key, 0)
         
-        # Position well beyond the chart area using paper coordinates
-        fig.add_trace(go.Scatter(
-            x=[1.12],  # Use paper coordinates - 12% beyond right edge
-            y=[level + text_offset],
-            mode="text",
-            text=[f"{price_val:.2f}"],
-            textfont=dict(color="white", size=14 * font_size_multiplier),
-            textposition="middle left",
-            showlegend=False,
-            hoverinfo="skip",
-            xaxis="x",
-            yaxis="y"
-        ))
+        # Use annotations with paper coordinates for proper positioning
+        fig.add_annotation(
+            text=f"{price_val:.2f}",
+            x=1.15,  # 15% beyond right edge in paper coordinates
+            y=level + text_offset,  # Y in data coordinates (aligned with lines)
+            xref="paper",
+            yref="y",  # Y follows the data coordinate system
+            showarrow=False,
+            font=dict(color="white", size=14 * font_size_multiplier),
+            xanchor="left",
+            yanchor="middle"
+        )
 
 # Add "Price Level" title on the far right using paper coordinates
 fig.add_annotation(
     text="Price Level",
-    x=1.12,  # Same position as price values
+    x=1.15,  # Same position as price values
     y=0.5,   # Middle of chart in paper coordinates
     xref="paper",
     yref="paper",
     showarrow=False,
-    textangle=90,
+    textangle=-90,  # Same direction as Fib Level
     font=dict(color="white", size=14 * font_size_multiplier),
     xanchor="center",
     yanchor="middle"
