@@ -1,0 +1,68 @@
+name: Daily ATR Calculator
+
+# Run at midnight Eastern Time on weekdays (actually early morning of trading day)
+on:
+  schedule:
+    # 05:00 UTC = 12:00 AM ET (during standard time)
+    # 04:00 UTC = 12:00 AM ET (during daylight time)  
+    - cron: '0 5 * * 2-6'  # Tue-Sat at 5:00 AM UTC (EST) = Mon-Fri midnight ET
+    - cron: '0 4 * * 2-6'  # Tue-Sat at 4:00 AM UTC (EDT) = Mon-Fri midnight ET
+  
+  # Allow manual triggering for testing
+  workflow_dispatch:
+
+jobs:
+  calculate-atr:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install yfinance pandas pytz
+    
+    - name: Run ATR Calculator
+      run: |
+        echo "🔄 Starting daily ATR calculation..."
+        python daily_atr_updater.py
+        echo "✅ ATR calculation completed"
+    
+    - name: Check if JSON was created
+      run: |
+        if [ -f "atr_levels.json" ]; then
+          echo "✅ ATR levels JSON file created successfully"
+          echo "📊 File size: $(du -h atr_levels.json | cut -f1)"
+          echo "📋 Contents preview:"
+          head -20 atr_levels.json
+        else
+          echo "❌ ATR levels JSON file not found!"
+          exit 1
+        fi
+    
+    - name: Commit updated ATR levels
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add atr_levels.json
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "🤖 Daily ATR levels update - $(date '+%Y-%m-%d %H:%M UTC')"
+          git push
+        fi
+    
+    # Optional: Send notification on failure
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "❌ ATR calculation failed!"
+        echo "Check the logs above for details."
+        # Add email/Slack notification here if desired
