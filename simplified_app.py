@@ -103,57 +103,47 @@ with st.expander("❓ What's This? - How to Use This Chart"):
     
     💡 **Example:** If price goes Above 0.0 at OPEN, there's a X% chance it reaches +0.618 by 1000 hours.
     """)
-    
-    st.markdown(f"""
-    **This chart shows the probability of reaching price levels based on historical data from {day_text}.**
-    
-    📊 **How to Read:**
-    - **Rows (Fib Levels):** Target price levels based on ATR (Average True Range)
-    - **Columns (Times):** Hours during the trading day when the target was reached
-    - **Percentages:** Historical success rate - how often price reached that level by that time
-    - **Colors:** Match the horizontal line colors for easy reference
-    
-    🎯 **How to Use:**
-    1. **Select Price Location:** Above or Below Trigger Level
-    2. **Pick Trigger Level:** The level that has been traded at for the first time today
-    3. **Choose Trigger Time:** When the trigger level was hit
-    4. **Read Results:** See probability of reaching other levels throughout the day
-    
-    💡 **Example:** If price goes Above 0.0 at OPEN, there's a X% chance it reaches +0.618 by 1000 hours.
-    """)
 
 # --- Chart Title and Labels (Request #8) ---
-# Use the same logic as above for consistent day count
-if 'Date' in df.columns:
-    unique_days = df['Date'].nunique()
-else:
-    unique_days = len(df)
-
-# The data appears to be pre-aggregated summary data, not raw daily data
-# If we're getting a huge number, it's likely counting combinations not days
-if unique_days > 10000:
-    # This is likely aggregated data with many combinations per day
-    # Use a more realistic estimate based on ~11 years of SPX data
-    unique_days = 2720  # Expected number based on your comment
-    day_text = f"~{unique_days:,} trading days"
-else:
-    day_text = f"{unique_days:,} trading days"
+# Use consistent day count with the expander section
+unique_days = 2720
+day_text = f"{unique_days:,} trading days"
 
 st.subheader(f"📈 Probability of Reaching Price Levels (%) - Based on {day_text}")
 st.caption("Historical success rates based on S&P 500 data")
 
-# --- Handle URL Parameters from Parent Website ---
-# Support both direct access and parent website integration
-query_params = st.query_params if hasattr(st, 'query_params') else {}
+# --- Define fib_levels and styling early ---
+fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
+              -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
 
-# Extract view preference from URL if provided
-url_view_pref = None
-if 'view' in query_params:
-    url_view_pref = query_params['view'].lower()
-elif 'mobile' in query_params:
-    # Support mobile=true/false parameter style
-    mobile_param = query_params['mobile'].lower()
-    url_view_pref = 'mobile' if mobile_param == 'true' else 'desktop'
+# --- Define styling for lines and text ---
+fibo_styles = {
+    1.0: ("lightgray", 3, 16),      # 1s: 3pt
+    0.786: ("lightgray", 1, 12),    # Most: light gray 1pt
+    0.618: ("lightgray", 2, 14),    # 618s: 2pt gray
+    0.5: ("lightgray", 1, 12),      
+    0.382: ("lightgray", 1, 12),    
+    0.236: ("cyan", 2, 14),         # +.236: cyan 2pt
+    0.0: ("lightgray", 1, 12),      # Zero: light gray
+    -0.236: ("yellow", 2, 14),      # -.236: yellow 2pt  
+    -0.382: ("lightgray", 1, 12),   
+    -0.5: ("lightgray", 1, 12),     
+    -0.618: ("lightgray", 2, 14),   # 618s: 2pt gray
+    -0.786: ("lightgray", 1, 12),   
+    -1.0: ("lightgray", 3, 16),     # 1s: 3pt
+}
+
+# --- Controls (moved up to define trigger_time before use) ---
+col1, col2, col3 = st.columns(3)
+
+# Changed Direction to Price Location
+price_direction = col1.selectbox("Price Location", sorted(df["Direction"].unique()), 
+                                index=sorted(df["Direction"].unique()).index("Above"))
+
+trigger_level = col2.selectbox("Trigger Level", sorted(set(df["TriggerLevel"]).union(fib_levels)), 
+                              index=sorted(set(df["TriggerLevel"]).union(fib_levels)).index(0.0))
+
+trigger_time = col3.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
 
 # --- Mobile-First Design with Session-Based User Preference ---
 # Initialize user preference in session state
@@ -182,8 +172,18 @@ with col2:
 if show_expanded_view != st.session_state.expanded_view_pref:
     st.session_state.expanded_view_pref = show_expanded_view
 
-# --- Display configuration ---
-if show_expanded_view:
+# --- Handle URL Parameters from Parent Website ---
+# Support both direct access and parent website integration
+query_params = st.query_params if hasattr(st, 'query_params') else {}
+
+# Extract view preference from URL if provided
+url_view_pref = None
+if 'view' in query_params:
+    url_view_pref = query_params['view'].lower()
+elif 'mobile' in query_params:
+    # Support mobile=true/false parameter style
+    mobile_param = query_params['mobile'].lower()
+    url_view_pref = 'mobile' if mobile_param == 'true' else 'desktop'
     # Expanded: Show all columns and levels
     display_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "TOTAL"]
     display_fib_levels = fib_levels
@@ -212,7 +212,8 @@ else:
     font_size_multiplier = 0.9
     use_container_width = True
 
-# Create time_order with proper spacing
+# --- Display configuration ---
+if show_expanded_view:
 time_order = ["OPEN", "0830"]  # OPEN + spacer
 for hour in ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]:
     time_order.append(hour)
@@ -220,37 +221,13 @@ for hour in ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]:
 time_order.append("SPACER")  # Final spacer before TOTAL
 time_order.append("TOTAL")
 
-fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
-              -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
-
-# --- Define styling for lines and text (moved up for early access) ---
-fibo_styles = {
-    1.0: ("lightgray", 3, 16),      # 1s: 3pt
-    0.786: ("lightgray", 1, 12),    # Most: light gray 1pt
-    0.618: ("lightgray", 2, 14),    # 618s: 2pt gray
-    0.5: ("lightgray", 1, 12),      
-    0.382: ("lightgray", 1, 12),    
-    0.236: ("cyan", 2, 14),         # +.236: cyan 2pt
-    0.0: ("lightgray", 1, 12),      # Zero: light gray
-    -0.236: ("yellow", 2, 14),      # -.236: yellow 2pt  
-    -0.382: ("lightgray", 1, 12),   
-    -0.5: ("lightgray", 1, 12),     
-    -0.618: ("lightgray", 2, 14),   # 618s: 2pt gray
-    -0.786: ("lightgray", 1, 12),   
-    -1.0: ("lightgray", 3, 16),     # 1s: 3pt
-}
-
-# --- Controls ---
-col1, col2, col3 = st.columns(3)
-
-# Changed Direction to Price Location
-price_direction = col1.selectbox("Price Location", sorted(df["Direction"].unique()), 
-                                index=sorted(df["Direction"].unique()).index("Above"))
-
-trigger_level = col2.selectbox("Trigger Level", sorted(set(df["TriggerLevel"]).union(fib_levels)), 
-                              index=sorted(set(df["TriggerLevel"]).union(fib_levels)).index(0.0))
-
-trigger_time = col3.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
+# Create time_order with proper spacing
+time_order = ["OPEN", "0830"]  # OPEN + spacer
+for hour in ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]:
+    time_order.append(hour)
+    time_order.append(f"{str(int(hour[:2])+1).zfill(2)}30")  # Add spacer after each hour
+time_order.append("SPACER")  # Final spacer before TOTAL
+time_order.append("TOTAL")
 
 # --- Filter and simple lookup ---
 filtered = df[
