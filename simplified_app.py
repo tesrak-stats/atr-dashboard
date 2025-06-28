@@ -142,9 +142,75 @@ else:
 st.subheader(f"📈 Probability of Reaching Price Levels (%) - Based on {day_text}")
 st.caption("Historical success rates based on S&P 500 data")
 
+# --- Handle URL Parameters from Parent Website ---
+# Support both direct access and parent website integration
+query_params = st.query_params if hasattr(st, 'query_params') else {}
+
+# Extract view preference from URL if provided
+url_view_pref = None
+if 'view' in query_params:
+    url_view_pref = query_params['view'].lower()
+elif 'mobile' in query_params:
+    # Support mobile=true/false parameter style
+    mobile_param = query_params['mobile'].lower()
+    url_view_pref = 'mobile' if mobile_param == 'true' else 'desktop'
+
+# --- Mobile-First Design with Session-Based User Preference ---
+# Initialize user preference in session state
+if 'expanded_view_pref' not in st.session_state:
+    # Priority: URL parameter > default mobile-first
+    if url_view_pref == 'desktop':
+        st.session_state.expanded_view_pref = True
+    elif url_view_pref == 'mobile':
+        st.session_state.expanded_view_pref = False
+    else:
+        # Default to mobile-first for direct access
+        st.session_state.expanded_view_pref = False
+
+# UI Controls with preference management
+col1, col2 = st.columns([3, 1])
+with col1:
+    show_expanded_view = st.checkbox("🖥️ Show Full Matrix (All Times & Levels)", 
+                                   value=st.session_state.expanded_view_pref, 
+                                   key="expanded_toggle")
+with col2:
+    if st.button("💾 Make Default for Session", help="Remember this choice until you close your browser"):
+        st.session_state.expanded_view_pref = show_expanded_view
+        st.success("✅ Session default updated!")
+
+# Auto-sync checkbox with stored preference
+if show_expanded_view != st.session_state.expanded_view_pref:
+    st.session_state.expanded_view_pref = show_expanded_view
+
 # --- Display configuration ---
-# Only include the exact columns we want to display
-display_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "TOTAL"]
+if show_expanded_view:
+    # Expanded: Show all columns and levels
+    display_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "TOTAL"]
+    display_fib_levels = fib_levels
+    chart_height = 700
+    chart_width = 1600
+    font_size_multiplier = 1.0
+    use_container_width = False
+else:
+    # Default focused view: Show relevant time window
+    current_hour_index = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"].index(trigger_time)
+    # Show current trigger time + 3 hours ahead, plus TOTAL
+    end_index = min(current_hour_index + 4, 7)  # Don't exceed available hours
+    time_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"][current_hour_index:end_index + 1]
+    time_columns.append("TOTAL")
+    display_columns = time_columns
+    
+    # Default focused view: Show relevant Fib levels (trigger level ± 2 levels)
+    trigger_index = fib_levels.index(trigger_level)
+    start_fib = max(0, trigger_index - 2)
+    end_fib = min(len(fib_levels), trigger_index + 3)
+    display_fib_levels = fib_levels[start_fib:end_fib]
+    
+    # Focused view chart dimensions
+    chart_height = 400
+    chart_width = None
+    font_size_multiplier = 0.9
+    use_container_width = True
 
 # Create time_order with proper spacing
 time_order = ["OPEN", "0830"]  # OPEN + spacer
@@ -267,7 +333,7 @@ fig = go.Figure()
 text_offset = 0.03
 
 # --- Matrix cells ---
-for level in fib_levels:
+for level in display_fib_levels:  # Use display_fib_levels for consistent naming
     for t in time_order:
         # Only process columns we want to display
         if t not in display_columns:
@@ -401,11 +467,13 @@ fig.add_trace(go.Scatter(
 ))
 
 # --- Horizontal lines for Fibonacci levels (using pre-defined styles) ---
-for level, (color, width, font_size) in fibo_styles.items():
-    fig.add_shape(
-        type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
-        line=dict(color=color, width=width), layer="below"
-    )
+for level in display_fib_levels:  # Use display_fib_levels for consistent display
+    if level in fibo_styles:
+        color, width, font_size = fibo_styles[level]
+        fig.add_shape(
+            type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
+            line=dict(color=color, width=width), layer="below"
+        )
 
 # --- Chart layout ---
 fig.update_layout(
@@ -422,26 +490,26 @@ fig.update_layout(
     yaxis=dict(
         title="Fib Level",
         categoryorder="array",
-        categoryarray=fib_levels,
+        categoryarray=display_fib_levels,  # Use display_fib_levels
         tickmode="array",
-        tickvals=fib_levels,
-        ticktext=[f"{lvl:+.3f}" for lvl in fib_levels],
-        tickfont=dict(color="white"),
+        tickvals=display_fib_levels,
+        ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
+        tickfont=dict(color="white", size=12 * font_size_multiplier),
         side="left"
     ),
     plot_bgcolor="black",
     paper_bgcolor="black",
-    font=dict(color="white"),
-    height=700,
-    width=1600,  # Width to make room for right axis
-    margin=dict(l=80, r=150, t=60, b=60)  # Right margin for price labels
+    font=dict(color="white", size=12 * font_size_multiplier),
+    height=chart_height,
+    width=chart_width,
+    margin=dict(l=60 if not show_expanded_view else 80, r=100 if not show_expanded_view else 150, t=40 if not show_expanded_view else 60, b=40 if not show_expanded_view else 60)
 )
 
 # --- Price ladder on right Y-axis ---
 if price_levels_dict:
-    # Create price values array matching fib_levels order
+    # Create price values array matching display_fib_levels order
     price_values = []
-    for level in fib_levels:
+    for level in display_fib_levels:  # Use display_fib_levels
         level_key = f"{level:+.3f}"
         price_val = price_levels_dict.get(level_key, 0)
         price_values.append(price_val)
@@ -463,18 +531,18 @@ if price_levels_dict:
             overlaying="y",
             side="right",
             tickmode="array",
-            tickvals=fib_levels,  # Align with actual Fib levels, not offset text
+            tickvals=display_fib_levels,  # Use display_fib_levels
             ticktext=[f"{p:.2f}" for p in price_values],
-            tickfont=dict(color="white", size=11),
+            tickfont=dict(color="white", size=10 * font_size_multiplier),
             showgrid=False,
-            range=[min(fib_levels)-0.1, max(fib_levels)+0.1],
+            range=[min(display_fib_levels)-0.1, max(display_fib_levels)+0.1],
             fixedrange=True,
             anchor="free",
             position=1.0  # Move as far right as possible
         )
     )
 
-st.plotly_chart(fig, use_container_width=False)
+st.plotly_chart(fig, use_container_width=use_container_width)
 
 # --- Chart Information Footer (Request #5) ---
 col1, col2 = st.columns([3, 1])
