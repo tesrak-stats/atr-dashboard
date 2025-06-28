@@ -52,14 +52,14 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.2.2 - Force Right Axis") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.0 - Better Readability") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
 # --- Load data based on selected ticker ---
 try:
     df = pd.read_csv(ticker_config[selected_ticker]["summary_file"])
-    st.success(f"✅ Loaded data for {ticker_config[selected_ticker]['display_name']}")
+    # Remove the success message per request #5
 except FileNotFoundError:
     st.error(f"❌ Data file not found for {selected_ticker}")
     st.stop()
@@ -73,19 +73,36 @@ atr_data = get_atr_levels_for_ticker(ticker_symbol)
 
 if atr_data.get("status") == "success":
     atr_price_levels = atr_data
-    st.info(f"📊 ATR levels from {atr_data.get('reference_date', 'unknown date')} | Close: {atr_data.get('reference_close', 'N/A')} | ATR: {atr_data.get('reference_atr', 'N/A')}")
-    
-    # Show data freshness warning if needed
-    data_age = atr_data.get('data_age_days', 0)
-    if data_age > 0:
-        st.warning(f"⚠️ ATR data is {data_age} day(s) old")
-        
-    # Extract price levels for later use
+    # Move ATR info display to after chart per request #5
     price_levels_dict = atr_data.get("levels", {})
 else:
     atr_price_levels = {}
     price_levels_dict = {}
     st.error(f"❌ Could not load ATR levels: {atr_data.get('error', 'Unknown error')}")
+
+# --- What's This? Section (Request #7) ---
+with st.expander("❓ What's This? - How to Use This Chart"):
+    st.markdown("""
+    **This chart shows the probability of reaching price levels based on historical data.**
+    
+    📊 **How to Read:**
+    - **Rows (Fib Levels):** Target price levels based on ATR (Average True Range)
+    - **Columns (Times):** Hours during the trading day when the target was reached
+    - **Percentages:** Historical success rate - how often price reached that level by that time
+    - **Colors:** Match the horizontal line colors for easy reference
+    
+    🎯 **How to Use:**
+    1. **Select Price Direction:** Above or Below current levels
+    2. **Pick Trigger Level:** The level that must be hit first 
+    3. **Choose Trigger Time:** When the trigger level was hit
+    4. **Read Results:** See probability of reaching other levels throughout the day
+    
+    💡 **Example:** If price goes Above 0.0 at OPEN, there's a X% chance it reaches +0.618 by 1000 hours.
+    """)
+
+# --- Chart Title and Labels (Request #8) ---
+st.subheader("📈 Probability of Reaching Price Levels (%)")
+st.caption("Historical success rates based on S&P 500 data")
 
 # --- Display configuration ---
 # Only include the exact columns we want to display
@@ -207,7 +224,7 @@ for level in fib_levels:
                 hover = f"OPEN Triggers: {triggers}, Goal {level} Completed at OPEN: {completions}"
                 
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + 0.015],
+                    x=[t], y=[level],  # Remove offset
                     mode="text", text=[""],  # Blank text
                     hovertext=[hover], hoverinfo="text",
                     textfont=dict(color="white", size=13),
@@ -276,11 +293,14 @@ for level in fib_levels:
                 display_text = f"{pct:.1f}%"
                 hover = f"{pct:.1f}% ({hits}/{total}){warn}"
             
+            # Get font styling to match line color and size (Request #2)
+            line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
+            
             fig.add_trace(go.Scatter(
-                x=[t], y=[level + 0.015],
+                x=[t], y=[level],  # Remove offset - align with line (Request #1)
                 mode="text", text=[display_text],
                 hovertext=[hover], hoverinfo="text",
-                textfont=dict(color="white", size=12),
+                textfont=dict(color=line_color, size=font_size),  # Match line style
                 showlegend=False
             ))
         else:
@@ -316,20 +336,28 @@ fig.add_trace(go.Scatter(
     hoverinfo="skip"
 ))
 
-# --- Horizontal lines for Fibonacci levels ---
+# --- Horizontal lines for Fibonacci levels with improved styling (Request #2) ---
 fibo_styles = {
-    1.0: ("white", 2), 0.786: ("white", 1), 0.618: ("white", 2),
-    0.5: ("white", 1), 0.382: ("white", 1), 0.236: ("cyan", 2),
-    0.0: ("white", 1),
-    -0.236: ("yellow", 2), -0.382: ("white", 1), -0.5: ("white", 1),
-    -0.618: ("white", 2), -0.786: ("white", 1), -1.0: ("white", 2),
+    1.0: ("lightgray", 3, 16),      # 1s: 3pt
+    0.786: ("lightgray", 1, 12),    # Most: light gray 1pt
+    0.618: ("lightgray", 2, 14),    # 618s: 2pt gray
+    0.5: ("lightgray", 1, 12),      
+    0.382: ("lightgray", 1, 12),    
+    0.236: ("cyan", 2, 14),         # +.236: cyan 2pt
+    0.0: ("lightgray", 1, 12),      # Zero: light gray
+    -0.236: ("yellow", 2, 14),      # -.236: yellow 2pt  
+    -0.382: ("lightgray", 1, 12),   
+    -0.5: ("lightgray", 1, 12),     
+    -0.618: ("lightgray", 2, 14),   # 618s: 2pt gray
+    -0.786: ("lightgray", 1, 12),   
+    -1.0: ("lightgray", 3, 16),     # 1s: 3pt
 }
 
-for level, (color, width) in fibo_styles.items():
+for level, (color, width, font_size) in fibo_styles.items():
     fig.add_shape(
         type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
         line=dict(color=color, width=width), layer="below"
-)
+    )
 
 # --- Chart layout ---
 fig.update_layout(
@@ -389,10 +417,26 @@ if price_levels_dict:
             tickmode="array",
             tickvals=fib_levels,
             ticktext=[f"{p:.0f}" for p in price_values],
-            tickfont=dict(color="cyan", size=11),
+            tickfont=dict(color="white", size=11),  # White per request #3
             showgrid=False,
-            range=[min(fib_levels)-0.1, max(fib_levels)+0.1]
+            range=[min(fib_levels)-0.1, max(fib_levels)+0.1],
+            fixedrange=True,  # Lock axis in place per request #4
+            anchor="free",
+            position=0.98
         )
     )
 
 st.plotly_chart(fig, use_container_width=False)
+
+# --- Chart Information Footer (Request #5) ---
+col1, col2 = st.columns([3, 1])
+with col1:
+    if atr_data.get("status") == "success":
+        data_age = atr_data.get('data_age_days', 0)
+        age_warning = f" (⚠️ {data_age} days old)" if data_age > 0 else ""
+        st.caption(f"📊 ATR levels from {atr_data.get('reference_date', 'unknown')} | Close: {atr_data.get('reference_close', 'N/A')} | ATR: {atr_data.get('reference_atr', 'N/A')}{age_warning}")
+with col2:
+    st.caption("🔧 App Version: v2.3.0")
+
+# --- Legend/Key (Request #6) ---
+st.caption("📋 **Chart Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | Percentages show probability of reaching target level by specified time")
