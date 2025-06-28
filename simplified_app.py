@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.13 - White & Larger Price Labels") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.14 - Fixed Expanded View Price Positioning") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -442,9 +442,15 @@ if price_levels_dict:
         level_key = f"{level:+.3f}"
         price_val = price_levels_dict.get(level_key, 0)
         
-        # Add price text positioned far to the right
+        # Position further right for expanded view, closer for focused view
+        if show_expanded_view:
+            x_position = len(display_columns) + 1.5  # Further right for expanded
+        else:
+            x_position = len(display_columns) + 0.5  # Closer for focused
+        
+        # Add price text positioned to the right
         fig.add_trace(go.Scatter(
-            x=[len(display_columns) + 0.5],  # Position beyond last column
+            x=[x_position],
             y=[level + text_offset],  # Same offset as percentage text
             mode="text",
             text=[f"{price_val:.2f}"],
@@ -455,15 +461,22 @@ if price_levels_dict:
         ))
 
 # Add "Price Levels" title on the right
+if show_expanded_view:
+    title_x = len(display_columns) + 1.5
+    title_y = 0.0  # Center on zero line for expanded view
+else:
+    title_x = len(display_columns) + 0.5
+    title_y = sum(display_fib_levels) / len(display_fib_levels)  # Center vertically for focused
+
 fig.add_annotation(
     text="Price Levels",
-    x=len(display_columns) + 0.5,
-    y=sum(display_fib_levels) / len(display_fib_levels),  # Center vertically
+    x=title_x,
+    y=title_y,
     xref="x",
     yref="y", 
     showarrow=False,
     textangle=90,
-    font=dict(color="white", size=14 * font_size_multiplier),  # Larger title too
+    font=dict(color="white", size=14 * font_size_multiplier),
     xanchor="center",
     yanchor="middle"
 )
