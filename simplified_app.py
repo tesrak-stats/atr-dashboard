@@ -470,7 +470,7 @@ if price_levels_dict:
             range=[min(fib_levels)-0.1, max(fib_levels)+0.1],
             fixedrange=True,
             anchor="free",
-            position=0.88  # Position to avoid TOTAL overlap
+            position=0.95  # Move further right to avoid TOTAL column overlap
         )
     )
 
