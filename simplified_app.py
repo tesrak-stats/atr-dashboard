@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.38 - Fixed Full View & Always Show TOTAL") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.40 - Fixed TOTAL in Time Order") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -177,8 +177,6 @@ if show_expanded_view:
 else:
     current_hour_index = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"].index(trigger_time)
     
-    current_hour_index = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"].index(trigger_time)
-    
     if trigger_time == "OPEN":
         # For OPEN trigger: 0900, 1000, 1100, TOTAL
         display_columns = ["0900", "1000", "1100", "TOTAL"]
@@ -199,7 +197,7 @@ else:
     font_size_multiplier = 1.0  # Keep text readable
     use_container_width = False  # Use fixed width for better control
 
-# Create time_order - keep it simple for focused view
+# Create time_order - ensure TOTAL is always included for focused view
 if show_expanded_view:
     # Full time_order with spacers for expanded view
     time_order = ["OPEN", "0830"]
@@ -209,7 +207,7 @@ if show_expanded_view:
     time_order.append("SPACER")
     time_order.append("TOTAL")
 else:
-    # Focused view - just use display_columns directly
+    # Focused view - make sure time_order includes everything in display_columns
     time_order = display_columns
 
 # --- Filter and simple lookup ---
