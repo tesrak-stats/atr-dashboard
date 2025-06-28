@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.26 - Fixed TOTAL in Display Columns") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.28 - Optimized Mobile Margins") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -175,6 +175,8 @@ if show_expanded_view:
     font_size_multiplier = 1.0
     use_container_width = False
 else:
+    current_hour_index = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"].index(trigger_time)
+    
     current_hour_index = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"].index(trigger_time)
     
     if trigger_time == "OPEN":
@@ -460,7 +462,7 @@ fig.update_layout(
     font=dict(color="white", size=12 * font_size_multiplier),
     height=chart_height,
     width=chart_width,
-    margin=dict(l=60 if not show_expanded_view else 80, r=100 if not show_expanded_view else 150, t=40 if not show_expanded_view else 60, b=40 if not show_expanded_view else 60)
+    margin=dict(l=40 if not show_expanded_view else 80, r=80 if not show_expanded_view else 150, t=30 if not show_expanded_view else 60, b=80 if not show_expanded_view else 60)
 )
 
 # --- Price labels as annotations (locked to lines) ---
