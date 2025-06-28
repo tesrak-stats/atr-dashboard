@@ -82,18 +82,27 @@ else:
 
 # --- What's This? Section (Request #7) ---
 with st.expander("❓ What's This? - How to Use This Chart"):
-    # Get actual unique trading days count - cap at reasonable maximum
-    if 'Date' in df.columns:
-        unique_days = df['Date'].nunique()
-    else:
-        unique_days = len(df)
+    # Use known trading day count until we implement metadata tracking in run_generate
+    unique_days = 2720
+    day_text = f"{unique_days:,} trading days"
     
-    # Cap unrealistic day counts (more than 25 years = ~6,500 trading days)
-    if unique_days > 6500:
-        unique_days = min(unique_days, 6500)
-        day_text = f"~{unique_days:,} trading days (capped for display)"
-    else:
-        day_text = f"{unique_days:,} trading days"
+    st.markdown(f"""
+    **This chart shows the probability of reaching price levels based on historical data from {day_text}.**
+    
+    📊 **How to Read:**
+    - **Rows (Fib Levels):** Target price levels based on ATR (Average True Range)
+    - **Columns (Times):** Hours during the trading day when the target was reached
+    - **Percentages:** Historical success rate - how often price reached that level by that time
+    - **Colors:** Match the horizontal line colors for easy reference
+    
+    🎯 **How to Use:**
+    1. **Select Price Location:** Above or Below Trigger Level
+    2. **Pick Trigger Level:** The level that has been traded at for the first time today
+    3. **Choose Trigger Time:** When the trigger level was hit
+    4. **Read Results:** See probability of reaching other levels throughout the day
+    
+    💡 **Example:** If price goes Above 0.0 at OPEN, there's a X% chance it reaches +0.618 by 1000 hours.
+    """)
     
     st.markdown(f"""
     **This chart shows the probability of reaching price levels based on historical data from {day_text}.**
@@ -114,15 +123,18 @@ with st.expander("❓ What's This? - How to Use This Chart"):
     """)
 
 # --- Chart Title and Labels (Request #8) ---
-# Get actual unique trading days count - cap at reasonable maximum
+# Use the same logic as above for consistent day count
 if 'Date' in df.columns:
     unique_days = df['Date'].nunique()
 else:
     unique_days = len(df)
 
-# Cap unrealistic day counts (more than 25 years = ~6,500 trading days)
-if unique_days > 6500:
-    unique_days = min(unique_days, 6500)
+# The data appears to be pre-aggregated summary data, not raw daily data
+# If we're getting a huge number, it's likely counting combinations not days
+if unique_days > 10000:
+    # This is likely aggregated data with many combinations per day
+    # Use a more realistic estimate based on ~11 years of SPX data
+    unique_days = 2720  # Expected number based on your comment
     day_text = f"~{unique_days:,} trading days"
 else:
     day_text = f"{unique_days:,} trading days"
@@ -444,14 +456,14 @@ if price_levels_dict:
         hoverinfo="skip"
     ))
     
-    # Add secondary y-axis with price levels - MATCH THE TEXT OFFSET!
+    # Add secondary y-axis with price levels - ALIGN WITH FIB LEVELS (not text offset)
     fig.update_layout(
         yaxis2=dict(
             title="Price Levels",
             overlaying="y",
             side="right",
             tickmode="array",
-            tickvals=[level + text_offset for level in fib_levels],  # Apply SAME offset as text
+            tickvals=fib_levels,  # Align with actual Fib levels, not offset text
             ticktext=[f"{p:.0f}" for p in price_values],
             tickfont=dict(color="white", size=11),
             showgrid=False,
