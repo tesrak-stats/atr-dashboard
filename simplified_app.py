@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.25 - Fixed TOTAL Column Positioning") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.26 - Fixed TOTAL in Display Columns") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -180,13 +180,14 @@ else:
     if trigger_time == "OPEN":
         # For OPEN trigger, skip OPEN column and show first 3 regular hours + TOTAL
         time_columns = ["0900", "1000", "1100"]
+        time_columns.append("TOTAL")
+        display_columns = time_columns
     else:
-        # For other triggers, show trigger + 2 more hours
+        # For other triggers, show trigger + 2 more hours + TOTAL
         end_index = min(current_hour_index + 3, 7)
         time_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"][current_hour_index:end_index + 1]
-    
-    time_columns.append("TOTAL")
-    display_columns = time_columns
+        time_columns.append("TOTAL")
+        display_columns = time_columns
     
     trigger_index = fib_levels.index(trigger_level)
     start_fib = max(0, trigger_index - 3)  # Show 3 levels above trigger
