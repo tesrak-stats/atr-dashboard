@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.35 - Fixed: Load All Data, Show Focused View") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.36 - Fixed Y-Axis Range to Focused Levels") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -455,13 +455,14 @@ fig.update_layout(
     yaxis=dict(
         title="Fib Level",
         categoryorder="array",
-        categoryarray=display_fib_levels,
+        categoryarray=display_fib_levels,  # Show only focused levels on axis
         tickmode="array",
-        tickvals=display_fib_levels,  # Align Y-axis labels with actual fib levels, not offset
+        tickvals=display_fib_levels,  # Show only focused levels  
         ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
         tickfont=dict(color="white", size=12 * font_size_multiplier),
         side="left",
-        fixedrange=False if not show_expanded_view else True  # Allow panning in mobile view
+        fixedrange=False if not show_expanded_view else True,  # Allow panning in mobile view
+        range=[min(display_fib_levels)-0.1, max(display_fib_levels)+0.1]  # Set visible range to focused levels
     ),
     plot_bgcolor="black",
     paper_bgcolor="black",
