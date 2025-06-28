@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.28 - Optimized Mobile Margins") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.29 - Tightened Mobile Column Spacing") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -198,9 +198,9 @@ else:
     
     # Mobile focused view - optimize for readability
     chart_height = 400
-    chart_width = None  # Let it auto-size
+    chart_width = 600  # Set specific width instead of None to control spacing
     font_size_multiplier = 1.0  # Keep text readable
-    use_container_width = True
+    use_container_width = False  # Use fixed width for better control
 
 # Create time_order - only include displayed columns for focused view
 if show_expanded_view:
