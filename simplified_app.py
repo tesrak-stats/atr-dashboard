@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.12 - Actually Removed Secondary Axis Code") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.13 - White & Larger Price Labels") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -436,7 +436,39 @@ fig.update_layout(
     margin=dict(l=60 if not show_expanded_view else 80, r=100 if not show_expanded_view else 150, t=40 if not show_expanded_view else 60, b=40 if not show_expanded_view else 60)
 )
 
-
+# --- Price ladder on right Y-axis ---
+if price_levels_dict:
+    price_values = []
+    for level in display_fib_levels:
+        level_key = f"{level:+.3f}"
+        price_val = price_levels_dict.get(level_key, 0)
+        price_values.append(price_val)
+    
+    fig.add_trace(go.Scatter(
+        x=["OPEN"], y=[0.0],
+        mode="markers",
+        marker=dict(opacity=0, size=1),
+        yaxis="y2",
+        showlegend=False,
+        hoverinfo="skip"
+    ))
+    
+    fig.update_layout(
+        yaxis2=dict(
+            title="Price Levels",
+            overlaying="y",
+            side="right",
+            tickmode="array",
+            tickvals=display_fib_levels,  # Align with horizontal lines, not offset text
+            ticktext=[f"{p:.2f}" for p in price_values],
+            tickfont=dict(color="white", size=10 * font_size_multiplier),
+            showgrid=False,
+            range=[min(display_fib_levels)-0.1, max(display_fib_levels)+0.1],
+            fixedrange=True,
+            anchor="free",
+            position=1.0
+        )
+    )
 
 # --- Price labels as text annotations (locked to lines) ---
 if price_levels_dict:
@@ -450,7 +482,7 @@ if price_levels_dict:
             y=[level + text_offset],  # Same offset as percentage text
             mode="text",
             text=[f"{price_val:.2f}"],
-            textfont=dict(color="lightgray", size=10 * font_size_multiplier),
+            textfont=dict(color="white", size=14 * font_size_multiplier),  # White and larger
             textposition="middle left",
             showlegend=False,
             hoverinfo="skip"
@@ -465,7 +497,7 @@ fig.add_annotation(
     yref="y", 
     showarrow=False,
     textangle=90,
-    font=dict(color="white", size=12 * font_size_multiplier),
+    font=dict(color="white", size=14 * font_size_multiplier),  # Larger title too
     xanchor="center",
     yanchor="middle"
 )
