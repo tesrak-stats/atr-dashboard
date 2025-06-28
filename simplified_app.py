@@ -12,12 +12,6 @@ ticker_config = {
         "display_name": "S&P 500 (SPX)",
         "ticker_symbol": "^GSPC"
     }
-    # Future tickers can be added here:
-    # "QQQ": {
-    #     "summary_file": "atr_dashboard_summary_QQQ.csv", 
-    #     "display_name": "Nasdaq 100 (QQQ)",
-    #     "ticker_symbol": "QQQ"
-    # }
 }
 
 def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
@@ -52,14 +46,13 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.8 - Fixed Alignment & Day Count") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.9 - Fixed Code Structure") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
 # --- Load data based on selected ticker ---
 try:
     df = pd.read_csv(ticker_config[selected_ticker]["summary_file"])
-    # Remove the success message per request #5
 except FileNotFoundError:
     st.error(f"❌ Data file not found for {selected_ticker}")
     st.stop()
@@ -73,16 +66,14 @@ atr_data = get_atr_levels_for_ticker(ticker_symbol)
 
 if atr_data.get("status") == "success":
     atr_price_levels = atr_data
-    # Move ATR info display to after chart per request #5
     price_levels_dict = atr_data.get("levels", {})
 else:
     atr_price_levels = {}
     price_levels_dict = {}
     st.error(f"❌ Could not load ATR levels: {atr_data.get('error', 'Unknown error')}")
 
-# --- What's This? Section (Request #7) ---
+# --- What's This? Section ---
 with st.expander("❓ What's This? - How to Use This Chart"):
-    # Use known trading day count until we implement metadata tracking in run_generate
     unique_days = 2720
     day_text = f"{unique_days:,} trading days"
     
@@ -104,8 +95,7 @@ with st.expander("❓ What's This? - How to Use This Chart"):
     💡 **Example:** If price goes Above 0.0 at OPEN, there's a X% chance it reaches +0.618 by 1000 hours.
     """)
 
-# --- Chart Title and Labels (Request #8) ---
-# Use consistent day count with the expander section
+# --- Chart Title and Labels ---
 unique_days = 2720
 day_text = f"{unique_days:,} trading days"
 
@@ -116,27 +106,25 @@ st.caption("Historical success rates based on S&P 500 data")
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
 
-# --- Define styling for lines and text ---
 fibo_styles = {
-    1.0: ("lightgray", 3, 16),      # 1s: 3pt
-    0.786: ("lightgray", 1, 12),    # Most: light gray 1pt
-    0.618: ("lightgray", 2, 14),    # 618s: 2pt gray
-    0.5: ("lightgray", 1, 12),      
-    0.382: ("lightgray", 1, 12),    
-    0.236: ("cyan", 2, 14),         # +.236: cyan 2pt
-    0.0: ("lightgray", 1, 12),      # Zero: light gray
-    -0.236: ("yellow", 2, 14),      # -.236: yellow 2pt  
-    -0.382: ("lightgray", 1, 12),   
-    -0.5: ("lightgray", 1, 12),     
-    -0.618: ("lightgray", 2, 14),   # 618s: 2pt gray
-    -0.786: ("lightgray", 1, 12),   
-    -1.0: ("lightgray", 3, 16),     # 1s: 3pt
+    1.0: ("lightgray", 3, 16),
+    0.786: ("lightgray", 1, 12),
+    0.618: ("lightgray", 2, 14),
+    0.5: ("lightgray", 1, 12),
+    0.382: ("lightgray", 1, 12),
+    0.236: ("cyan", 2, 14),
+    0.0: ("lightgray", 1, 12),
+    -0.236: ("yellow", 2, 14),
+    -0.382: ("lightgray", 1, 12),
+    -0.5: ("lightgray", 1, 12),
+    -0.618: ("lightgray", 2, 14),
+    -0.786: ("lightgray", 1, 12),
+    -1.0: ("lightgray", 3, 16),
 }
 
-# --- Controls (moved up to define trigger_time before use) ---
+# --- Controls (define before display configuration) ---
 col1, col2, col3 = st.columns(3)
 
-# Changed Direction to Price Location
 price_direction = col1.selectbox("Price Location", sorted(df["Direction"].unique()), 
                                 index=sorted(df["Direction"].unique()).index("Above"))
 
@@ -145,46 +133,41 @@ trigger_level = col2.selectbox("Trigger Level", sorted(set(df["TriggerLevel"]).u
 
 trigger_time = col3.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
 
+# --- Handle URL Parameters from Parent Website ---
+query_params = st.query_params if hasattr(st, 'query_params') else {}
+
+url_view_pref = None
+if 'view' in query_params:
+    url_view_pref = query_params['view'].lower()
+elif 'mobile' in query_params:
+    mobile_param = query_params['mobile'].lower()
+    url_view_pref = 'mobile' if mobile_param == 'true' else 'desktop'
+
 # --- Mobile-First Design with Session-Based User Preference ---
-# Initialize user preference in session state
 if 'expanded_view_pref' not in st.session_state:
-    # Priority: URL parameter > default mobile-first
     if url_view_pref == 'desktop':
         st.session_state.expanded_view_pref = True
     elif url_view_pref == 'mobile':
         st.session_state.expanded_view_pref = False
     else:
-        # Default to mobile-first for direct access
         st.session_state.expanded_view_pref = False
 
 # UI Controls with preference management
-col1, col2 = st.columns([3, 1])
-with col1:
+col1_ui, col2_ui = st.columns([3, 1])
+with col1_ui:
     show_expanded_view = st.checkbox("🖥️ Show Full Matrix (All Times & Levels)", 
                                    value=st.session_state.expanded_view_pref, 
                                    key="expanded_toggle")
-with col2:
+with col2_ui:
     if st.button("💾 Make Default for Session", help="Remember this choice until you close your browser"):
         st.session_state.expanded_view_pref = show_expanded_view
         st.success("✅ Session default updated!")
 
-# Auto-sync checkbox with stored preference
 if show_expanded_view != st.session_state.expanded_view_pref:
     st.session_state.expanded_view_pref = show_expanded_view
 
-# --- Handle URL Parameters from Parent Website ---
-# Support both direct access and parent website integration
-query_params = st.query_params if hasattr(st, 'query_params') else {}
-
-# Extract view preference from URL if provided
-url_view_pref = None
-if 'view' in query_params:
-    url_view_pref = query_params['view'].lower()
-elif 'mobile' in query_params:
-    # Support mobile=true/false parameter style
-    mobile_param = query_params['mobile'].lower()
-    url_view_pref = 'mobile' if mobile_param == 'true' else 'desktop'
-    # Expanded: Show all columns and levels
+# --- Display configuration ---
+if show_expanded_view:
     display_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "TOTAL"]
     display_fib_levels = fib_levels
     chart_height = 700
@@ -192,41 +175,28 @@ elif 'mobile' in query_params:
     font_size_multiplier = 1.0
     use_container_width = False
 else:
-    # Default focused view: Show relevant time window
     current_hour_index = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"].index(trigger_time)
-    # Show current trigger time + 3 hours ahead, plus TOTAL
-    end_index = min(current_hour_index + 4, 7)  # Don't exceed available hours
+    end_index = min(current_hour_index + 4, 7)
     time_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"][current_hour_index:end_index + 1]
     time_columns.append("TOTAL")
     display_columns = time_columns
     
-    # Default focused view: Show relevant Fib levels (trigger level ± 2 levels)
     trigger_index = fib_levels.index(trigger_level)
     start_fib = max(0, trigger_index - 2)
     end_fib = min(len(fib_levels), trigger_index + 3)
     display_fib_levels = fib_levels[start_fib:end_fib]
     
-    # Focused view chart dimensions
     chart_height = 400
     chart_width = None
     font_size_multiplier = 0.9
     use_container_width = True
 
-# --- Display configuration ---
-if show_expanded_view:
-time_order = ["OPEN", "0830"]  # OPEN + spacer
-for hour in ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]:
-    time_order.append(hour)
-    time_order.append(f"{str(int(hour[:2])+1).zfill(2)}30")  # Add spacer after each hour
-time_order.append("SPACER")  # Final spacer before TOTAL
-time_order.append("TOTAL")
-
 # Create time_order with proper spacing
-time_order = ["OPEN", "0830"]  # OPEN + spacer
+time_order = ["OPEN", "0830"]
 for hour in ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]:
     time_order.append(hour)
-    time_order.append(f"{str(int(hour[:2])+1).zfill(2)}30")  # Add spacer after each hour
-time_order.append("SPACER")  # Final spacer before TOTAL
+    time_order.append(f"{str(int(hour[:2])+1).zfill(2)}30")
+time_order.append("SPACER")
 time_order.append("TOTAL")
 
 # --- Filter and simple lookup ---
@@ -239,7 +209,6 @@ filtered = df[
 # --- Create lookup dictionary from pre-calculated data ---
 data_lookup = {}
 for _, row in filtered.iterrows():
-    # Convert GoalTime to string and handle numeric times (CRITICAL for lookup)
     goal_time = row["GoalTime"]
     if pd.notna(goal_time):
         if isinstance(goal_time, (int, float)):
@@ -265,10 +234,9 @@ for _, row in filtered.iterrows():
 # --- Calculate total completion rate for each goal level ---
 goal_totals = {}
 if len(filtered) > 0:
-    # Group by goal level and sum hits across all times
     goal_summary = filtered.groupby('GoalLevel').agg({
         'NumHits': 'sum',
-        'NumTriggers': 'first'  # Should be same for all goals of same trigger
+        'NumTriggers': 'first'
     }).reset_index()
     
     for _, row in goal_summary.iterrows():
@@ -284,13 +252,11 @@ if len(filtered) > 0:
             "pct": total_pct
         }
 
-# --- Get OPEN trigger data for tooltip (goal-specific) ---
+# --- Get OPEN trigger data for tooltip ---
 open_trigger_data = {}
 if trigger_time == "OPEN" and len(filtered) > 0:
-    # Get trigger count (same for all goals)
     open_triggers = filtered['NumTriggers'].iloc[0]
     
-    # Create goal-specific OPEN completion data
     for _, row in filtered.iterrows():
         goal_level = row['GoalLevel']
         if 'OpenCompletions' in row:
@@ -305,36 +271,30 @@ if trigger_time == "OPEN" and len(filtered) > 0:
 
 # --- Build chart ---
 fig = go.Figure()
-
-# Define text offset to keep percentages above the lines
 text_offset = 0.03
 
 # --- Matrix cells ---
-for level in display_fib_levels:  # Use display_fib_levels for consistent naming
+for level in display_fib_levels:
     for t in time_order:
-        # Only process columns we want to display
         if t not in display_columns:
-            continue  # Skip all spacer columns and any other unwanted columns
+            continue
             
-        # Handle OPEN column specially - blank text but show goal-specific tooltip
         if t == "OPEN":
-            # Show goal-specific OPEN completion data
             if trigger_time == "OPEN" and level in open_trigger_data:
                 triggers = open_trigger_data[level]["triggers"]
                 completions = open_trigger_data[level]["completions"]
                 hover = f"OPEN Triggers: {triggers}, Goal {level} Completed at OPEN: {completions}"
                 
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],  # Add offset back
-                    mode="text", text=[""],  # Blank text
+                    x=[t], y=[level + text_offset],
+                    mode="text", text=[""],
                     hovertext=[hover], hoverinfo="text",
                     textfont=dict(color="white", size=13),
                     showlegend=False
                 ))
             else:
-                # Empty OPEN column for non-OPEN triggers or missing data
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],  # Add offset back
+                    x=[t], y=[level + text_offset],
                     mode="text", text=[""],
                     hoverinfo="skip",
                     textfont=dict(color="white", size=13),
@@ -342,7 +302,6 @@ for level in display_fib_levels:  # Use display_fib_levels for consistent naming
                 ))
             continue
         
-        # Handle TOTAL column - show total completion rate for each goal
         if t == "TOTAL":
             if level in goal_totals and level != trigger_level:
                 total_data = goal_totals[level]
@@ -350,7 +309,6 @@ for level in display_fib_levels:  # Use display_fib_levels for consistent naming
                 hits = total_data["hits"]
                 triggers = total_data["triggers"]
                 
-                # Get text styling from fibo_styles
                 line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
                 
                 warn = " ⚠️" if triggers < 30 else ""
@@ -358,16 +316,15 @@ for level in display_fib_levels:  # Use display_fib_levels for consistent naming
                 hover = f"Total: {pct:.1f}% ({hits}/{triggers}){warn}"
                 
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],  # Keep offset
+                    x=[t], y=[level + text_offset],
                     mode="text", text=[display_text],
                     hovertext=[hover], hoverinfo="text",
                     textfont=dict(color=line_color, size=font_size),
                     showlegend=False
                 ))
             else:
-                # Same level as trigger or no data
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],  # Keep offset
+                    x=[t], y=[level + text_offset],
                     mode="text", text=[""],
                     hoverinfo="skip",
                     textfont=dict(color="white", size=12),
@@ -383,51 +340,42 @@ for level in display_fib_levels:  # Use display_fib_levels for consistent naming
             hits = data["hits"]
             total = data["triggers"]
             
-            # Blank out same level (trigger level = goal level)
             if level == trigger_level:
                 display_text = ""
                 hover = "Same level as trigger"
-            # Blank out times before selected trigger time
             elif time_order.index(t) < time_order.index(trigger_time):
                 display_text = ""
                 hover = "Before trigger time"
-            # Show percentage for valid combinations
             else:
                 warn = " ⚠️" if total < 30 else ""
                 display_text = f"{pct:.1f}%"
                 hover = f"{pct:.1f}% ({hits}/{total}){warn}"
             
-            # Get font styling to match line color and size (Request #2)
             line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
             
             fig.add_trace(go.Scatter(
-                x=[t], y=[level + text_offset],  # Add offset back to keep text above lines
+                x=[t], y=[level + text_offset],
                 mode="text", text=[display_text],
                 hovertext=[hover], hoverinfo="text",
-                textfont=dict(color=line_color, size=font_size),  # Match line style
+                textfont=dict(color=line_color, size=font_size),
                 showlegend=False
             ))
         else:
-            # No data for this combination - but only show for actual time columns
-            if t not in ["OPEN", "TOTAL"]:  # Don't show 0.0% for special columns
-                # Get text styling from fibo_styles
+            if t not in ["OPEN", "TOTAL"]:
                 line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
-                    
+                
                 if level == trigger_level:
-                    # Blank out same level
                     display = ""
                     hover = "Same level as trigger"
                 elif time_order.index(t) < time_order.index(trigger_time):
-                    # Blank out times before trigger time
                     display = ""
                     hover = "Before trigger time"
                 else:
-                    # Only show 0.0% for valid time columns
                     display = "0.0%"
                     hover = "No data available"
                     
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],  # Keep offset
+                    x=[t], y=[level + text_offset],
                     mode="text", text=[display],
                     hovertext=[hover], hoverinfo="text",
                     textfont=dict(color=line_color, size=font_size),
@@ -443,8 +391,8 @@ fig.add_trace(go.Scatter(
     hoverinfo="skip"
 ))
 
-# --- Horizontal lines for Fibonacci levels (using pre-defined styles) ---
-for level in display_fib_levels:  # Use display_fib_levels for consistent display
+# --- Horizontal lines for Fibonacci levels ---
+for level in display_fib_levels:
     if level in fibo_styles:
         color, width, font_size = fibo_styles[level]
         fig.add_shape(
@@ -461,13 +409,13 @@ fig.update_layout(
         categoryarray=time_order,
         tickmode="array",
         tickvals=display_columns,
-        ticktext=display_columns,  # Explicitly set tick text
+        ticktext=display_columns,
         tickfont=dict(color="white")
     ),
     yaxis=dict(
         title="Fib Level",
         categoryorder="array",
-        categoryarray=display_fib_levels,  # Use display_fib_levels
+        categoryarray=display_fib_levels,
         tickmode="array",
         tickvals=display_fib_levels,
         ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
@@ -484,14 +432,12 @@ fig.update_layout(
 
 # --- Price ladder on right Y-axis ---
 if price_levels_dict:
-    # Create price values array matching display_fib_levels order
     price_values = []
-    for level in display_fib_levels:  # Use display_fib_levels
+    for level in display_fib_levels:
         level_key = f"{level:+.3f}"
         price_val = price_levels_dict.get(level_key, 0)
         price_values.append(price_val)
     
-    # Add invisible trace to force right Y-axis
     fig.add_trace(go.Scatter(
         x=["OPEN"], y=[0.0],
         mode="markers",
@@ -501,27 +447,26 @@ if price_levels_dict:
         hoverinfo="skip"
     ))
     
-    # Add secondary y-axis with price levels - ALIGN WITH FIB LEVELS (not text offset)
     fig.update_layout(
         yaxis2=dict(
             title="Price Levels",
             overlaying="y",
             side="right",
             tickmode="array",
-            tickvals=display_fib_levels,  # Use display_fib_levels
+            tickvals=display_fib_levels,
             ticktext=[f"{p:.2f}" for p in price_values],
             tickfont=dict(color="white", size=10 * font_size_multiplier),
             showgrid=False,
             range=[min(display_fib_levels)-0.1, max(display_fib_levels)+0.1],
             fixedrange=True,
             anchor="free",
-            position=1.0  # Move as far right as possible
+            position=1.0
         )
     )
 
 st.plotly_chart(fig, use_container_width=use_container_width)
 
-# --- Chart Information Footer (Request #5) ---
+# --- Chart Information Footer ---
 col1, col2 = st.columns([3, 1])
 with col1:
     if atr_data.get("status") == "success":
@@ -529,5 +474,5 @@ with col1:
         age_warning = f" (⚠️ {data_age} days old)" if data_age > 0 else ""
         st.caption(f"📊 ATR levels from {atr_data.get('reference_date', 'unknown')} | Close: {atr_data.get('reference_close', 'N/A')} | ATR: {atr_data.get('reference_atr', 'N/A')}{age_warning}")
 
-# --- Legend/Key (Request #6) ---
+# --- Legend/Key ---
 st.caption("📋 **Chart Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | Percentages show probability of reaching target level by specified time")
