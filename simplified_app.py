@@ -423,7 +423,7 @@ fig.update_layout(
         categoryorder="array",
         categoryarray=display_fib_levels,
         tickmode="array",
-        tickvals=display_fib_levels,
+        tickvals=display_fib_levels,  # Align Y-axis labels with actual fib levels, not offset
         ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
         tickfont=dict(color="white", size=12 * font_size_multiplier),
         side="left"
@@ -459,7 +459,7 @@ if price_levels_dict:
             overlaying="y",
             side="right",
             tickmode="array",
-            tickvals=display_fib_levels,
+            tickvals=display_fib_levels,  # Align with horizontal lines, not offset text
             ticktext=[f"{p:.2f}" for p in price_values],
             tickfont=dict(color="white", size=10 * font_size_multiplier),
             showgrid=False,
