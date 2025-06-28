@@ -52,7 +52,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.2.1 - Fixed Plotly Error") # VERSION BUMP
+    st.caption("🔧 App Version: v2.2.2 - Force Right Axis") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -370,6 +370,16 @@ if price_levels_dict:
         price_val = price_levels_dict.get(level_key, 0)
         price_values.append(price_val)
     
+    # Add invisible trace to force right Y-axis
+    fig.add_trace(go.Scatter(
+        x=["OPEN"], y=[0.0],
+        mode="markers",
+        marker=dict(opacity=0, size=1),
+        yaxis="y2",
+        showlegend=False,
+        hoverinfo="skip"
+    ))
+    
     # Add secondary y-axis with price levels
     fig.update_layout(
         yaxis2=dict(
@@ -380,7 +390,8 @@ if price_levels_dict:
             tickvals=fib_levels,
             ticktext=[f"{p:.0f}" for p in price_values],
             tickfont=dict(color="cyan", size=11),
-            showgrid=False
+            showgrid=False,
+            range=[min(fib_levels)-0.1, max(fib_levels)+0.1]
         )
     )
 
