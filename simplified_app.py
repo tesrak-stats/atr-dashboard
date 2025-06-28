@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.19 - Debug Mobile OPEN Display") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.20 - Fixed Mobile Column Count") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -176,7 +176,7 @@ if show_expanded_view:
     use_container_width = False
 else:
     current_hour_index = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"].index(trigger_time)
-    end_index = min(current_hour_index + 4, 7)
+    end_index = min(current_hour_index + 3, 7)  # Changed from +4 to +3 (trigger + 2 more)
     time_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"][current_hour_index:end_index + 1]
     time_columns.append("TOTAL")
     display_columns = time_columns
