@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.37 - Reverted to Working State") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.38 - Fixed Full View & Always Show TOTAL") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -180,16 +180,13 @@ else:
     current_hour_index = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"].index(trigger_time)
     
     if trigger_time == "OPEN":
-        # For OPEN trigger, skip OPEN column and show first 3 regular hours + TOTAL
-        time_columns = ["0900", "1000", "1100"]
-        time_columns.append("TOTAL")
-        display_columns = time_columns
+        # For OPEN trigger: 0900, 1000, 1100, TOTAL
+        display_columns = ["0900", "1000", "1100", "TOTAL"]
     else:
-        # For other triggers, show trigger + 2 more hours + TOTAL
+        # For other triggers: trigger + 2 more hours + TOTAL
         end_index = min(current_hour_index + 3, 7)
         time_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"][current_hour_index:end_index + 1]
-        time_columns.append("TOTAL")
-        display_columns = time_columns
+        display_columns = time_columns + ["TOTAL"]
     
     trigger_index = fib_levels.index(trigger_level)
     start_fib = max(0, trigger_index - 3)  # Show 3 levels above trigger
@@ -295,7 +292,9 @@ for level in display_fib_levels:  # Back to only processing the levels we want t
     all_possible_columns = display_columns + ["TOTAL"] if "TOTAL" not in display_columns else display_columns
     
     for t in time_order:
-        # Skip spacers but allow all time columns
+        # Skip spacers but create data for time columns
+        if t not in all_possible_columns and t != "SPACER":
+            continue
         if t == "SPACER":
             continue
             
