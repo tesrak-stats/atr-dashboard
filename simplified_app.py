@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.23 - Better Mobile Space Usage") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.24 - Fixed OPEN Trigger Time Logic") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -353,10 +353,19 @@ for level in display_fib_levels:
             hits = data["hits"]
             total = data["triggers"]
             
+            # Check if times are before trigger time (handle OPEN special case)
+            if trigger_time == "OPEN":
+                # For OPEN trigger, all regular hours are after trigger
+                is_before_trigger = False
+            elif time_order.index(t) < time_order.index(trigger_time):
+                is_before_trigger = True
+            else:
+                is_before_trigger = False
+            
             if level == trigger_level:
                 display_text = ""
                 hover = "Same level as trigger"
-            elif time_order.index(t) < time_order.index(trigger_time):
+            elif is_before_trigger:
                 display_text = ""
                 hover = "Before trigger time"
             else:
@@ -377,10 +386,19 @@ for level in display_fib_levels:
             if t not in ["OPEN", "TOTAL"]:
                 line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
                 
+                # Check if times are before trigger time (handle OPEN special case)
+                if trigger_time == "OPEN":
+                    # For OPEN trigger, all regular hours are after trigger
+                    is_before_trigger = False
+                elif time_order.index(t) < time_order.index(trigger_time):
+                    is_before_trigger = True
+                else:
+                    is_before_trigger = False
+                
                 if level == trigger_level:
                     display = ""
                     hover = "Same level as trigger"
-                elif time_order.index(t) < time_order.index(trigger_time):
+                elif is_before_trigger:
                     display = ""
                     hover = "Before trigger time"
                 else:
