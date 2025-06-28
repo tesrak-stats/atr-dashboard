@@ -52,7 +52,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.1.1 - Debug Lines Actually Removed") # VERSION BUMP
+    st.caption("🔧 App Version: v2.2.0 - Clean No Debug") # VERSION
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -98,10 +98,6 @@ for hour in ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]:
     time_order.append(f"{str(int(hour[:2])+1).zfill(2)}30")  # Add spacer after each hour
 time_order.append("SPACER")  # Final spacer before TOTAL
 time_order.append("TOTAL")
-
-# Debug: Print what we're working with (REMOVE THESE LINES)
-# print("Display columns:", display_columns)  
-# print("Time order:", time_order)
 
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
@@ -348,12 +344,14 @@ fig.update_layout(
         tickfont=dict(color="white")
     ),
     yaxis=dict(
-        title="Goal Level",
+        title="Fib Level",
         categoryorder="array",
         categoryarray=fib_levels,
         tickmode="array",
         tickvals=fib_levels,
-        tickfont=dict(color="white")
+        ticktext=[f"{lvl:+.3f}" for lvl in fib_levels],
+        tickfont=dict(color="white"),
+        side="left"
     ),
     plot_bgcolor="black",
     paper_bgcolor="black",
@@ -364,47 +362,27 @@ fig.update_layout(
 )
 
 # --- Price ladder on right Y-axis ---
-if atr_price_levels and atr_price_levels.get("status") == "success":
-    levels_dict = atr_price_levels.get("levels", {})
-    
-    # DEBUG: Print what we're working with
-    st.write("🔍 DEBUG - Available levels keys:", list(levels_dict.keys())[:5])
-    
-    # Create price labels for each fib level
-    price_labels = []
+if price_levels_dict:
+    # Create price values array matching fib_levels order
+    price_values = []
     for level in fib_levels:
-        # Convert level to the key format used in JSON (e.g., +1.000, -0.236)
         level_key = f"{level:+.3f}"
-        price_value = levels_dict.get(level_key, "")
-        price_labels.append(price_value)
-        
-    # DEBUG: Show some price labels
-    st.write("🔍 DEBUG - Sample price labels:", price_labels[:5])
-
+        price_val = price_levels_dict.get(level_key, 0)
+        price_values.append(price_val)
+    
+    # Add secondary y-axis with price levels
     fig.update_layout(
-        yaxis=dict(
-            title="Fib Level",
-            tickvals=fib_levels,
-            ticktext=[f"{lvl:+.3f}" for lvl in fib_levels],
-        ),
         yaxis2=dict(
-            title="Price Level",
+            title="Price Levels",
             overlaying="y",
             side="right",
+            tickmode="array",
             tickvals=fib_levels,
-            ticktext=[
-                f"{price:.2f}" if isinstance(price, (int, float)) else f"{price}"
-                for price in price_labels
-            ],
-            tickfont=dict(color="lightgray", size=12),
-            showgrid=False,
-            showline=True,
-            linecolor="white"
+            ticktext=[f"{p:.0f}" for p in price_values],
+            tickfont=dict(color="cyan", size=11),
+            titlefont=dict(color="cyan"),
+            showgrid=False
         )
     )
-else:
-    # No ATR data available - show message
-    st.warning("⚠️ ATR price levels not available")
-    st.write("🔍 DEBUG - ATR data:", atr_price_levels)
 
 st.plotly_chart(fig, use_container_width=False)
