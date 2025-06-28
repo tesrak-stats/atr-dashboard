@@ -52,7 +52,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.5 - Fixed Order Issue") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.6 - Fixed Positioning & Text") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -82,8 +82,8 @@ else:
 
 # --- What's This? Section (Request #7) ---
 with st.expander("❓ What's This? - How to Use This Chart"):
-    st.markdown("""
-    **This chart shows the probability of reaching price levels based on historical data.**
+    st.markdown(f"""
+    **This chart shows the probability of reaching price levels based on historical data from {len(df)} trading days.**
     
     📊 **How to Read:**
     - **Rows (Fib Levels):** Target price levels based on ATR (Average True Range)
@@ -92,8 +92,8 @@ with st.expander("❓ What's This? - How to Use This Chart"):
     - **Colors:** Match the horizontal line colors for easy reference
     
     🎯 **How to Use:**
-    1. **Select Price Direction:** Above or Below current levels
-    2. **Pick Trigger Level:** The level that must be hit first 
+    1. **Select Price Location:** Above or Below Trigger Level
+    2. **Pick Trigger Level:** The level that has been traded at for the first time today
     3. **Choose Trigger Time:** When the trigger level was hit
     4. **Read Results:** See probability of reaching other levels throughout the day
     
@@ -101,7 +101,7 @@ with st.expander("❓ What's This? - How to Use This Chart"):
     """)
 
 # --- Chart Title and Labels (Request #8) ---
-st.subheader("📈 Probability of Reaching Price Levels (%)")
+st.subheader(f"📈 Probability of Reaching Price Levels (%) - Based on {len(df):,} Trading Days")
 st.caption("Historical success rates based on S&P 500 data")
 
 # --- Display configuration ---
@@ -139,8 +139,8 @@ fibo_styles = {
 # --- Controls ---
 col1, col2, col3 = st.columns(3)
 
-# Changed Direction to Price
-price_direction = col1.selectbox("Price", sorted(df["Direction"].unique()), 
+# Changed Direction to Price Location
+price_direction = col1.selectbox("Price Location", sorted(df["Direction"].unique()), 
                                 index=sorted(df["Direction"].unique()).index("Above"))
 
 trigger_level = col2.selectbox("Trigger Level", sorted(set(df["TriggerLevel"]).union(fib_levels)), 
@@ -274,7 +274,7 @@ for level in fib_levels:
                 hover = f"Total: {pct:.1f}% ({hits}/{triggers}){warn}"
                 
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level],
+                    x=[t], y=[level + 0.015],  # Add offset back
                     mode="text", text=[display_text],
                     hovertext=[hover], hoverinfo="text",
                     textfont=dict(color=line_color, size=font_size),
@@ -343,7 +343,7 @@ for level in fib_levels:
                     hover = "No data available"
                     
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level],
+                    x=[t], y=[level + 0.015],  # Add offset back
                     mode="text", text=[display],
                     hovertext=[hover], hoverinfo="text",
                     textfont=dict(color=line_color, size=font_size),
@@ -422,14 +422,14 @@ if price_levels_dict:
             overlaying="y",
             side="right",
             tickmode="array",
-            tickvals=fib_levels,
+            tickvals=[level + 0.015 for level in fib_levels],  # Offset price levels up
             ticktext=[f"{p:.0f}" for p in price_values],
             tickfont=dict(color="white", size=11),  # White per request #3
             showgrid=False,
             range=[min(fib_levels)-0.1, max(fib_levels)+0.1],
             fixedrange=True,  # Lock axis in place per request #4
             anchor="free",
-            position=0.98
+            position=0.95  # Move further left to avoid overlap with TOTAL column
         )
     )
 
@@ -442,8 +442,6 @@ with col1:
         data_age = atr_data.get('data_age_days', 0)
         age_warning = f" (⚠️ {data_age} days old)" if data_age > 0 else ""
         st.caption(f"📊 ATR levels from {atr_data.get('reference_date', 'unknown')} | Close: {atr_data.get('reference_close', 'N/A')} | ATR: {atr_data.get('reference_atr', 'N/A')}{age_warning}")
-with col2:
-    st.caption("🔧 App Version: v2.3.0")
 
 # --- Legend/Key (Request #6) ---
 st.caption("📋 **Chart Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | Percentages show probability of reaching target level by specified time")
