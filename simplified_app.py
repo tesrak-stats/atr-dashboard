@@ -98,9 +98,9 @@ for hour in ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]:
 time_order.append("SPACER")  # Final spacer before TOTAL
 time_order.append("TOTAL")
 
-# Debug: Print what we're working with
-print("Display columns:", display_columns)
-print("Time order:", time_order)
+# Debug: Print what we're working with (REMOVE THESE LINES)
+# print("Display columns:", display_columns)  
+# print("Time order:", time_order)
 
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
               -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
