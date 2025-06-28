@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.30 - Fixed TOTAL Column Logic") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.32 - Enable X-Axis Panning for Mobile") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -444,7 +444,8 @@ fig.update_layout(
         tickmode="array",
         tickvals=display_columns,
         ticktext=display_columns,
-        tickfont=dict(color="white")
+        tickfont=dict(color="white"),
+        fixedrange=False if not show_expanded_view else True  # Allow panning in mobile view
     ),
     yaxis=dict(
         title="Fib Level",
