@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.9 - Fixed Code Structure") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.10 - Removed Secondary Y-Axis") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -485,9 +485,7 @@ if price_levels_dict:
             textfont=dict(color="lightgray", size=10 * font_size_multiplier),
             textposition="middle left",
             showlegend=False,
-            hoverinfo="skip",
-            xaxis="x",
-            yaxis="y"
+            hoverinfo="skip"
         ))
 
 # Add "Price Levels" title on the right
