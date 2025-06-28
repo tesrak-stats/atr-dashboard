@@ -52,7 +52,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.2.0 - Clean No Debug") # VERSION
+    st.caption("🔧 App Version: v2.2.1 - Fixed Plotly Error") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -380,7 +380,6 @@ if price_levels_dict:
             tickvals=fib_levels,
             ticktext=[f"{p:.0f}" for p in price_values],
             tickfont=dict(color="cyan", size=11),
-            titlefont=dict(color="cyan"),
             showgrid=False
         )
     )
