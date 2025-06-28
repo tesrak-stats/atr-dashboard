@@ -186,18 +186,24 @@ else:
     end_fib = min(len(fib_levels), trigger_index + 3)
     display_fib_levels = fib_levels[start_fib:end_fib]
     
+    # Mobile focused view - optimize for readability
     chart_height = 400
-    chart_width = None
-    font_size_multiplier = 0.9
+    chart_width = None  # Let it auto-size
+    font_size_multiplier = 1.0  # Keep text readable
     use_container_width = True
 
-# Create time_order with proper spacing
-time_order = ["OPEN", "0830"]
-for hour in ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]:
-    time_order.append(hour)
-    time_order.append(f"{str(int(hour[:2])+1).zfill(2)}30")
-time_order.append("SPACER")
-time_order.append("TOTAL")
+# Create time_order - only include displayed columns for focused view
+if show_expanded_view:
+    # Full time_order with spacers for expanded view
+    time_order = ["OPEN", "0830"]
+    for hour in ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]:
+        time_order.append(hour)
+        time_order.append(f"{str(int(hour[:2])+1).zfill(2)}30")
+    time_order.append("SPACER")
+    time_order.append("TOTAL")
+else:
+    # Simplified time_order for focused view - no spacers
+    time_order = display_columns
 
 # --- Filter and simple lookup ---
 filtered = df[
