@@ -287,7 +287,7 @@ def generate_html_report(summary_df, metadata):
                         if len(goal_time_data) > 0:
                             pct = goal_time_data['PctCompletion'].iloc[0]
                             hits = goal_time_data['NumHits'].iloc[0]
-                            triggers = goal_time_data['NumTriggers'].iloc[0]
+                            triggers = goal_time_data['ActionableTriggers'].iloc[0]
                             total_hits += hits
                             total_triggers = triggers  # Should be same for all goals
                             
