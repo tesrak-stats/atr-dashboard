@@ -3,6 +3,7 @@ import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
 import io
+
 # Output interval selection (common for both data sources)
 output_intervals = {
     "1 minute": 1,
@@ -152,6 +153,44 @@ else:  # CSV Upload
         index=2,  # Default to 5 minutes
         help="What timeframe is your CSV data in?"
     )
+    
+    # RTH filtering option for CSV
+    rth_filter_method = st.sidebar.radio(
+        "RTH Filtering Method",
+        options=["None", "Time-based", "Session Column"],
+        index=0,
+        help="Choose how to filter regular trading hours data"
+    )
+    
+    if rth_filter_method == "Time-based":
+        # RTH time selection
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            rth_start = st.time_input(
+                "RTH Start",
+                value=datetime.strptime("09:30", "%H:%M").time(),
+                help="Regular trading hours start time"
+            )
+        with col2:
+            rth_end = st.time_input(
+                "RTH End", 
+                value=datetime.strptime("16:00", "%H:%M").time(),
+                help="Regular trading hours end time"
+            )
+    elif rth_filter_method == "Session Column":
+        st.sidebar.info("""
+        📋 **Session Column Format:**
+        - R = Regular Trading Hours
+        - PM = Pre-Market
+        - AH = After Hours
+        """)
+        
+        session_values_to_keep = st.sidebar.multiselect(
+            "Keep Session Types",
+            options=["R", "PM", "AH"],
+            default=["R"],
+            help="Select which session types to keep (R=Regular, PM=Pre-Market, AH=After-Hours)"
+        )
 
 # Function to load and process CSV data
 def load_csv_data(uploaded_file):
@@ -183,8 +222,15 @@ def load_csv_data(uploaded_file):
                 help="Choose the column containing date/time data"
             )
         
-        # Try to identify OHLCV columns
+        # Try to identify OHLCV columns and Session column
         ohlcv_mapping = {}
+        session_col = None
+        
+        # Look for session column first
+        for col in df.columns:
+            if 'session' in col.lower():
+                session_col = col
+                break
         
         for target in ['Open', 'High', 'Low', 'Close', 'Volume']:
             potential_cols = [col for col in df.columns if target.lower() in col.lower()]
@@ -214,18 +260,83 @@ def load_csv_data(uploaded_file):
                 )
                 ohlcv_mapping[target] = selected_col
         
-        return df, datetime_col, ohlcv_mapping
+        # Session column selection (if using session-based filtering)
+        if session_col:
+            st.sidebar.success(f"📊 Found session column: '{session_col}'")
+            selected_session_col = session_col
+        else:
+            # Let user select session column manually
+            session_cols = ['None'] + list(df.columns)
+            selected_session_col = st.sidebar.selectbox(
+                "Select Session Column (Optional)",
+                options=session_cols,
+                index=session_cols.index(session_col) if session_col in session_cols else 0,
+                help="Choose the column containing session data (R/PM/AH), or 'None' if not available"
+            )
+            if selected_session_col == 'None':
+                selected_session_col = None
+        
+        return df, datetime_col, ohlcv_mapping, selected_session_col
         
     except Exception as e:
         st.error(f"Error reading CSV: {str(e)}")
         return None, None, None
 
+# Function to filter by session column
+def filter_by_session(df, session_col, keep_sessions):
+    """Filter DataFrame based on session column values"""
+    try:
+        # Create a copy to avoid modifying original
+        filtered_df = df.copy()
+        
+        # Filter based on session values
+        session_mask = filtered_df[session_col].isin(keep_sessions)
+        filtered_df = filtered_df[session_mask]
+        
+        return filtered_df
+        
+    except Exception as e:
+        st.error(f"Error filtering by session: {str(e)}")
+        return df  # Return original data if filtering fails
+
+# Function to filter RTH data
+def filter_regular_trading_hours(df, start_time, end_time):
+    """Filter DataFrame to only include regular trading hours"""
+    try:
+        # Create a copy to avoid modifying original
+        filtered_df = df.copy()
+        
+        # Get time component of the datetime index
+        time_mask = (filtered_df.index.time >= start_time) & (filtered_df.index.time <= end_time)
+        
+        # Also filter out weekends (Saturday=5, Sunday=6)
+        weekday_mask = filtered_df.index.weekday < 5
+        
+        # Combine both filters
+        final_mask = time_mask & weekday_mask
+        
+        filtered_df = filtered_df[final_mask]
+        
+        return filtered_df
+        
+    except Exception as e:
+        st.error(f"Error filtering RTH data: {str(e)}")
+        return df  # Return original data if filtering fails
+
 # Function to process CSV data into standard format
-def process_csv_data(df, datetime_col, ohlcv_mapping):
+def process_csv_data(df, datetime_col, ohlcv_mapping, session_col=None, filter_method="None", **filter_params):
     """Convert CSV data to standard OHLCV format"""
     try:
         # Create a copy of the data
         processed_df = df.copy()
+        
+        # Apply session-based filtering BEFORE processing (keeps session column)
+        if filter_method == "Session Column" and session_col and 'keep_sessions' in filter_params:
+            original_count = len(processed_df)
+            processed_df = filter_by_session(processed_df, session_col, filter_params['keep_sessions'])
+            filtered_count = len(processed_df)
+            sessions_kept = ", ".join(filter_params['keep_sessions'])
+            st.info(f"📊 Session Filter: Kept {filtered_count:,} records out of {original_count:,} total ({filtered_count/original_count*100:.1f}%) - Sessions: {sessions_kept}")
         
         # Convert datetime column
         processed_df['DateTime'] = pd.to_datetime(processed_df[datetime_col])
@@ -250,6 +361,13 @@ def process_csv_data(df, datetime_col, ohlcv_mapping):
         
         # Remove any rows with NaN in OHLC
         processed_df = processed_df.dropna(subset=required_cols)
+        
+        # Apply time-based RTH filter if requested
+        if filter_method == "Time-based" and 'rth_start' in filter_params and 'rth_end' in filter_params:
+            original_count = len(processed_df)
+            processed_df = filter_regular_trading_hours(processed_df, filter_params['rth_start'], filter_params['rth_end'])
+            filtered_count = len(processed_df)
+            st.info(f"🕐 RTH Filter: Kept {filtered_count:,} records out of {original_count:,} total ({filtered_count/original_count*100:.1f}%)")
         
         return processed_df
         
@@ -341,25 +459,58 @@ else:  # CSV Upload
     if uploaded_file is not None:
         # Load and configure CSV
         if st.sidebar.button("📁 Load CSV Configuration", type="primary"):
-            df, datetime_col, ohlcv_mapping = load_csv_data(uploaded_file)
+            result = load_csv_data(uploaded_file)
+            if len(result) == 4:  # New format with session column
+                df, datetime_col, ohlcv_mapping, session_col = result
+            else:  # Old format for backward compatibility
+                df, datetime_col, ohlcv_mapping = result
+                session_col = None
+                
             if df is not None:
                 st.session_state.csv_config = {
                     'df': df,
                     'datetime_col': datetime_col,
-                    'ohlcv_mapping': ohlcv_mapping
+                    'ohlcv_mapping': ohlcv_mapping,
+                    'session_col': session_col
                 }
         
         # Process CSV data if configuration exists
         if hasattr(st.session_state, 'csv_config') and st.sidebar.button("🔄 Process CSV Data", type="secondary"):
             with st.spinner("Processing CSV data..."):
                 config = st.session_state.csv_config
+                
+                # Prepare filter parameters based on method
+                filter_params = {}
+                filter_suffix = ""
+                
+                if rth_filter_method == "Time-based":
+                    filter_params = {
+                        'rth_start': rth_start,
+                        'rth_end': rth_end
+                    }
+                    filter_suffix = " (RTH Time)"
+                elif rth_filter_method == "Session Column":
+                    if config['session_col'] and session_values_to_keep:
+                        filter_params = {
+                            'keep_sessions': session_values_to_keep
+                        }
+                        sessions_text = "+".join(session_values_to_keep)
+                        filter_suffix = f" ({sessions_text})"
+                    elif rth_filter_method == "Session Column" and not config['session_col']:
+                        st.warning("⚠️ Session column filtering selected but no session column found in CSV")
+                
+                # Process the data
                 st.session_state.data = process_csv_data(
                     config['df'], 
                     config['datetime_col'], 
-                    config['ohlcv_mapping']
+                    config['ohlcv_mapping'],
+                    session_col=config['session_col'],
+                    filter_method=rth_filter_method,
+                    **filter_params
                 )
+                
                 if st.session_state.data is not None:
-                    st.session_state.data_source_info = f"CSV Upload - {csv_input_interval}"
+                    st.session_state.data_source_info = f"CSV Upload - {csv_input_interval}{filter_suffix}"
                 # Reset processed data when new data is loaded
                 st.session_state.processed_data = None
     else:
@@ -502,6 +653,17 @@ else:
         - Volume column is optional
         - Headers required in first row
         - Common formats: 'YYYY-MM-DD HH:MM:SS', 'MM/DD/YYYY HH:MM', etc.
+        
+        **RTH Filtering Options:**
+        - **None**: Keep all data as-is
+        - **Time-based**: Filter by time range (9:30 AM - 4:00 PM default)
+        - **Session Column**: Filter by session values (R/PM/AH)
+        
+        **Session Column Format:**
+        - R = Regular Trading Hours
+        - PM = Pre-Market  
+        - AH = After Hours
+        - Can keep multiple session types (e.g., R+PM for regular + pre-market)
         """)
     
     st.header("⚠️ Important Notes")
