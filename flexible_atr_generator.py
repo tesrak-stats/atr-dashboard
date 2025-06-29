@@ -513,8 +513,10 @@ def standardize_columns(df):
         'high': 'High', 
         'low': 'Low',
         'close': 'Close',
+        'last': 'Close',  # Common in some data providers
         'adj close': 'Close',
         'adjusted_close': 'Close',
+        'settle': 'Close',  # Common in futures data
         # Volume
         'volume': 'Volume',
         'vol': 'Volume',
