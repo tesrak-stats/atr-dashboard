@@ -163,44 +163,68 @@ def detect_triggers_and_goals(daily, intraday):
                         else:
                             goal_type = 'Retracement'   # Back above (includes cross-zero)
                         
+                        # ===== CRITICAL RETRACEMENT LOGIC - DO NOT MODIFY WITHOUT UNDERSTANDING =====
+                        # RETRACEMENT GOALS: Cannot complete on same candle as trigger because we cannot
+                        # determine intra-candle sequence (did goal hit before or after trigger?)
+                        # CONTINUATION GOALS: Can complete on same candle (price continues same direction)
+                        # 
+                        # OPEN TRIGGER = opening price of 0930 candle specifically
+                        # 0930 TIME = high/low of 0930 candle (different from OPEN price)
+                        # ============================================================================
+                        
                         # Check for goal completion - FIXED LOGIC
                         if below_trigger_time == 'OPEN':
                             # Step 1: Check if goal completes at OPEN price first (takes precedence)
-                            if goal_level > trigger_level:  # Above goal
+                            if goal_level > trigger_level:  # Above goal (CONTINUATION)
                                 if open_price >= goal_price:
                                     goal_hit = True
                                     goal_time = 'OPEN'
                                     is_same_time = True
-                            else:  # Below goal
+                            else:  # Below goal (RETRACEMENT)
                                 if open_price <= goal_price:
                                     goal_hit = True
                                     goal_time = 'OPEN'
                                     is_same_time = True
                             
-                            # Step 2: Only if OPEN missed, check ALL candles including 0930 (but use High/Low, not Open)
+                            # Step 2: Only if OPEN missed, check candles based on goal type
                             if not goal_hit:
-                                for _, row in day_data.iterrows():  # FIXED: Include 0930 candle
+                                # CRITICAL: Different logic for CONTINUATION vs RETRACEMENT
+                                if goal_level > trigger_level:  # CONTINUATION - can check same candle (0930)
+                                    start_candles = day_data.iterrows()  # Include 0930 candle
+                                else:  # RETRACEMENT - must skip same candle (0930), start from 0940
+                                    start_candles = day_data.iloc[1:].iterrows()  # Skip 0930, start from 0940
+                                
+                                for _, row in start_candles:
                                     if goal_level > trigger_level:  # Above goal
                                         if row['High'] >= goal_price:  # Use High, not Open
                                             goal_hit = True
                                             goal_time = row['Time']
                                             break
-                                    else:  # Below goal
+                                    else:  # Below goal  
                                         if row['Low'] <= goal_price:  # Use Low, not Open
                                             goal_hit = True
                                             goal_time = row['Time']
                                             break
                         
-                        else:  # Intraday below trigger
-                            # Check if goal completes on same candle as trigger
-                            if goal_level > trigger_level:  # Above goal
-                                if trigger_candle['High'] >= goal_price:
-                                    goal_hit = True
-                                    goal_time = below_trigger_time
-                            else:  # Below goal
-                                if trigger_candle['Low'] <= goal_price:
-                                    goal_hit = True
-                                    goal_time = below_trigger_time
+                        else:  # Intraday below trigger (e.g., 1000, 1100, etc.)
+                            # ===== CRITICAL INTRADAY RETRACEMENT LOGIC =====
+                            # For CONTINUATION goals: Can check same candle as trigger
+                            # For RETRACEMENT goals: MUST skip same candle as trigger
+                            # Reason: Unknown intra-candle sequence for retracements
+                            # ===============================================
+                            
+                            if goal_level < trigger_level:  # RETRACEMENT - Skip same candle entirely
+                                # DO NOT check trigger candle - start from next candle only
+                                pass  # Skip same-candle check for retracements
+                            else:  # CONTINUATION - Can check same candle
+                                if goal_level > trigger_level:  # Above goal
+                                    if trigger_candle['High'] >= goal_price:
+                                        goal_hit = True
+                                        goal_time = below_trigger_time
+                                else:  # Below goal
+                                    if trigger_candle['Low'] <= goal_price:
+                                        goal_hit = True
+                                        goal_time = below_trigger_time
                             
                             # Check subsequent candles if not completed on trigger candle
                             if not goal_hit:
@@ -301,16 +325,25 @@ def detect_triggers_and_goals(daily, intraday):
                                             goal_time = row['Time']
                                             break
                         
-                        else:  # Intraday above trigger
-                            # Check if goal completes on same candle as trigger
-                            if goal_level > trigger_level:  # Above goal
-                                if trigger_candle['High'] >= goal_price:
-                                    goal_hit = True
-                                    goal_time = above_trigger_time
-                            else:  # Below goal
-                                if trigger_candle['Low'] <= goal_price:
-                                    goal_hit = True
-                                    goal_time = above_trigger_time
+                        else:  # Intraday above trigger (e.g., 1000, 1100, etc.)
+                            # ===== CRITICAL INTRADAY RETRACEMENT LOGIC =====
+                            # For CONTINUATION goals: Can check same candle as trigger  
+                            # For RETRACEMENT goals: MUST skip same candle as trigger
+                            # Reason: Unknown intra-candle sequence for retracements
+                            # ===============================================
+                            
+                            if goal_level < trigger_level:  # RETRACEMENT - Skip same candle entirely
+                                # DO NOT check trigger candle - start from next candle only
+                                pass  # Skip same-candle check for retracements
+                            else:  # CONTINUATION - Can check same candle
+                                if goal_level > trigger_level:  # Above goal
+                                    if trigger_candle['High'] >= goal_price:
+                                        goal_hit = True
+                                        goal_time = above_trigger_time
+                                else:  # Below goal
+                                    if trigger_candle['Low'] <= goal_price:
+                                        goal_hit = True
+                                        goal_time = above_trigger_time
                             
                             # Check subsequent candles if not completed on trigger candle
                             if not goal_hit:
