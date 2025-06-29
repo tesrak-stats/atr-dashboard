@@ -718,65 +718,95 @@ def process_goals_for_trigger(results, day_data, fib_levels, level_map, trigger_
     trigger_candle = day_data.iloc[trigger_row] if trigger_row is not None else None
     
     for goal_level in fib_levels:
-        if goal_level == trigger_level:
-            continue
+        # Allow same level as goal in opposite direction
+        # if goal_level == trigger_level:
+        #     continue
         
         goal_price = level_map[goal_level]
         goal_hit = False
         goal_time = ''
         is_same_time = False
         
-        # Determine goal type
-        if direction == 'Below':
-            goal_type = 'Continuation' if goal_level < trigger_level else 'Retracement'
-        else:  # Above
-            goal_type = 'Continuation' if goal_level > trigger_level else 'Retracement'
+        # Determine goal type and direction logic
+        if goal_level == trigger_level:
+            # Same level - check opposite direction
+            if direction == 'Below':
+                goal_type = 'Retest'
+                # For Below trigger, same level goal checks for Above movement
+                check_condition = lambda candle: candle['High'] >= goal_price
+            else:  # Above trigger
+                goal_type = 'Retest'
+                # For Above trigger, same level goal checks for Below movement  
+                check_condition = lambda candle: candle['Low'] <= goal_price
+        else:
+            # Different levels - normal logic
+            if direction == 'Below':
+                goal_type = 'Continuation' if goal_level < trigger_level else 'Retracement'
+                check_condition = lambda candle: check_goal_hit(candle, goal_level, trigger_level, goal_price)
+            else:  # Above
+                goal_type = 'Continuation' if goal_level > trigger_level else 'Retracement'
+                check_condition = lambda candle: check_goal_hit(candle, goal_level, trigger_level, goal_price)
         
         # Check for goal completion
         if trigger_time == 'OPEN' and has_open_special:
             # Check if goal completes at OPEN
-            if direction == 'Below':
-                if goal_level > trigger_level and open_price >= goal_price:
-                    goal_hit = True
-                    goal_time = 'OPEN'
-                    is_same_time = True
-                elif goal_level < trigger_level and open_price <= goal_price:
-                    goal_hit = True
-                    goal_time = 'OPEN'
-                    is_same_time = True
-            else:  # Above
-                if goal_level > trigger_level and open_price >= goal_price:
-                    goal_hit = True
-                    goal_time = 'OPEN'
-                    is_same_time = True
-                elif goal_level < trigger_level and open_price <= goal_price:
-                    goal_hit = True
-                    goal_time = 'OPEN'
-                    is_same_time = True
+            if goal_level == trigger_level:
+                # Same level retest - can't happen at same time as trigger
+                pass
+            else:
+                # Different level - check normal OPEN completion
+                if direction == 'Below':
+                    if goal_level > trigger_level and open_price >= goal_price:
+                        goal_hit = True
+                        goal_time = 'OPEN'
+                        is_same_time = True
+                    elif goal_level < trigger_level and open_price <= goal_price:
+                        goal_hit = True
+                        goal_time = 'OPEN'
+                        is_same_time = True
+                else:  # Above
+                    if goal_level > trigger_level and open_price >= goal_price:
+                        goal_hit = True
+                        goal_time = 'OPEN'
+                        is_same_time = True
+                    elif goal_level < trigger_level and open_price <= goal_price:
+                        goal_hit = True
+                        goal_time = 'OPEN'
+                        is_same_time = True
             
             # Check subsequent candles if not completed at OPEN
             if not goal_hit:
                 start_idx = 1 if has_open_special else 0
                 for _, row in day_data.iloc[start_idx:].iterrows():
-                    if check_goal_hit(row, goal_level, trigger_level, goal_price):
+                    if check_condition(row):
                         goal_hit = True
                         goal_time = row['Time']
                         break
         
         else:  # Intraday trigger or 24/7 market
-            # Check if goal completes on same candle as trigger
-            if trigger_candle is not None and check_goal_hit(trigger_candle, goal_level, trigger_level, goal_price):
-                goal_hit = True
-                goal_time = trigger_time
-                is_same_time = True
-            
-            # Check subsequent candles if not completed on trigger candle
-            if not goal_hit and trigger_row is not None:
-                for _, row in day_data.iloc[trigger_row + 1:].iterrows():
-                    if check_goal_hit(row, goal_level, trigger_level, goal_price):
-                        goal_hit = True
-                        goal_time = row['Time']
-                        break
+            # For same level retest, can't complete on same candle as trigger
+            if goal_level == trigger_level:
+                # Same level retest - check subsequent candles only
+                if trigger_row is not None:
+                    for _, row in day_data.iloc[trigger_row + 1:].iterrows():
+                        if check_condition(row):
+                            goal_hit = True
+                            goal_time = row['Time']
+                            break
+            else:
+                # Different level - check if goal completes on same candle as trigger
+                if trigger_candle is not None and check_condition(trigger_candle):
+                    goal_hit = True
+                    goal_time = trigger_time
+                    is_same_time = True
+                
+                # Check subsequent candles if not completed on trigger candle
+                if not goal_hit and trigger_row is not None:
+                    for _, row in day_data.iloc[trigger_row + 1:].iterrows():
+                        if check_condition(row):
+                            goal_hit = True
+                            goal_time = row['Time']
+                            break
         
         # Record result
         results.append({
