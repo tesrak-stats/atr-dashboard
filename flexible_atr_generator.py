@@ -502,6 +502,17 @@ def standardize_columns(df):
     """
     Standardize column names across different data sources
     """
+    # Clean column names first - handle non-string column names
+    clean_columns = []
+    for col in df.columns:
+        if isinstance(col, str):
+            clean_columns.append(col.strip())
+        else:
+            # Convert non-strings (floats, numbers) to strings
+            clean_columns.append(str(col).strip())
+    
+    df.columns = clean_columns
+    
     # Common column mappings
     column_mappings = {
         # Date columns
@@ -527,7 +538,7 @@ def standardize_columns(df):
     # Apply mappings (case insensitive)
     for old_name, new_name in column_mappings.items():
         for col in df.columns:
-            if col.lower() == old_name:
+            if isinstance(col, str) and col.lower() == old_name:
                 df.rename(columns={col: new_name}, inplace=True)
                 break
     
