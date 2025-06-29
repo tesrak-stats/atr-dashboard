@@ -1,4 +1,4 @@
-# --- Price labels as annotations (locked to lines) ---import streamlit as st
+import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import json
@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.44 - Fixed Syntax Error") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.45 - Fresh Rewrite to Fix Import") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -193,15 +193,15 @@ else:
         display_columns = time_columns + ["TOTAL"]
     
     trigger_index = fib_levels.index(trigger_level)
-    start_fib = max(0, trigger_index - 3)  # Show 3 levels above trigger
-    end_fib = min(len(fib_levels), trigger_index + 4)  # Show 3 levels below trigger
+    start_fib = max(0, trigger_index - 3)
+    end_fib = min(len(fib_levels), trigger_index + 4)
     display_fib_levels = fib_levels[start_fib:end_fib]
     
     # Mobile focused view - optimize for readability
     chart_height = 400
-    chart_width = 600  # Set specific width instead of None to control spacing
-    font_size_multiplier = 1.0  # Keep text readable
-    use_container_width = False  # Use fixed width for better control
+    chart_width = 600
+    font_size_multiplier = 1.0
+    use_container_width = False
 
 # Create time_order - ensure TOTAL is always included for focused view
 if show_expanded_view:
@@ -290,16 +290,55 @@ if trigger_time == "OPEN" and len(filtered) > 0:
 fig = go.Figure()
 text_offset = 0.03
 
+# Add "Fib Level" title above left axis (dimmed)
+fig.add_annotation(
+    text="Fib Level",
+    x=-0.05,
+    y=max(display_fib_levels) + 0.15,
+    xref="paper",
+    yref="y",
+    showarrow=False,
+    font=dict(color="gray", size=12 * font_size_multiplier),
+    xanchor="center",
+    yanchor="bottom"
+)
+
+# Add "Price Level" title above right side (dimmed)
+fig.add_annotation(
+    text="Price Level", 
+    x=1.08,
+    y=max(display_fib_levels) + 0.15,
+    xref="paper", 
+    yref="y",
+    showarrow=False,
+    font=dict(color="gray", size=12 * font_size_multiplier),
+    xanchor="center",
+    yanchor="bottom"
+)
+
+# --- Price labels as annotations (locked to lines) ---
+if price_levels_dict:
+    for level in display_fib_levels:
+        level_key = f"{level:+.3f}"
+        price_val = price_levels_dict.get(level_key, 0)
+        
+        # Use annotations with paper coordinates for proper positioning
+        fig.add_annotation(
+            text=f"{price_val:.2f}",
+            x=1.08,
+            y=level + text_offset,
+            xref="paper",
+            yref="y",
+            showarrow=False,
+            font=dict(color="white", size=14 * font_size_multiplier),
+            xanchor="left",
+            yanchor="middle"
+        )
+
 # --- Matrix cells ---
-for level in display_fib_levels:  # Back to only processing the levels we want to show
-    # Always create TOTAL column data, even if not initially visible
-    all_possible_columns = display_columns + ["TOTAL"] if "TOTAL" not in display_columns else display_columns
-    
+for level in display_fib_levels:
     for t in time_order:
-        # Skip spacers but create data for time columns
-        if t not in all_possible_columns and t != "SPACER":
-            continue
-        if t == "SPACER":
+        if t not in display_columns:
             continue
             
         if t == "OPEN":
@@ -333,6 +372,8 @@ for level in display_fib_levels:  # Back to only processing the levels we want t
                 triggers = total_data["triggers"]
                 
                 line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
+                if level in [1.0, -1.0]:
+                    font_size = font_size - 1
                 
                 warn = " ⚠️" if triggers < 30 else ""
                 display_text = f"{pct:.1f}%"
@@ -365,7 +406,6 @@ for level in display_fib_levels:  # Back to only processing the levels we want t
             
             # Check if times are before trigger time (handle OPEN special case)
             if trigger_time == "OPEN":
-                # For OPEN trigger, all regular hours are after trigger
                 is_before_trigger = False
             elif time_order.index(t) < time_order.index(trigger_time):
                 is_before_trigger = True
@@ -384,6 +424,8 @@ for level in display_fib_levels:  # Back to only processing the levels we want t
                 hover = f"{pct:.1f}% ({hits}/{total}){warn}"
             
             line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
+            if level in [1.0, -1.0]:
+                font_size = font_size - 1
             
             fig.add_trace(go.Scatter(
                 x=[t], y=[level + text_offset],
@@ -395,10 +437,11 @@ for level in display_fib_levels:  # Back to only processing the levels we want t
         else:
             if t not in ["OPEN", "TOTAL"]:
                 line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
+                if level in [1.0, -1.0]:
+                    font_size = font_size - 1
                 
                 # Check if times are before trigger time (handle OPEN special case)
                 if trigger_time == "OPEN":
-                    # For OPEN trigger, all regular hours are after trigger
                     is_before_trigger = False
                 elif time_order.index(t) < time_order.index(trigger_time):
                     is_before_trigger = True
@@ -447,15 +490,15 @@ fig.update_layout(
     xaxis=dict(
         title="Projected Completion Time (Eastern Time)",
         categoryorder="array",
-        categoryarray=display_columns if not show_expanded_view else time_order,  # Use display_columns for focused view
+        categoryarray=display_columns if not show_expanded_view else time_order,
         tickmode="array",
         tickvals=display_columns,
         ticktext=display_columns,
         tickfont=dict(color="white"),
-        fixedrange=False if not show_expanded_view else True  # Allow panning in mobile view
+        fixedrange=False if not show_expanded_view else True
     ),
     yaxis=dict(
-        title="",  # Remove title from left axis
+        title="",
         categoryorder="array",
         categoryarray=display_fib_levels,
         tickmode="array",
@@ -471,63 +514,6 @@ fig.update_layout(
     height=chart_height,
     width=chart_width,
     margin=dict(l=40 if not show_expanded_view else 80, r=80 if not show_expanded_view else 150, t=30 if not show_expanded_view else 60, b=80 if not show_expanded_view else 60)
-)
-
-# Add "Fib Level" title above left axis (dimmed)
-fig.add_annotation(
-    text="Fib Level",
-    x=-0.05,  # Left side
-    y=max(display_fib_levels) + 0.15,  # Above the chart
-    xref="paper",
-    yref="y",
-    showarrow=False,
-    font=dict(color="gray", size=12 * font_size_multiplier),  # Dimmed gray color
-    xanchor="center",
-    yanchor="bottom"
-)
-
-# Add "Price Level" title above right side (dimmed)
-fig.add_annotation(
-    text="Price Level", 
-    x=1.08,  # Right side (same position as price values)
-    y=max(display_fib_levels) + 0.15,  # Above the chart
-    xref="paper", 
-    yref="y",
-    showarrow=False,
-    font=dict(color="gray", size=12 * font_size_multiplier),  # Dimmed gray color
-    xanchor="center",
-    yanchor="bottom"
-)
-if price_levels_dict:
-    for level in display_fib_levels:
-        level_key = f"{level:+.3f}"
-        price_val = price_levels_dict.get(level_key, 0)
-        
-        # Use annotations with paper coordinates for proper positioning
-        fig.add_annotation(
-            text=f"{price_val:.2f}",
-            x=1.08,  # Reduced from 1.15 to 1.08 (8% beyond right edge)
-            y=level + text_offset,  # Y in data coordinates (aligned with lines)
-            xref="paper",
-            yref="y",  # Y follows the data coordinate system
-            showarrow=False,
-            font=dict(color="white", size=14 * font_size_multiplier),
-            xanchor="left",
-            yanchor="middle"
-        )
-
-# Add "Price Level" title on the far right using paper coordinates
-fig.add_annotation(
-    text="Price Level",
-    x=1.05,  # Even closer - 5% beyond right edge
-    y=0.5,   # Middle of chart in paper coordinates
-    xref="paper",
-    yref="paper",
-    showarrow=False,
-    textangle=-90,  # Same direction as Fib Level
-    font=dict(color="white", size=14 * font_size_multiplier),
-    xanchor="center",
-    yanchor="middle"
 )
 
 st.plotly_chart(fig, use_container_width=use_container_width)
