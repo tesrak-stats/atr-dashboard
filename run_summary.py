@@ -3,6 +3,9 @@ import pandas as pd
 import numpy as np
 import io
 from datetime import datetime
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.utils.dataframe import dataframe_to_rows
 
 def bucket_time(time_value):
     """Convert numeric times to hour buckets for dashboard display"""
@@ -37,6 +40,170 @@ def bucket_time(time_value):
         return "1500"
     else:
         return "1600"
+
+def generate_excel_report(summary_df, metadata):
+    """Generate Excel report grouped by trigger-goal pairs showing raw hits and percentages across time periods"""
+    
+    # Create workbook and worksheet
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "ATR Analysis Report"
+    
+    # Define styles
+    header_font = Font(bold=True, size=12)
+    subheader_font = Font(bold=True, size=10)
+    title_font = Font(bold=True, size=14)
+    percentage_font = Font(italic=True, color="666666")
+    
+    header_fill = PatternFill(start_color="E3F2FD", end_color="E3F2FD", fill_type="solid")
+    trigger_fill = PatternFill(start_color="F5F5F5", end_color="F5F5F5", fill_type="solid")
+    
+    center_align = Alignment(horizontal="center", vertical="center")
+    
+    # Write title and metadata
+    current_row = 1
+    ws.cell(row=current_row, column=1, value="ATR Analysis Report").font = title_font
+    current_row += 1
+    ws.cell(row=current_row, column=1, value=f"Date Range: {metadata['date_range']}")
+    current_row += 1
+    ws.cell(row=current_row, column=1, value=f"Total Records: {metadata['total_records']:,}")
+    current_row += 1
+    ws.cell(row=current_row, column=1, value=f"Trading Days: {metadata['unique_dates']:,}")
+    current_row += 1
+    ws.cell(row=current_row, column=1, value=f"Overall Success Rate: {metadata['overall_rate']:.1f}%")
+    current_row += 3  # Add spacing
+    
+    # Define time periods (columns)
+    time_periods = ['OPEN', '0900', '1000', '1100', '1200', '1300', '1400', '1500']
+    
+    # Get unique trigger-goal combinations
+    trigger_goal_combinations = summary_df.groupby(['Direction', 'TriggerLevel', 'GoalLevel']).first().reset_index()
+    
+    # Group by direction for organization
+    directions = ['Above', 'Below']
+    
+    for direction in directions:
+        direction_data = trigger_goal_combinations[trigger_goal_combinations['Direction'] == direction]
+        if len(direction_data) == 0:
+            continue
+        
+        # Direction header
+        ws.cell(row=current_row, column=1, value=f"{direction} Trigger Analysis").font = title_font
+        current_row += 2
+        
+        # Group by trigger level
+        trigger_levels = sorted(direction_data['TriggerLevel'].unique())
+        
+        for trigger_level in trigger_levels:
+            trigger_data = direction_data[direction_data['TriggerLevel'] == trigger_level]
+            
+            # Trigger level header
+            ws.cell(row=current_row, column=1, value=f"Trigger Level: {trigger_level:+.3f}").font = subheader_font
+            for col in range(1, 16):  # Extend range to cover all columns
+                ws.cell(row=current_row, column=col).fill = trigger_fill
+            current_row += 1
+            
+            # Column headers
+            headers = ['Goal Level', 'Trigger Time', 'Total Triggers', 'Open Comps', 'Actionable'] + time_periods + ['Total Hits', 'Success Rate']
+            for col, header in enumerate(headers, 1):
+                cell = ws.cell(row=current_row, column=col, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+                cell.alignment = center_align
+            current_row += 1
+            
+            # Get goals for this trigger level
+            goals = sorted(trigger_data['GoalLevel'].unique())
+            
+            for goal_level in goals:
+                # Get all data for this trigger-goal combination
+                combo_data = summary_df[
+                    (summary_df['Direction'] == direction) & 
+                    (summary_df['TriggerLevel'] == trigger_level) & 
+                    (summary_df['GoalLevel'] == goal_level)
+                ]
+                
+                if len(combo_data) == 0:
+                    continue
+                
+                # Group by trigger time for this goal
+                trigger_times = sorted(combo_data['TriggerTime'].unique())
+                
+                for i, trigger_time in enumerate(trigger_times):
+                    time_data = combo_data[combo_data['TriggerTime'] == trigger_time]
+                    
+                    if len(time_data) == 0:
+                        continue
+                    
+                    # Get summary stats for this trigger-goal-time combination
+                    total_triggers = time_data['NumTriggers'].iloc[0] if len(time_data) > 0 else 0
+                    open_completions = time_data['OpenCompletions'].iloc[0] if len(time_data) > 0 else 0
+                    actionable_triggers = total_triggers - open_completions
+                    
+                    # Goal level (only show for first trigger time)
+                    goal_cell = ws.cell(row=current_row, column=1, value=f"{goal_level:+.3f}" if i == 0 else "")
+                    goal_cell.font = subheader_font
+                    
+                    # Trigger time
+                    ws.cell(row=current_row, column=2, value=trigger_time)
+                    
+                    # Summary stats
+                    ws.cell(row=current_row, column=3, value=total_triggers)
+                    ws.cell(row=current_row, column=4, value=open_completions)
+                    ws.cell(row=current_row, column=5, value=actionable_triggers)
+                    
+                    # Time period data
+                    total_hits = 0
+                    for col_idx, time_period in enumerate(time_periods, 6):
+                        period_data = time_data[time_data['GoalTime'] == time_period]
+                        if len(period_data) > 0:
+                            hits = period_data['NumHits'].iloc[0]
+                            pct = period_data['PctCompletion'].iloc[0]
+                            total_hits += hits
+                            
+                            # Show hits and percentage
+                            if hits > 0:
+                                ws.cell(row=current_row, column=col_idx, value=f"{hits} ({pct:.1f}%)")
+                            else:
+                                ws.cell(row=current_row, column=col_idx, value="0 (0.0%)")
+                        else:
+                            ws.cell(row=current_row, column=col_idx, value="0 (0.0%)")
+                    
+                    # Total hits and success rate
+                    ws.cell(row=current_row, column=14, value=total_hits)
+                    success_rate = (total_hits / actionable_triggers * 100) if actionable_triggers > 0 else 0
+                    ws.cell(row=current_row, column=15, value=f"{success_rate:.1f}%")
+                    
+                    current_row += 1
+                
+                # Add spacing between goals
+                current_row += 1
+            
+            # Add spacing between trigger levels
+            current_row += 2
+        
+        # Add spacing between directions
+        current_row += 3
+    
+    # Auto-adjust column widths
+    for column in ws.columns:
+        max_length = 0
+        column_letter = column[0].column_letter
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = min(max_length + 2, 20)  # Cap at 20 characters
+        ws.column_dimensions[column_letter].width = adjusted_width
+    
+    # Save to BytesIO buffer
+    excel_buffer = io.BytesIO()
+    wb.save(excel_buffer)
+    excel_buffer.seek(0)
+    
+    return excel_buffer.getvalue()
 
 def generate_html_report(summary_df, metadata):
     """Generate comprehensive HTML report of all trigger-goal combinations"""
@@ -287,7 +454,7 @@ def generate_html_report(summary_df, metadata):
                         if len(goal_time_data) > 0:
                             pct = goal_time_data['PctCompletion'].iloc[0]
                             hits = goal_time_data['NumHits'].iloc[0]
-                            triggers = goal_time_data['ActionableTriggers'].iloc[0]
+                            triggers = goal_time_data['NumTriggers'].iloc[0]
                             total_hits += hits
                             total_triggers = triggers  # Should be same for all goals
                             
@@ -355,7 +522,7 @@ def generate_html_report(summary_df, metadata):
     return html_content
 
 st.title("🎯 Enhanced Summary with OPEN Completion Data")
-st.write("**Includes OPEN completion counts for dashboard tooltips**")
+st.write("**Includes HTML and Excel report generation with OPEN completion counts**")
 
 uploaded_file = st.file_uploader("Upload combined_trigger_goal_results_PERFECT.csv", type="csv")
 
@@ -586,12 +753,20 @@ if uploaded_file is not None:
     dashboard_summary = summary[['Direction', 'TriggerLevel', 'TriggerTime', 'GoalLevel', 'GoalTime', 'ActionableTriggers', 'NumHits', 'PctCompletion', 'OpenCompletions', 'TotalOpenCompletions']].copy()
     dashboard_summary = dashboard_summary.rename(columns={'ActionableTriggers': 'NumTriggers'})
     
-    # HTML Report Generation Section
-    st.write("## 📊 HTML Report Generation")
+    # Report Generation Section
+    st.write("## 📊 Report Generation")
     
-    # Checkbox for generating HTML report
-    generate_html = st.checkbox("📄 Generate comprehensive HTML report", 
-                               help="Creates a detailed HTML report with all trigger-goal combinations for web viewing")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Checkbox for generating HTML report
+        generate_html = st.checkbox("📄 Generate HTML Report", 
+                                   help="Creates a detailed HTML report with all trigger-goal combinations for web viewing")
+    
+    with col2:
+        # Checkbox for generating Excel report
+        generate_excel = st.checkbox("📊 Generate Excel Report", 
+                                    help="Creates a detailed Excel report grouped by trigger-goal pairs with raw hits and percentages")
     
     if generate_html:
         st.write("🔄 Generating HTML report...")
@@ -626,7 +801,46 @@ if uploaded_file is not None:
         )
         
         st.success("✅ HTML report generated successfully!")
-        st.info("💡 **Tip:** You can link to this report from your ATR roadmap dashboard for detailed analysis access")
+    
+    if generate_excel:
+        st.write("🔄 Generating Excel report...")
+        
+        # Prepare metadata for the report
+        date_range = f"{df['Date'].min()} to {df['Date'].max()}"
+        total_actionable = summary.groupby(['Direction', 'TriggerLevel', 'TriggerTime'])['ActionableTriggers'].first().sum()
+        total_hits = summary['NumHits'].sum()
+        overall_rate = (total_hits / total_actionable * 100) if total_actionable > 0 else 0
+        
+        metadata = {
+            'date_range': date_range,
+            'total_records': len(summary),
+            'unique_dates': df['Date'].nunique(),
+            'total_triggers': total_actionable,
+            'overall_rate': overall_rate
+        }
+        
+        try:
+            # Generate Excel content
+            excel_content = generate_excel_report(summary, metadata)
+            
+            # Create download button for Excel
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            excel_filename = f"atr_analysis_report_{timestamp}.xlsx"
+            
+            st.download_button(
+                label="📥 Download Excel Report",
+                data=excel_content,
+                file_name=excel_filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Download detailed Excel report grouped by trigger-goal pairs"
+            )
+            
+            st.success("✅ Excel report generated successfully!")
+            st.info("💡 **Excel Format:** Grouped by trigger-goal pairs with raw hits and percentages across time periods")
+            
+        except Exception as e:
+            st.error(f"❌ Error generating Excel report: {str(e)}")
+            st.info("💡 **Note:** Excel generation requires openpyxl library. If running locally, install with: pip install openpyxl")
     
     # Save enhanced summary
     csv_buffer = io.StringIO()
@@ -655,8 +869,8 @@ if uploaded_file is not None:
         overall_rate = (total_hits / total_actionable * 100) if total_actionable > 0 else 0
         st.metric("Overall Actionable Rate", f"{overall_rate:.1f}%")
     
-    st.success("🎉 **Enhanced summary complete!** Includes OPEN completion data for dashboard tooltips.")
-    st.write("**Key improvement:** Dashboard can now show accurate OPEN completion counts in tooltips.")
+    st.success("🎉 **Enhanced summary complete!** Includes HTML and Excel report generation with OPEN completion data.")
+    st.write("**Key improvement:** Now generates both HTML and Excel reports with trigger-goal analysis.")
 
 else:
-    st.info("👆 Upload your PERFECT trigger-goal results CSV to generate enhanced summary")
+    st.info("👆 Upload your PERFECT trigger-goal results CSV to generate enhanced summary and reports")
