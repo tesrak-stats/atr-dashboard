@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import io
+from datetime import datetime
 
 def bucket_time(time_value):
     """Convert numeric times to hour buckets for dashboard display"""
@@ -37,6 +38,322 @@ def bucket_time(time_value):
     else:
         return "1600"
 
+def generate_html_report(summary_df, metadata):
+    """Generate comprehensive HTML report of all trigger-goal combinations"""
+    
+    # Get unique trigger levels for organizing sections
+    trigger_levels = sorted(summary_df['TriggerLevel'].unique())
+    directions = ['Above', 'Below']
+    trigger_times = ['OPEN', '0900', '1000', '1100', '1200', '1300', '1400', '1500']
+    goal_times = ['0900', '1000', '1100', '1200', '1300', '1400', '1500']
+    
+    html_content = f"""
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>ATR Analysis Report - {metadata['date_range']}</title>
+        <style>
+            body {{
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                margin: 0;
+                padding: 20px;
+                background-color: #f8f9fa;
+                color: #333;
+                line-height: 1.6;
+            }}
+            .container {{
+                max-width: 1400px;
+                margin: 0 auto;
+                background: white;
+                border-radius: 8px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                overflow: hidden;
+            }}
+            .header {{
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                padding: 30px;
+                text-align: center;
+            }}
+            .header h1 {{
+                margin: 0 0 10px 0;
+                font-size: 2.5em;
+            }}
+            .header p {{
+                margin: 0;
+                opacity: 0.9;
+                font-size: 1.1em;
+            }}
+            .summary-stats {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 20px;
+                padding: 30px;
+                background: #f8f9fa;
+                border-bottom: 1px solid #dee2e6;
+            }}
+            .stat-card {{
+                background: white;
+                padding: 20px;
+                border-radius: 8px;
+                text-align: center;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }}
+            .stat-number {{
+                font-size: 2em;
+                font-weight: bold;
+                color: #667eea;
+                margin-bottom: 5px;
+            }}
+            .stat-label {{
+                color: #6c757d;
+                font-size: 0.9em;
+            }}
+            .content {{
+                padding: 30px;
+            }}
+            .direction-section {{
+                margin-bottom: 40px;
+            }}
+            .direction-title {{
+                font-size: 1.8em;
+                color: #495057;
+                border-bottom: 3px solid #667eea;
+                padding-bottom: 10px;
+                margin-bottom: 25px;
+            }}
+            .trigger-section {{
+                margin-bottom: 30px;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                overflow: hidden;
+            }}
+            .trigger-header {{
+                background: #e9ecef;
+                padding: 15px 20px;
+                font-weight: bold;
+                color: #495057;
+                border-bottom: 1px solid #dee2e6;
+            }}
+            .data-table {{
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.9em;
+            }}
+            .data-table th {{
+                background: #f8f9fa;
+                padding: 12px 8px;
+                text-align: center;
+                border-bottom: 2px solid #dee2e6;
+                border-right: 1px solid #dee2e6;
+                font-weight: 600;
+                color: #495057;
+            }}
+            .data-table td {{
+                padding: 10px 8px;
+                text-align: center;
+                border-bottom: 1px solid #f1f3f4;
+                border-right: 1px solid #f1f3f4;
+            }}
+            .data-table tbody tr:hover {{
+                background-color: #f8f9fa;
+            }}
+            .trigger-time {{
+                background: #e3f2fd !important;
+                font-weight: 600;
+                color: #1565c0;
+            }}
+            .percentage {{
+                font-weight: 500;
+            }}
+            .high-pct {{ color: #28a745; }}
+            .med-pct {{ color: #ffc107; }}
+            .low-pct {{ color: #dc3545; }}
+            .zero-pct {{ color: #6c757d; }}
+            .summary-row {{
+                background: #f8f9fa !important;
+                font-weight: 600;
+                border-top: 2px solid #dee2e6;
+            }}
+            .footer {{
+                background: #f8f9fa;
+                padding: 20px;
+                text-align: center;
+                color: #6c757d;
+                border-top: 1px solid #dee2e6;
+            }}
+            @media (max-width: 768px) {{
+                .container {{ margin: 10px; }}
+                .header {{ padding: 20px; }}
+                .header h1 {{ font-size: 1.8em; }}
+                .content {{ padding: 15px; }}
+                .data-table {{ font-size: 0.8em; }}
+                .data-table th, .data-table td {{ padding: 6px 4px; }}
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>📊 ATR Analysis Report</h1>
+                <p>Comprehensive Trigger-Goal Analysis | {metadata['date_range']}</p>
+            </div>
+            
+            <div class="summary-stats">
+                <div class="stat-card">
+                    <div class="stat-number">{metadata['total_records']:,}</div>
+                    <div class="stat-label">Total Records</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{metadata['unique_dates']:,}</div>
+                    <div class="stat-label">Trading Days</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{metadata['total_triggers']:,}</div>
+                    <div class="stat-label">Total Triggers</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">{metadata['overall_rate']:.1f}%</div>
+                    <div class="stat-label">Overall Success Rate</div>
+                </div>
+            </div>
+            
+            <div class="content">
+    """
+    
+    # Generate sections for each direction
+    for direction in directions:
+        direction_data = summary_df[summary_df['Direction'] == direction]
+        if len(direction_data) == 0:
+            continue
+            
+        html_content += f"""
+                <div class="direction-section">
+                    <h2 class="direction-title">📈 {direction} Trigger Analysis</h2>
+        """
+        
+        # Group by trigger level ranges for better organization
+        for trigger_level in trigger_levels:
+            trigger_data = direction_data[direction_data['TriggerLevel'] == trigger_level]
+            if len(trigger_data) == 0:
+                continue
+                
+            html_content += f"""
+                    <div class="trigger-section">
+                        <div class="trigger-header">
+                            Trigger Level: {trigger_level:+.3f}
+                        </div>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Trigger Time</th>
+                                    <th>Goal Level</th>
+                                    <th>0900</th>
+                                    <th>1000</th>
+                                    <th>1100</th>
+                                    <th>1200</th>
+                                    <th>1300</th>
+                                    <th>1400</th>
+                                    <th>1500</th>
+                                    <th>Total Triggers</th>
+                                    <th>Total Hits</th>
+                                    <th>Success Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+            """
+            
+            # Organize data by trigger time
+            for trigger_time in trigger_times:
+                time_data = trigger_data[trigger_data['TriggerTime'] == trigger_time]
+                if len(time_data) == 0:
+                    continue
+                
+                # Get unique goals for this trigger time
+                goals = sorted(time_data['GoalLevel'].unique())
+                
+                for i, goal_level in enumerate(goals):
+                    goal_data = time_data[time_data['GoalLevel'] == goal_level]
+                    
+                    # Build row data
+                    row_data = {}
+                    total_hits = 0
+                    total_triggers = 0
+                    
+                    for goal_time in goal_times:
+                        goal_time_data = goal_data[goal_data['GoalTime'] == goal_time]
+                        if len(goal_time_data) > 0:
+                            pct = goal_time_data['PctCompletion'].iloc[0]
+                            hits = goal_time_data['NumHits'].iloc[0]
+                            triggers = goal_time_data['NumTriggers'].iloc[0]
+                            total_hits += hits
+                            total_triggers = triggers  # Should be same for all goals
+                            
+                            # Color code percentages
+                            if pct >= 20:
+                                pct_class = "high-pct"
+                            elif pct >= 10:
+                                pct_class = "med-pct"
+                            elif pct > 0:
+                                pct_class = "low-pct"
+                            else:
+                                pct_class = "zero-pct"
+                            
+                            row_data[goal_time] = f'<span class="{pct_class}">{pct:.1f}%</span>'
+                        else:
+                            row_data[goal_time] = '<span class="zero-pct">0.0%</span>'
+                    
+                    success_rate = (total_hits / total_triggers * 100) if total_triggers > 0 else 0
+                    success_class = "high-pct" if success_rate >= 20 else "med-pct" if success_rate >= 10 else "low-pct" if success_rate > 0 else "zero-pct"
+                    
+                    # Show trigger time only for first goal
+                    trigger_time_cell = f'<td class="trigger-time">{trigger_time}</td>' if i == 0 else '<td></td>'
+                    
+                    html_content += f"""
+                                <tr>
+                                    {trigger_time_cell}
+                                    <td><strong>{goal_level:+.3f}</strong></td>
+                                    <td>{row_data.get('0900', '<span class="zero-pct">0.0%</span>')}</td>
+                                    <td>{row_data.get('1000', '<span class="zero-pct">0.0%</span>')}</td>
+                                    <td>{row_data.get('1100', '<span class="zero-pct">0.0%</span>')}</td>
+                                    <td>{row_data.get('1200', '<span class="zero-pct">0.0%</span>')}</td>
+                                    <td>{row_data.get('1300', '<span class="zero-pct">0.0%</span>')}</td>
+                                    <td>{row_data.get('1400', '<span class="zero-pct">0.0%</span>')}</td>
+                                    <td>{row_data.get('1500', '<span class="zero-pct">0.0%</span>')}</td>
+                                    <td><strong>{total_triggers}</strong></td>
+                                    <td><strong>{total_hits}</strong></td>
+                                    <td><span class="{success_class}"><strong>{success_rate:.1f}%</strong></span></td>
+                                </tr>
+                    """
+            
+            html_content += """
+                            </tbody>
+                        </table>
+                    </div>
+            """
+        
+        html_content += """
+                </div>
+        """
+    
+    # Close HTML
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    html_content += f"""
+            </div>
+            
+            <div class="footer">
+                <p>Generated on {current_time} | ATR Analysis System</p>
+                <p>📊 This report contains {len(summary_df):,} trigger-goal combinations across {metadata['unique_dates']} trading days</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html_content
+
 st.title("🎯 Enhanced Summary with OPEN Completion Data")
 st.write("**Includes OPEN completion counts for dashboard tooltips**")
 
@@ -62,7 +379,7 @@ if uploaded_file is not None:
         st.error("❌ This doesn't appear to have OPEN completion data!")
         st.info("Make sure you're uploading the output from the PERFECT systematic generator")
     else:
-        st.success("✅ Confirmed data has OPEN completions for processing")
+        st.success("✅ Confirmed data has OPEN completion data for processing")
     
     # Apply time bucketing
     st.write("🕐 Applying time bucketing...")
@@ -268,6 +585,48 @@ if uploaded_file is not None:
     # Create final summary for dashboard (with OPEN completion data)
     dashboard_summary = summary[['Direction', 'TriggerLevel', 'TriggerTime', 'GoalLevel', 'GoalTime', 'ActionableTriggers', 'NumHits', 'PctCompletion', 'OpenCompletions', 'TotalOpenCompletions']].copy()
     dashboard_summary = dashboard_summary.rename(columns={'ActionableTriggers': 'NumTriggers'})
+    
+    # HTML Report Generation Section
+    st.write("## 📊 HTML Report Generation")
+    
+    # Checkbox for generating HTML report
+    generate_html = st.checkbox("📄 Generate comprehensive HTML report", 
+                               help="Creates a detailed HTML report with all trigger-goal combinations for web viewing")
+    
+    if generate_html:
+        st.write("🔄 Generating HTML report...")
+        
+        # Prepare metadata for the report
+        date_range = f"{df['Date'].min()} to {df['Date'].max()}"
+        total_actionable = summary.groupby(['Direction', 'TriggerLevel', 'TriggerTime'])['ActionableTriggers'].first().sum()
+        total_hits = summary['NumHits'].sum()
+        overall_rate = (total_hits / total_actionable * 100) if total_actionable > 0 else 0
+        
+        metadata = {
+            'date_range': date_range,
+            'total_records': len(summary),
+            'unique_dates': df['Date'].nunique(),
+            'total_triggers': total_actionable,
+            'overall_rate': overall_rate
+        }
+        
+        # Generate HTML content
+        html_content = generate_html_report(summary, metadata)
+        
+        # Create download button for HTML
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        html_filename = f"atr_analysis_report_{timestamp}.html"
+        
+        st.download_button(
+            label="📥 Download HTML Report",
+            data=html_content,
+            file_name=html_filename,
+            mime="text/html",
+            help="Download comprehensive HTML report for web viewing and sharing"
+        )
+        
+        st.success("✅ HTML report generated successfully!")
+        st.info("💡 **Tip:** You can link to this report from your ATR roadmap dashboard for detailed analysis access")
     
     # Save enhanced summary
     csv_buffer = io.StringIO()
