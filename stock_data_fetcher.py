@@ -1,3 +1,8 @@
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+from datetime import datetime, timedelta
+import io
 # Output interval selection (common for both data sources)
 output_intervals = {
     "1 minute": 1,
@@ -24,11 +29,7 @@ output_interval = st.sidebar.selectbox(
 # Requirements: streamlit, yfinance, pandas
 # Deploy to: Streamlit Cloud via GitHub
 
-import streamlit as st
-import yfinance as yf
-import pandas as pd
-from datetime import datetime, timedelta
-import io
+
 
 # Page configuration
 st.set_page_config(
