@@ -66,9 +66,18 @@ def detect_triggers_and_goals(daily, intraday):
     For goals:
     - Above goals: check HIGH >= goal
     - Below goals: check LOW <= goal
+    
+    FIXED: 0930 candle goal completion logic
     """
     fib_levels = [0.236, 0.382, 0.500, 0.618, 0.786, 1.000, 
                  -0.236, -0.382, -0.500, -0.618, -0.786, -1.000, 0.000]
+    
+    # Standard trading hours for zero-fill
+    standard_hours = ['OPEN', '0930', '0940', '0950', '1000', '1010', '1020', '1030', 
+                      '1040', '1050', '1100', '1110', '1120', '1130', '1140', '1150',
+                      '1200', '1210', '1220', '1230', '1240', '1250', '1300', '1310', 
+                      '1320', '1330', '1340', '1350', '1400', '1410', '1420', '1430',
+                      '1440', '1450', '1500', '1510', '1520', '1530', '1540', '1550', '1600']
     
     results = []
     
@@ -154,9 +163,9 @@ def detect_triggers_and_goals(daily, intraday):
                         else:
                             goal_type = 'Retracement'   # Back above (includes cross-zero)
                         
-                        # Check for goal completion
+                        # Check for goal completion - FIXED LOGIC
                         if below_trigger_time == 'OPEN':
-                            # Check if goal completes at OPEN (same-time scenario)
+                            # Step 1: Check if goal completes at OPEN price first (takes precedence)
                             if goal_level > trigger_level:  # Above goal
                                 if open_price >= goal_price:
                                     goal_hit = True
@@ -168,16 +177,16 @@ def detect_triggers_and_goals(daily, intraday):
                                     goal_time = 'OPEN'
                                     is_same_time = True
                             
-                            # Check subsequent candles if not completed at OPEN
+                            # Step 2: Only if OPEN missed, check ALL candles including 0930 (but use High/Low, not Open)
                             if not goal_hit:
-                                for _, row in day_data.iloc[1:].iterrows():
+                                for _, row in day_data.iterrows():  # FIXED: Include 0930 candle
                                     if goal_level > trigger_level:  # Above goal
-                                        if row['High'] >= goal_price:
+                                        if row['High'] >= goal_price:  # Use High, not Open
                                             goal_hit = True
                                             goal_time = row['Time']
                                             break
                                     else:  # Below goal
-                                        if row['Low'] <= goal_price:
+                                        if row['Low'] <= goal_price:  # Use Low, not Open
                                             goal_hit = True
                                             goal_time = row['Time']
                                             break
@@ -264,9 +273,9 @@ def detect_triggers_and_goals(daily, intraday):
                         else:
                             goal_type = 'Retracement'   # Back below (includes cross-zero)
                         
-                        # Check for goal completion
+                        # Check for goal completion - FIXED LOGIC  
                         if above_trigger_time == 'OPEN':
-                            # Check if goal completes at OPEN (same-time scenario)
+                            # Step 1: Check if goal completes at OPEN price first (takes precedence)
                             if goal_level > trigger_level:  # Above goal
                                 if open_price >= goal_price:
                                     goal_hit = True
@@ -278,16 +287,16 @@ def detect_triggers_and_goals(daily, intraday):
                                     goal_time = 'OPEN'
                                     is_same_time = True
                             
-                            # Check subsequent candles if not completed at OPEN
+                            # Step 2: Only if OPEN missed, check ALL candles including 0930 (but use High/Low, not Open)
                             if not goal_hit:
-                                for _, row in day_data.iloc[1:].iterrows():
+                                for _, row in day_data.iterrows():  # FIXED: Include 0930 candle
                                     if goal_level > trigger_level:  # Above goal
-                                        if row['High'] >= goal_price:
+                                        if row['High'] >= goal_price:  # Use High, not Open
                                             goal_hit = True
                                             goal_time = row['Time']
                                             break
                                     else:  # Below goal
-                                        if row['Low'] <= goal_price:
+                                        if row['Low'] <= goal_price:  # Use Low, not Open
                                             goal_hit = True
                                             goal_time = row['Time']
                                             break
@@ -339,14 +348,62 @@ def detect_triggers_and_goals(daily, intraday):
             st.write(f"⚠️ Error processing {trading_date}: {str(e)}")
             continue
 
-    return pd.DataFrame(results)
+    # Add zero-fill records for hours with no triggers (for troubleshooting)
+    df_results = pd.DataFrame(results)
+    if not df_results.empty:
+        # Get all unique dates and combinations
+        unique_dates = df_results['Date'].unique()
+        
+        # Create zero-fill records for missing hour combinations
+        zero_fill_records = []
+        for date in unique_dates:
+            date_data = df_results[df_results['Date'] == date]
+            existing_combinations = set()
+            
+            for _, row in date_data.iterrows():
+                combo_key = f"{row['Direction']}_{row['TriggerLevel']}_{row['GoalLevel']}"
+                existing_combinations.add(combo_key)
+            
+            # Find combinations that should exist but don't have records
+            for direction in ['Above', 'Below']:
+                for trigger_level in fib_levels:
+                    for goal_level in fib_levels:
+                        if trigger_level == goal_level:
+                            continue
+                        
+                        combo_key = f"{direction}_{trigger_level}_{goal_level}"
+                        if combo_key not in existing_combinations:
+                            # Add zero record for troubleshooting
+                            zero_fill_records.append({
+                                'Date': date,
+                                'Direction': direction,
+                                'TriggerLevel': trigger_level,
+                                'TriggerTime': '',
+                                'TriggerPrice': 0.0,
+                                'GoalLevel': goal_level,
+                                'GoalPrice': 0.0,
+                                'GoalHit': 'No',
+                                'GoalTime': '',
+                                'GoalClassification': 'No Trigger',
+                                'PreviousClose': 0.0,
+                                'PreviousATR': 0.0,
+                                'SameTime': False,
+                                'RetestedTrigger': 'No'
+                            })
+        
+        if zero_fill_records:
+            zero_df = pd.DataFrame(zero_fill_records)
+            df_results = pd.concat([df_results, zero_df], ignore_index=True)
+
+    return df_results
 
 def main():
     """
     PERFECT SYSTEMATIC: Every level checked in both directions (Above and Below)
-    NOW WITH TRUE WILDER'S ATR!
+    NOW WITH TRUE WILDER'S ATR AND FIXED 0930 GOAL COMPLETION LOGIC!
     """
     debug_info = []
+    trading_days_count = 0
     
     try:
         debug_info.append("📊 Loading daily OHLC data...")
@@ -393,6 +450,11 @@ def main():
         df = detect_triggers_and_goals(daily, intraday)
         debug_info.append(f"✅ Detection complete: {len(df)} trigger-goal combinations found")
         
+        # Count trading days processed
+        if not df.empty:
+            trading_days_count = df['Date'].nunique()
+            debug_info.append(f"📅 Trading days processed: {trading_days_count}")
+        
         # Additional validation
         if not df.empty:
             same_time_count = len(df[df['SameTime'] == True])
@@ -424,13 +486,13 @@ def main():
             intraday_triggers = len(df[df['TriggerTime'] != 'OPEN'])
             debug_info.append(f"✅ OPEN triggers: {open_triggers}, Intraday triggers: {intraday_triggers}")
         
-        return df, debug_info
+        return df, debug_info, trading_days_count
         
     except Exception as e:
         debug_info.append(f"❌ Error: {str(e)}")
         import traceback
         debug_info.append(f"Traceback: {traceback.format_exc()}")
-        return pd.DataFrame(), debug_info
+        return pd.DataFrame(), debug_info, 0
 
 # Streamlit Interface
 st.title('🎯 FIXED ATR Generator - TRUE WILDER\'S METHOD')
@@ -439,9 +501,9 @@ st.write('**NOW USING ACTUAL WILDER\'S ATR (not pandas EMA!)**')
 output_path = 'combined_trigger_goal_results_FIXED_ATR.csv'
 
 if st.button('🚀 Generate Results with CORRECT ATR'):
-    with st.spinner('Calculating with TRUE Wilder\'s ATR...'):
+    with st.spinner('Calculating with TRUE Wilder\'s ATR and FIXED 0930 Logic...'):
         try:
-            result_df, debug_messages = main()
+            result_df, debug_messages, trading_days = main()
             
             # Show debug info
             with st.expander('📋 Debug Information'):
@@ -449,20 +511,22 @@ if st.button('🚀 Generate Results with CORRECT ATR'):
                     st.write(msg)
             
             if not result_df.empty:
-                result_df['Source'] = 'Fixed_ATR_Calculation'
+                result_df['Source'] = 'Fixed_ATR_and_0930_Logic'
                 result_df.to_csv(output_path, index=False)
-                st.success('✅ Results generated with CORRECT ATR!')
+                st.success('✅ Results generated with CORRECT ATR and FIXED 0930 logic!')
                 
                 # Show summary stats
                 st.subheader('📊 Summary Statistics')
-                col1, col2, col3, col4 = st.columns(4)
+                col1, col2, col3, col4, col5 = st.columns(5)
                 with col1:
                     st.metric('Total Records', len(result_df))
                 with col2:
-                    st.metric('Unique Dates', result_df['Date'].nunique())
+                    st.metric('Trading Days', trading_days)
                 with col3:
-                    st.metric('Goals Hit', len(result_df[result_df['GoalHit'] == 'Yes']))
+                    st.metric('Unique Dates', result_df['Date'].nunique())
                 with col4:
+                    st.metric('Goals Hit', len(result_df[result_df['GoalHit'] == 'Yes']))
+                with col5:
                     hit_rate = len(result_df[result_df['GoalHit'] == 'Yes']) / len(result_df) * 100
                     st.metric('Hit Rate', f'{hit_rate:.1f}%')
                 
@@ -481,7 +545,7 @@ if st.button('🚀 Generate Results with CORRECT ATR'):
                     mime='text/csv'
                 )
                 
-                st.success('🎉 **FIXED DATA READY!** ATR now calculated correctly!')
+                st.success('🎉 **FIXED DATA READY!** ATR calculated correctly AND 0930 goal completion logic fixed!')
                 
             else:
                 st.warning('⚠️ No results generated - check debug info above')
@@ -491,12 +555,14 @@ if st.button('🚀 Generate Results with CORRECT ATR'):
 
 st.markdown("""
 ---
-**🔧 MAJOR FIX APPLIED:**
+**🔧 MAJOR FIXES APPLIED:**
 - ✅ **TRUE Wilder's ATR implemented** (not pandas EMA!)
 - ✅ **Waits 14 periods before starting** ATR calculation
 - ✅ **First ATR = simple average** of first 14 TR values
 - ✅ **Subsequent ATR = (1/14) × current_TR + (13/14) × previous_ATR**
+- ✅ **FIXED 0930 goal completion logic** - no more skipped candles!
+- ✅ **Trading days count** now displayed in summary
 - ✅ **Should now match Excel values exactly**
 
-**🎯 No More ATR Calculation Betrayal!**
+**🎯 No More ATR or 0930 Logic Issues!**
 """)
