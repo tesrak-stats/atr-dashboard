@@ -1,3 +1,10 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import yfinance as yf
+from datetime import datetime, timedelta
+import os
+
 def calculate_atr(df, period=14):
     """
     Calculate TRUE Wilder's ATR - validated implementation
@@ -43,12 +50,7 @@ def generate_atr_levels(close_price, atr_value, custom_ratios=None):
         level_price = close_price + (ratio * atr_value)
         levels[ratio] = level_price
     
-    return levelsimport streamlit as st
-import pandas as pd
-import numpy as np
-import yfinance as yf
-from datetime import datetime, timedelta
-import os
+    return levels
 
 class AssetConfig:
     """Configuration for different asset classes"""
@@ -70,7 +72,7 @@ class AssetConfig:
             'STOCKS_24H': {
                 'market_open': '00:00',
                 'market_close': '23:59',
-                'has_open_special': False,  # 24-hour stock data (rare but exists)
+                'has_open_special': False,
                 'weekends_closed': False,
                 'session_types': ['24H'],
                 'default_session': ['24H'],
@@ -90,8 +92,8 @@ class AssetConfig:
                 'extended_hours': True
             },
             'FOREX': {
-                'market_open': '17:00',  # Sunday 5 PM EST
-                'market_close': '17:00',  # Friday 5 PM EST
+                'market_open': '17:00',
+                'market_close': '17:00',
                 'has_open_special': False,
                 'weekends_closed': True,
                 'session_types': ['ASIA', 'EUROPE', 'US', '24H'],
@@ -101,8 +103,8 @@ class AssetConfig:
                 'extended_hours': True
             },
             'FUTURES': {
-                'market_open': '18:00',  # Sunday 6 PM EST
-                'market_close': '17:00',  # Friday 5 PM EST
+                'market_open': '18:00',
+                'market_close': '17:00',
                 'has_open_special': True,
                 'weekends_closed': True,
                 'session_types': ['GLOBEX', 'RTH'],
@@ -124,6 +126,71 @@ class AssetConfig:
             }
         }
         return configs.get(asset_type, configs['STOCKS'])
+
+def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer_days=120):
+    """
+    Validate that daily and intraday data are properly aligned for ATR calculation
+    Returns: (is_valid, warnings, recommendations)
+    """
+    warnings = []
+    recommendations = []
+    is_valid = True
+    
+    if daily_data is None or intraday_data is None:
+        return False, ["Missing data files"], ["Please provide both daily and intraday data"]
+    
+    # Convert date columns for comparison
+    daily_dates = pd.to_datetime(daily_data['Date']).dt.date
+    intraday_dates = pd.to_datetime(intraday_data['Date'] if 'Date' in intraday_data.columns 
+                                   else intraday_data['Datetime']).dt.date
+    
+    daily_start = daily_dates.min()
+    daily_end = daily_dates.max()
+    intraday_start = intraday_dates.min()
+    intraday_end = intraday_dates.max()
+    
+    # Check if daily data starts before intraday data
+    if daily_start >= intraday_start:
+        is_valid = False
+        warnings.append("⚠️ Daily data should start BEFORE intraday data for proper ATR calculation")
+        recommendations.append("Extend daily data backwards to include more historical periods")
+    
+    # Check buffer period for ATR calculation
+    buffer_days = (intraday_start - daily_start).days
+    required_days = max(atr_period * 7, min_buffer_days)  # At least ATR period in trading days or 4 months
+    
+    if buffer_days < required_days:
+        is_valid = False
+        warnings.append(f"⚠️ Insufficient buffer period: {buffer_days} days (need {required_days}+ days)")
+        recommendations.append(f"Add at least {required_days - buffer_days} more days of daily data before intraday period")
+    
+    # Check date overlap
+    overlap_start = max(daily_start, intraday_start)
+    overlap_end = min(daily_end, intraday_end)
+    
+    if overlap_start > overlap_end:
+        is_valid = False
+        warnings.append("❌ No date overlap between daily and intraday data")
+        recommendations.append("Ensure daily and intraday data cover overlapping time periods")
+    else:
+        overlap_days = (overlap_end - overlap_start).days
+        if overlap_days < 5:
+            warnings.append("⚠️ Very small overlap period between daily and intraday data")
+            recommendations.append("Increase overlap period for more reliable analysis")
+    
+    # Data quality checks
+    daily_missing = daily_data[['Open', 'High', 'Low', 'Close']].isnull().sum().sum()
+    intraday_missing = intraday_data[['Open', 'High', 'Low', 'Close']].isnull().sum().sum()
+    
+    if daily_missing > 0:
+        warnings.append(f"⚠️ {daily_missing} missing values in daily OHLC data")
+        recommendations.append("Clean daily data to remove or fill missing values")
+    
+    if intraday_missing > 0:
+        warnings.append(f"⚠️ {intraday_missing} missing values in intraday OHLC data")
+        recommendations.append("Clean intraday data to remove or fill missing values")
+    
+    return is_valid, warnings, recommendations
 
 def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=None):
     """
@@ -154,8 +221,19 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
             # Standardize column names
             daily = standardize_columns(daily)
             
+            # Validate required columns
+            required_cols = ['Date', 'Open', 'High', 'Low', 'Close']
+            missing_cols = [col for col in required_cols if col not in daily.columns]
+            if missing_cols:
+                st.error(f"Missing required columns in daily data: {missing_cols}")
+                return None
+            
+            # Sort by date
+            daily['Date'] = pd.to_datetime(daily['Date'])
+            daily = daily.sort_values('Date').reset_index(drop=True)
+            
             st.success(f"✅ Loaded daily data: {len(daily)} records")
-            st.info(f"Columns found: {list(daily.columns)}")
+            st.info(f"Date range: {daily['Date'].min().date()} to {daily['Date'].max().date()}")
             
             return daily
             
@@ -167,7 +245,11 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
         # Fallback to Yahoo Finance
         try:
             st.info(f"📈 Fetching daily data from Yahoo Finance for {ticker}...")
-            daily_data = yf.download(ticker, start=start_date, end=end_date, interval='1d')
+            
+            # Add buffer for ATR calculation
+            buffer_start = start_date - timedelta(days=180)  # 6 months buffer
+            
+            daily_data = yf.download(ticker, start=buffer_start, end=end_date, interval='1d', progress=False)
             
             if daily_data.empty:
                 st.error(f"No daily data found for {ticker}")
@@ -176,7 +258,8 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
             daily_data.reset_index(inplace=True)
             daily_data = standardize_columns(daily_data)
             
-            st.success(f"✅ Loaded daily data from Yahoo: {len(daily_data)} records")
+            st.success(f"✅ Loaded daily data from Yahoo: {len(daily_data)} records (includes 6-month buffer)")
+            st.info(f"Date range: {daily_data['Date'].min().date()} to {daily_data['Date'].max().date()}")
             return daily_data
             
         except Exception as e:
@@ -187,9 +270,15 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
 
 def load_intraday_data(uploaded_file):
     """
-    Load intraday data from uploaded file
+    Load intraday data from uploaded file with progress tracking
     """
     try:
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        status_text.text("Reading file...")
+        progress_bar.progress(25)
+        
         if uploaded_file.name.endswith('.csv'):
             intraday = pd.read_csv(uploaded_file)
         elif uploaded_file.name.endswith(('.xlsx', '.xls')):
@@ -198,8 +287,21 @@ def load_intraday_data(uploaded_file):
             st.error("Unsupported file format. Please use CSV or Excel files.")
             return None
         
+        status_text.text("Standardizing columns...")
+        progress_bar.progress(50)
+        
         # Standardize columns
         intraday = standardize_columns(intraday)
+        
+        # Validate required columns
+        required_cols = ['Open', 'High', 'Low', 'Close']
+        missing_cols = [col for col in required_cols if col not in intraday.columns]
+        if missing_cols:
+            st.error(f"Missing required columns in intraday data: {missing_cols}")
+            return None
+        
+        status_text.text("Processing datetime...")
+        progress_bar.progress(75)
         
         # Ensure we have a datetime column
         if 'Datetime' not in intraday.columns:
@@ -218,8 +320,18 @@ def load_intraday_data(uploaded_file):
         # Create Date column for matching
         intraday['Date'] = intraday['Datetime'].dt.date
         
-        st.success(f"✅ Loaded intraday data: {len(intraday)} records")
+        # Sort by datetime
+        intraday = intraday.sort_values('Datetime').reset_index(drop=True)
+        
+        status_text.text("Finalizing...")
+        progress_bar.progress(100)
+        
+        st.success(f"✅ Loaded intraday data: {len(intraday):,} records")
         st.info(f"Date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
+        
+        # Clear progress indicators
+        progress_bar.empty()
+        status_text.empty()
         
         return intraday
         
@@ -272,7 +384,6 @@ def filter_by_session_and_hours(intraday_data, date, asset_config, session_filte
     # Session-based filtering (if session column exists)
     if session_filter and 'Session' in day_data.columns:
         day_data = day_data[day_data['Session'].isin(session_filter)]
-        st.info(f"Filtered by sessions: {session_filter}")
     
     # Time-based filtering for traditional markets
     if asset_config['weekends_closed'] and asset_config['has_open_special']:
@@ -297,7 +408,7 @@ def filter_by_session_and_hours(intraday_data, date, asset_config, session_filte
 
 def detect_triggers_and_goals_flexible(daily, intraday, asset_config, custom_ratios=None, session_filter=None):
     """
-    Flexible trigger and goal detection for different asset classes
+    Flexible trigger and goal detection for different asset classes with progress tracking
     """
     if custom_ratios is None:
         fib_levels = [0.236, 0.382, 0.500, 0.618, 0.786, 1.000, 
@@ -308,8 +419,18 @@ def detect_triggers_and_goals_flexible(daily, intraday, asset_config, custom_rat
     results = []
     has_open_special = asset_config['has_open_special']
     
+    # Progress tracking
+    total_days = len(daily) - 1
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
     for i in range(1, len(daily)):
         try:
+            # Update progress
+            progress = i / total_days
+            progress_bar.progress(progress)
+            status_text.text(f"Processing day {i}/{total_days}...")
+            
             previous_row = daily.iloc[i-1]
             current_row = daily.iloc[i]
             
@@ -330,8 +451,8 @@ def detect_triggers_and_goals_flexible(daily, intraday, asset_config, custom_rat
             else:
                 date_obj = trading_date.date() if hasattr(trading_date, 'date') else trading_date
             
-            # Get trading session data using correct function name
-        day_data = filter_by_session_and_hours(intraday, date_obj, asset_config, session_filter)
+            # Get trading session data
+            day_data = filter_by_session_and_hours(intraday, date_obj, asset_config, session_filter)
             
             if day_data.empty:
                 continue
@@ -409,6 +530,10 @@ def detect_triggers_and_goals_flexible(daily, intraday, asset_config, custom_rat
         except Exception as e:
             st.warning(f"Error processing {trading_date}: {str(e)}")
             continue
+    
+    # Clear progress indicators
+    progress_bar.empty()
+    status_text.empty()
     
     return pd.DataFrame(results)
 
@@ -533,19 +658,6 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
         
         debug_info.append(f"Daily data loaded: {daily.shape}")
         
-        # Calculate ATR
-        debug_info.append(f"🧮 Calculating ATR with period {atr_period}...")
-        daily = calculate_atr(daily, period=atr_period)
-        
-        # Validate ATR
-        valid_atr = daily[daily['ATR'].notna()]
-        if not valid_atr.empty:
-            recent_atr = valid_atr['ATR'].tail(3).round(2).tolist()
-            debug_info.append(f"ATR calculated successfully. Recent values: {recent_atr}")
-        else:
-            debug_info.append("⚠️ No valid ATR values calculated")
-            return pd.DataFrame(), debug_info
-        
         # Load intraday data
         if intraday_file is None:
             debug_info.append("⚠️ No intraday data provided - analysis cannot proceed")
@@ -559,6 +671,44 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
         
         debug_info.append(f"Intraday data loaded: {intraday.shape}")
         debug_info.append(f"Intraday date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
+        
+        # Validate data alignment
+        st.subheader("🔍 Data Alignment Validation")
+        is_valid, warnings, recommendations = validate_data_alignment(daily, intraday, atr_period)
+        
+        if warnings:
+            for warning in warnings:
+                st.warning(warning)
+        
+        if recommendations:
+            with st.expander("💡 Recommendations"):
+                for rec in recommendations:
+                    st.info(f"• {rec}")
+        
+        if not is_valid:
+            st.error("❌ Data alignment issues detected. Please address the warnings above before proceeding.")
+            user_choice = st.radio(
+                "How would you like to proceed?",
+                ["Fix data alignment first", "Continue anyway (may produce unreliable results)"],
+                index=0
+            )
+            if user_choice == "Fix data alignment first":
+                return pd.DataFrame(), debug_info + warnings
+        else:
+            st.success("✅ Data alignment validation passed!")
+        
+        # Calculate ATR
+        debug_info.append(f"🧮 Calculating ATR with period {atr_period}...")
+        daily = calculate_atr(daily, period=atr_period)
+        
+        # Validate ATR
+        valid_atr = daily[daily['ATR'].notna()]
+        if not valid_atr.empty:
+            recent_atr = valid_atr['ATR'].tail(3).round(2).tolist()
+            debug_info.append(f"ATR calculated successfully. Recent values: {recent_atr}")
+        else:
+            debug_info.append("⚠️ No valid ATR values calculated")
+            return pd.DataFrame(), debug_info
         
         # Check for session column
         if 'Session' in intraday.columns:
@@ -580,7 +730,7 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
             hit_rate = goals_hit / len(df) * 100 if len(df) > 0 else 0
             debug_info.append(f"✅ Goals hit: {goals_hit}/{len(df)} ({hit_rate:.1f}%)")
             
-             # Session analysis if available
+            # Session analysis if available
             if session_filter:
                 debug_info.append(f"✅ Session filter applied: {session_filter}")
         
@@ -592,9 +742,119 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
         debug_info.append(f"Traceback: {traceback.format_exc()}")
         return pd.DataFrame(), debug_info
 
+def display_results(result_df, debug_messages, ticker, asset_type, data_source_label):
+    """Helper function to display analysis results with enhanced statistics"""
+    # Show debug info
+    with st.expander('📋 Processing Information'):
+        for msg in debug_messages:
+            st.write(msg)
+    
+    if not result_df.empty:
+        result_df['Ticker'] = ticker
+        result_df['AssetType'] = asset_type
+        result_df['DataSource'] = data_source_label
+        
+        # Enhanced summary stats
+        st.subheader('📊 Summary Statistics')
+        
+        # Top row metrics
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            st.metric('Total Records', f"{len(result_df):,}")
+        with col2:
+            st.metric('Unique Dates', result_df['Date'].nunique())
+        with col3:
+            goals_hit = len(result_df[result_df['GoalHit'] == 'Yes'])
+            st.metric('Goals Hit', goals_hit)
+        with col4:
+            hit_rate = goals_hit / len(result_df) * 100 if len(result_df) > 0 else 0
+            st.metric('Hit Rate', f'{hit_rate:.1f}%')
+        with col5:
+            avg_atr = result_df['PreviousATR'].mean()
+            st.metric('Avg ATR', f'{avg_atr:.2f}')
+        
+        # Detailed breakdowns
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader('🎯 Direction Analysis')
+            direction_stats = result_df.groupby('Direction').agg({
+                'GoalHit': lambda x: (x == 'Yes').sum(),
+                'TriggerLevel': 'count'
+            }).rename(columns={'TriggerLevel': 'Total'})
+            direction_stats['Hit Rate %'] = (direction_stats['GoalHit'] / direction_stats['Total'] * 100).round(1)
+            st.dataframe(direction_stats)
+        
+        with col2:
+            st.subheader('📈 Goal Classification')
+            goal_stats = result_df.groupby('GoalClassification').agg({
+                'GoalHit': lambda x: (x == 'Yes').sum(),
+                'TriggerLevel': 'count'
+            }).rename(columns={'TriggerLevel': 'Total'})
+            goal_stats['Hit Rate %'] = (goal_stats['GoalHit'] / goal_stats['Total'] * 100).round(1)
+            st.dataframe(goal_stats)
+        
+        # Show ATR validation
+        if 'PreviousATR' in result_df.columns:
+            latest_atr = result_df['PreviousATR'].iloc[-1]
+            st.subheader('🔍 ATR Validation')
+            st.write(f"**Latest ATR in results: {latest_atr:.2f}**")
+            st.write("This should match Excel calculations")
+            
+            # ATR trend chart
+            atr_by_date = result_df.groupby('Date')['PreviousATR'].first().tail(20)
+            if len(atr_by_date) > 1:
+                st.line_chart(atr_by_date)
+        
+        # Show data preview with better formatting
+        st.subheader('📋 Results Preview')
+        preview_df = result_df.head(10).copy()
+        # Format numeric columns
+        numeric_cols = ['TriggerPrice', 'GoalPrice', 'PreviousClose', 'PreviousATR']
+        for col in numeric_cols:
+            if col in preview_df.columns:
+                preview_df[col] = preview_df[col].apply(lambda x: f"{x:.2f}")
+        
+        st.dataframe(preview_df, use_container_width=True)
+        
+        # Enhanced download options
+        st.subheader('⬇️ Download Options')
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Full results
+            ticker_clean = ticker.replace("^", "").replace("=", "_")
+            output_filename = f'{ticker_clean}_{asset_type}_ATR_analysis_{datetime.now().strftime("%Y%m%d")}.csv'
+            st.download_button(
+                '📊 Download Full Results CSV',
+                data=result_df.to_csv(index=False),
+                file_name=output_filename,
+                mime='text/csv'
+            )
+        
+        with col2:
+            # Summary only
+            summary_data = {
+                'Metric': ['Total Records', 'Unique Dates', 'Goals Hit', 'Hit Rate %', 'Avg ATR'],
+                'Value': [len(result_df), result_df['Date'].nunique(), goals_hit, f"{hit_rate:.1f}%", f"{avg_atr:.2f}"]
+            }
+            summary_df = pd.DataFrame(summary_data)
+            summary_filename = f'{ticker_clean}_{asset_type}_summary_{datetime.now().strftime("%Y%m%d")}.csv'
+            st.download_button(
+                '📋 Download Summary CSV',
+                data=summary_df.to_csv(index=False),
+                file_name=summary_filename,
+                mime='text/csv'
+            )
+        
+        st.success(f'🎉 Analysis complete for {ticker}!')
+        
+    else:
+        st.warning('⚠️ No results generated - check processing information above')
+
 # Streamlit Interface
-st.title('🎯 Flexible ATR Generator - File Input Support')
-st.write('**Upload your own data files - No Yahoo Finance limitations!**')
+st.title('🎯 Advanced ATR Generator - Enhanced Version')
+st.write('**Upload your own data files with comprehensive validation and progress tracking!**')
 
 # Data source selection
 st.sidebar.header("📁 Data Input")
@@ -607,6 +867,12 @@ data_source = st.sidebar.radio(
 
 if data_source == "Upload Files":
     st.sidebar.subheader("📊 File Uploads")
+    
+    # Enhanced warning about data alignment
+    st.sidebar.error("""
+    🚨 **CRITICAL**: For proper ATR calculation, your daily data must start at least 4-6 months 
+    BEFORE your intraday data begins. The system will validate this automatically.
+    """)
     
     # Daily data upload
     daily_file = st.sidebar.file_uploader(
@@ -645,17 +911,11 @@ if data_source == "Upload Files":
             value=False,
             help="Include pre-market (4AM) and after-hours (8PM) data"
         )
-        
-        # Update asset type based on extended hours
-        if extended_hours:
-            config = AssetConfig.get_config('STOCKS', extended_hours=True)
-        else:
-            config = AssetConfig.get_config('STOCKS', extended_hours=False)
-    else:
-        config = AssetConfig.get_config(asset_type)
+    
+    config = AssetConfig.get_config(asset_type, extended_hours)
     
     # Session filtering
-    if 'Session' in config['session_types'] and len(config['session_types']) > 1:
+    if len(config['session_types']) > 1:
         session_filter = st.sidebar.multiselect(
             "Filter by Sessions",
             options=config['session_types'],
@@ -688,13 +948,13 @@ else:  # Yahoo Finance
         help=f"Enter ticker (examples: {', '.join(config['example_tickers'])})"
     ).upper()
     
-    # Date range
-    col1, col2 = st.sidebar.columns(2)
+    # Date range with automatic buffer
+    col1, col2 = st.columns(2)
     with col1:
         start_date = st.date_input(
-            "Start Date",
-            value=datetime.now().date() - timedelta(days=365),
-            help="Start date for analysis"
+            "Intraday Start Date",
+            value=datetime.now().date() - timedelta(days=30),
+            help="Start date for intraday analysis"
         )
     with col2:
         end_date = st.date_input(
@@ -703,54 +963,12 @@ else:  # Yahoo Finance
             help="End date for analysis"
         )
     
+    st.sidebar.info("📅 Daily data will automatically include 6-month buffer for ATR calculation")
+    
     daily_file = None
     intraday_file = None
     session_filter = None
     extended_hours = False
-
-# Show asset configuration
-st.sidebar.info(f"""
-📋 **Data Requirements:**
-- **Daily**: Date, Open, High, Low, Close (Yahoo or file)
-- **Intraday**: Datetime, Open, High, Low, Close (file upload)
-- **Optional**: Volume, Session (PM/R/AH)
-""")
-
-# Asset configuration
-st.sidebar.subheader("🏷️ Asset Configuration")
-asset_type = st.sidebar.selectbox(
-    "Asset Class",
-    options=['STOCKS', 'STOCKS_24H', 'CRYPTO', 'FOREX', 'FUTURES', 'COMMODITIES'],
-    help="Select asset type for appropriate market handling"
-)
-
-# Extended hours for stocks
-extended_hours = False
-if asset_type == 'STOCKS':
-    extended_hours = st.sidebar.checkbox(
-        "Include Extended Hours",
-        value=False,
-        help="Include pre-market (4AM) and after-hours (8PM) data"
-    )
-    
-    # Update asset type based on extended hours
-    if extended_hours:
-        config = AssetConfig.get_config('STOCKS', extended_hours=True)
-    else:
-        config = AssetConfig.get_config('STOCKS', extended_hours=False)
-else:
-    config = AssetConfig.get_config(asset_type)
-
-# Session filtering
-if len(config['session_types']) > 1:
-    session_filter = st.sidebar.multiselect(
-        "Filter by Sessions",
-        options=config['session_types'],
-        default=config['default_session'],
-        help="Select trading sessions to include in analysis"
-    )
-else:
-    session_filter = None
 
 # Advanced settings
 with st.sidebar.expander("⚙️ Advanced Settings"):
@@ -773,14 +991,14 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
         custom_ratios = None
 
 # Generate button
-if st.button('🚀 Generate ATR Analysis'):
-    if data_source == "Upload Both Files":
+if st.button('🚀 Generate Enhanced ATR Analysis'):
+    if data_source == "Upload Files":
         if daily_file is None or intraday_file is None:
             st.error("Please upload both daily and intraday data files")
         else:
-            with st.spinner(f'Analyzing uploaded data ({config["description"]})...'):
+            with st.spinner(f'Analyzing uploaded data with validation ({config["description"]})...'):
                 try:
-                    result_df, debug_messages, trading_days_count = main_flexible_hybrid(
+                    result_df, debug_messages = main_flexible(
                         ticker=ticker or "UPLOADED_DATA",
                         asset_type=asset_type,
                         daily_file=daily_file,
@@ -788,45 +1006,17 @@ if st.button('🚀 Generate ATR Analysis'):
                         atr_period=atr_period,
                         custom_ratios=custom_ratios,
                         session_filter=session_filter,
-                        extended_hours=extended_hours,
-                        data_source=data_source
+                        extended_hours=extended_hours
                     )
                     
-                    display_results(result_df, debug_messages, ticker or "UPLOADED_DATA", asset_type, "Both Files Uploaded", trading_days_count)
+                    display_results(result_df, debug_messages, ticker or "UPLOADED_DATA", asset_type, "Files Uploaded")
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
+                    import traceback
+                    st.error(traceback.format_exc())
     
-    elif data_source == "Yahoo Daily + Upload Intraday":
-        if not ticker:
-            st.error("Please enter a ticker symbol")
-        elif intraday_file is None:
-            st.error("Please upload intraday data file")
-        elif start_date >= end_date:
-            st.error("Start date must be before end date")
-        else:
-            with st.spinner(f'Analyzing {ticker} with hybrid data sources...'):
-                try:
-                    result_df, debug_messages, trading_days_count = main_flexible_hybrid(
-                        ticker=ticker,
-                        asset_type=asset_type,
-                        daily_file=None,  # Will fetch from Yahoo
-                        intraday_file=intraday_file,
-                        start_date=start_date,
-                        end_date=end_date,
-                        atr_period=atr_period,
-                        custom_ratios=custom_ratios,
-                        session_filter=session_filter,
-                        extended_hours=extended_hours,
-                        data_source=data_source
-                    )
-                    
-                    display_results(result_df, debug_messages, ticker, asset_type, "Yahoo Daily + Uploaded Intraday", trading_days_count)
-                        
-                except Exception as e:
-                    st.error(f'❌ Error: {e}')
-    
-    elif data_source == "Yahoo Finance Only (Limited)":
+    elif data_source == "Yahoo Finance (Limited)":
         if not ticker:
             st.error("Please enter a ticker symbol")
         elif start_date >= end_date:
@@ -835,7 +1025,7 @@ if st.button('🚀 Generate ATR Analysis'):
             st.warning("⚠️ Using Yahoo Finance only - limited to ~60 days of intraday data")
             with st.spinner(f'Fetching all data from Yahoo Finance for {ticker}...'):
                 try:
-                    result_df, debug_messages, trading_days_count = main_flexible_hybrid(
+                    result_df, debug_messages = main_flexible(
                         ticker=ticker,
                         asset_type=asset_type,
                         daily_file=None,
@@ -845,267 +1035,96 @@ if st.button('🚀 Generate ATR Analysis'):
                         atr_period=atr_period,
                         custom_ratios=custom_ratios,
                         session_filter=session_filter,
-                        extended_hours=extended_hours,
-                        data_source=data_source
+                        extended_hours=extended_hours
                     )
                     
-                    display_results(result_df, debug_messages, ticker, asset_type, "Yahoo Finance Only", trading_days_count)
+                    display_results(result_df, debug_messages, ticker, asset_type, "Yahoo Finance Only")
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
+                    import traceback
+                    st.error(traceback.format_exc())
 
-def display_results(result_df, debug_messages, ticker, asset_type, data_source_label, trading_days_count=0):
-    """Helper function to display analysis results with trading days count"""
-    # Show debug info
-    with st.expander('📋 Processing Information'):
-        for msg in debug_messages:
-            st.write(msg)
-    
-    if not result_df.empty:
-        result_df['Ticker'] = ticker
-        result_df['AssetType'] = asset_type
-        result_df['DataSource'] = data_source_label
-        
-        # Show summary stats with trading days
-        st.subheader('📊 Summary Statistics')
-        col1, col2, col3, col4, col5 = st.columns(5)
-        with col1:
-            st.metric('Total Records', len(result_df))
-        with col2:
-            st.metric('Trading Days', trading_days_count)
-        with col3:
-            st.metric('Unique Dates', result_df['Date'].nunique())
-        with col4:
-            goals_hit = len(result_df[result_df['GoalHit'] == 'Yes'])
-            st.metric('Goals Hit', goals_hit)
-        with col5:
-            hit_rate = goals_hit / len(result_df) * 100 if len(result_df) > 0 else 0
-            st.metric('Hit Rate', f'{hit_rate:.1f}%')
-        
-        # Show ATR validation
-        if 'PreviousATR' in result_df.columns:
-            latest_atr = result_df['PreviousATR'].iloc[-1]
-            st.subheader('🔍 ATR Validation')
-            st.write(f"**Latest ATR in results: {latest_atr:.2f}**")
-            st.write("This should match Excel calculations")
-        
-        # Show data preview
-        st.subheader('📋 Results Preview')
-        st.dataframe(result_df.head(10))
-        
-        # Download button
-        ticker_clean = ticker.replace("^", "").replace("=", "_")
-        output_filename = f'{ticker_clean}_{asset_type}_ATR_analysis_FIXED.csv'
-        st.download_button(
-            '⬇️ Download Results CSV',
-            data=result_df.to_csv(index=False),
-            file_name=output_filename,
-            mime='text/csv'
-        )
-        
-        st.success(f'🎉 Analysis complete for {ticker} with FIXED 0930 logic!')
-        
-    else:
-        st.warning('⚠️ No results generated - check processing information above')
-
-# Help section
+# Enhanced help section
 st.markdown("""
 ---
-### 📁 File Upload Benefits
+### 🔧 Enhanced Features
 
-**🚀 No Data Limitations**
-- Analyze **years** of historical data
-- **Any timeframe** - 1-minute to daily
-- **Complete control** over data quality
+#### 🔍 **Data Alignment Validation**
+- **Automatic validation** of daily vs intraday data alignment
+- **Buffer period checking** (minimum 4-6 months of daily data before intraday)
+- **Date overlap verification** between datasets
+- **Data quality checks** for missing values
+- **Interactive warnings** with actionable recommendations
 
-**📊 Supported Formats**
-- **CSV files** - most common format
-- **Excel files** (.xlsx, .xls) - automatic header detection
-- **Flexible columns** - automatic standardization
+#### 📊 **Progress Tracking**
+- **Real-time progress bars** during file loading
+- **Processing status updates** during analysis
+- **Large dataset optimization** for files with millions of rows
+- **Memory-efficient processing** for better performance
 
-**🕐 Extended Hours Support for Stocks**
-- **Regular Hours**: 9:30 AM - 4:00 PM ET
-- **Extended Hours**: 4:00 AM - 8:00 PM ET  
-- **24-Hour**: Full day (if data available)
+#### 📈 **Enhanced Statistics**
+- **Direction analysis breakdown** (Above vs Below triggers)
+- **Goal classification metrics** (Continuation vs Retracement)
+- **ATR trend visualization** over time
+- **Session-specific performance** (if applicable)
+- **Hit rate analysis** by trigger type
 
-**🔧 Session Filtering**
-- **PM** - Pre-market (4:00 AM - 9:30 AM)
-- **R** - Regular hours (9:30 AM - 4:00 PM)  
-- **AH** - After-hours (4:00 PM - 8:00 PM)
+#### 💾 **Advanced Downloads**
+- **Full results CSV** with all data points
+- **Summary statistics CSV** for quick overview
+- **Timestamped filenames** for version control
+- **Clean ticker names** in filenames
 
-### 🎯 Asset-Specific Features
+### 🎯 Asset-Specific Enhancements
 
-**STOCKS** - Traditional equity analysis
-- OPEN gap handling for traditional market hours
-- Extended hours support (4AM-8PM)
-- Session filtering (PM/R/AH)
+**STOCKS** - Enhanced equity analysis
+- **Extended hours validation** (PM/R/AH sessions)
+- **Market gap detection** and handling
+- **Session-based filtering** with validation
 
-**CRYPTO** - 24/7 cryptocurrency 
-- No OPEN gaps (continuous trading)
-- Weekends included
-- Perfect for BTC, ETH analysis
+**CRYPTO** - 24/7 optimization
+- **Continuous trading logic** (no gaps)
+- **Weekend data inclusion**
+- **High-frequency data support**
 
-**FOREX** - Foreign exchange
-- Near 24/5 trading
-- Sunday 5PM - Friday 5PM
-- Multiple session support
+**FOREX** - Multi-session support
+- **Session overlap detection**
+- **Weekend gap handling**
+- **Cross-rate validation**
 
-**FUTURES** - Futures contracts
-- Extended hours (Sunday 6PM - Friday 5PM)
-- Electronic vs Regular Trading Hours
-- ES, NQ, commodity futures
+### ⚠️ Critical Improvements
 
-### ✅ Key Improvements
-- **File uploads** instead of Yahoo Finance limitations
-- **True Wilder's ATR** - matches Excel calculations
-- **Flexible market hours** - adapts to asset type
-- **Session filtering** - analyze specific trading sessions
-- **Custom ratios** - define your own levels
-- **Smart column detection** - handles various data formats
+#### 🚨 **Data Alignment Warnings**
+The system now **automatically validates** that your daily data provides sufficient history before your intraday period begins. This prevents ATR calculation errors that could invalidate your entire analysis.
 
-### 📋 Required File Formats
+#### 🔄 **Progress Indicators**
+Large datasets can take time to process. The enhanced version provides:
+- **File loading progress** with status updates
+- **Processing progress** showing which day is being analyzed
+- **Memory usage optimization** for better performance
 
-**Daily Data File:**
-```
-Date,Open,High,Low,Close,Volume
-2023-01-03,100.50,101.25,99.75,100.80,1000000
-2023-01-04,100.80,102.00,100.50,101.50,1200000
-...
-```
+#### 📊 **Enhanced Validation**
+- **Column requirement checking** before processing
+- **Date format standardization** across different sources
+- **Data quality metrics** and warnings
+- **Automatic data sorting** by date/time
 
-**Intraday Data File:**
-```
-Datetime,Open,High,Low,Close,Volume,Session
-2023-01-03 09:30:00,100.50,100.75,100.25,100.60,50000,R
-2023-01-03 09:40:00,100.60,100.90,100.40,100.80,45000,R
-...
-```
+### 📋 Recommended Workflow
 
-**Session Codes (Optional):**
-- **PM** = Pre-market (4:00-9:30 AM)
-- **R** = Regular hours (9:30 AM-4:00 PM)
-- **AH** = After-hours (4:00-8:00 PM)
-""")
-m', '15m', '30m', '1h'],
-        index=3,
-        help="Interval for intraday data (limited to ~60 days)"
-    )
-    
-    # Custom ratio input
-    use_custom_ratios = st.checkbox("Use Custom Ratios")
-    if use_custom_ratios:
-        custom_ratios_text = st.text_area(
-            "Custom Ratios (comma-separated)",
-            value="0.236, 0.382, 0.5, 0.618, 0.786, 1.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0, 0.0",
-            help="Enter custom ratios separated by commas"
-        )
-        try:
-            custom_ratios = [float(x.strip()) for x in custom_ratios_text.split(',')]
-        except:
-            st.error("Invalid custom ratios format")
-            custom_ratios = None
-    else:
-        custom_ratios = None
+1. **Prepare Data**: Ensure daily data starts 4-6 months before intraday data
+2. **Upload Files**: Use the file uploaders (CSV or Excel supported)
+3. **Review Validation**: Check and address any alignment warnings
+4. **Configure Settings**: Choose asset type and sessions
+5. **Run Analysis**: Monitor progress indicators
+6. **Review Results**: Examine enhanced statistics and breakdowns
+7. **Download**: Get both full results and summary files
 
-# Generate button
-if st.button('🚀 Generate ATR Analysis'):
-    if not ticker:
-        st.error("Please enter a ticker symbol")
-    elif start_date >= end_date:
-        st.error("Start date must be before end date")
-    else:
-        with st.spinner(f'Analyzing {ticker} ({config["description"]})...'):
-            try:
-                result_df, debug_messages = main_flexible(
-                    ticker=ticker,
-                    asset_type=asset_type,
-                    start_date=start_date,
-                    end_date=end_date,
-                    atr_period=atr_period,
-                    daily_interval=daily_interval,
-                    intraday_interval=intraday_interval,
-                    custom_ratios=custom_ratios
-                )
-                
-                # Show debug info
-                with st.expander('📋 Debug Information'):
-                    for msg in debug_messages:
-                        st.write(msg)
-                
-                if not result_df.empty:
-                    result_df['Ticker'] = ticker
-                    result_df['AssetType'] = asset_type
-                    
-                    # Show summary stats
-                    st.subheader('📊 Summary Statistics')
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric('Total Records', len(result_df))
-                    with col2:
-                        st.metric('Unique Dates', result_df['Date'].nunique())
-                    with col3:
-                        goals_hit = len(result_df[result_df['GoalHit'] == 'Yes'])
-                        st.metric('Goals Hit', goals_hit)
-                    with col4:
-                        hit_rate = goals_hit / len(result_df) * 100 if len(result_df) > 0 else 0
-                        st.metric('Hit Rate', f'{hit_rate:.1f}%')
-                    
-                    # Show data preview
-                    st.subheader('📋 Results Preview')
-                    st.dataframe(result_df.head(10))
-                    
-                    # Download button
-                    output_filename = f'{ticker}_{asset_type}_ATR_analysis_{start_date}_to_{end_date}.csv'
-                    st.download_button(
-                        '⬇️ Download Results CSV',
-                        data=result_df.to_csv(index=False),
-                        file_name=output_filename,
-                        mime='text/csv'
-                    )
-                    
-                    st.success(f'🎉 Analysis complete for {ticker}!')
-                    
-                else:
-                    st.warning('⚠️ No results generated - check debug info above')
-                    
-            except Exception as e:
-                st.error(f'❌ Error: {e}')
+### 🏆 Performance Optimizations
 
-# Help section
-st.markdown("""
----
-### 🔧 Asset Class Features
-
-**STOCKS** - Traditional equity markets
-- Market hours: 9:30 AM - 4:00 PM ET
-- Special OPEN candle handling
-- Pre-market/Regular/After-hours sessions
-
-**CRYPTO** - 24/7 cryptocurrency trading
-- No market hours restrictions
-- No special OPEN handling (continuous trading)
-- Works with BTC, ETH, and other crypto pairs
-
-**FOREX** - Foreign exchange markets
-- Sunday 5 PM - Friday 5 PM ET
-- Near 24-hour trading during weekdays
-- Multiple session support (Asia/Europe/US)
-
-**FUTURES** - Futures contracts
-- Extended hours (Sunday 6 PM - Friday 5 PM ET)
-- Electronic (Globex) and Regular Trading Hours
-- Suitable for ES, NQ, commodities futures
-
-**COMMODITIES** - Physical commodities
-- Traditional market hours (varies by commodity)
-- Special handling for different commodity types
-- Works with gold, silver, oil futures
-
-### 📊 Key Improvements
-- ✅ **Multi-asset support** - No more hardcoded SPX files
-- ✅ **Flexible market hours** - Adapts to different trading sessions  
-- ✅ **24/7 market support** - Handles crypto and forex properly
-- ✅ **Custom ratios** - Define your own Fibonacci levels
-- ✅ **Yahoo Finance integration** - Fetch any ticker automatically
-- ✅ **True Wilder's ATR** - Accurate ATR calculation maintained
+- **Streaming data processing** for large files
+- **Chunked analysis** to prevent memory issues
+- **Efficient date filtering** and indexing
+- **Optimized trigger detection** algorithms
+- **Smart caching** of intermediate results
 """)
