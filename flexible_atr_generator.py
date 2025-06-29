@@ -854,24 +854,34 @@ def display_results(result_df, debug_messages, ticker, asset_type, data_source_l
 
 # Streamlit Interface
 st.title('🎯 Advanced ATR Generator - Enhanced Version')
-st.write('**Upload your own data files with comprehensive validation and progress tracking!**')
+st.write('**Intraday data must always be uploaded. Choose Yahoo Finance or file upload for daily data.**')
 
 # Data source selection
 st.sidebar.header("📁 Data Input")
 data_source = st.sidebar.radio(
-    "Data Source",
-    options=["Upload Files", "Yahoo Finance (Limited)"],
+    "Daily Data Source",
+    options=["Upload Both Files", "Yahoo Daily + Upload Intraday"],
     index=0,
-    help="Upload files for full historical data, or use Yahoo Finance for recent data only"
+    help="Choose how to provide daily data. Intraday data must always be uploaded."
 )
 
-if data_source == "Upload Files":
-    st.sidebar.subheader("📊 File Uploads")
+# Intraday data upload (ALWAYS REQUIRED)
+st.sidebar.subheader("📊 Intraday Data (Required)")
+st.sidebar.info("⚠️ **Intraday data must always be uploaded as CSV/Excel - Yahoo Finance doesn't provide sufficient intraday history**")
+
+intraday_file = st.sidebar.file_uploader(
+    "Intraday OHLC Data",
+    type=['csv', 'xlsx', 'xls'],
+    help="Upload intraday OHLC data (CSV or Excel) - REQUIRED for analysis"
+)
+
+if data_source == "Upload Both Files":
+    st.sidebar.subheader("📈 Daily Data Upload")
     
     # Enhanced warning about data alignment
     st.sidebar.error("""
-    🚨 **CRITICAL**: For proper ATR calculation, your daily data must start at least 4-6 months 
-    BEFORE your intraday data begins. The system will validate this automatically.
+    🚨 **CRITICAL**: Your daily data must start at least 4-6 months 
+    BEFORE your intraday data begins for proper ATR calculation.
     """)
     
     # Daily data upload
@@ -881,94 +891,79 @@ if data_source == "Upload Files":
         help="Upload daily OHLC data (CSV or Excel)"
     )
     
-    # Intraday data upload  
-    intraday_file = st.sidebar.file_uploader(
-        "Intraday OHLC Data",
-        type=['csv', 'xlsx', 'xls'],
-        help="Upload intraday OHLC data (CSV or Excel)"
-    )
-    
-    st.sidebar.info("""
-    📋 **Required Columns:**
-    - **Daily**: Date, Open, High, Low, Close
-    - **Intraday**: Datetime (or Date+Time), Open, High, Low, Close
-    - **Optional**: Volume, Session (PM/R/AH)
-    """)
-    
-    # Asset configuration
-    st.sidebar.subheader("🏷️ Asset Configuration")
-    asset_type = st.sidebar.selectbox(
-        "Asset Class",
-        options=['STOCKS', 'STOCKS_24H', 'CRYPTO', 'FOREX', 'FUTURES', 'COMMODITIES'],
-        help="Select asset type for appropriate market handling"
-    )
-    
-    # Extended hours for stocks
-    extended_hours = False
-    if asset_type == 'STOCKS':
-        extended_hours = st.sidebar.checkbox(
-            "Include Extended Hours",
-            value=False,
-            help="Include pre-market (4AM) and after-hours (8PM) data"
-        )
-    
-    config = AssetConfig.get_config(asset_type, extended_hours)
-    
-    # Session filtering
-    if len(config['session_types']) > 1:
-        session_filter = st.sidebar.multiselect(
-            "Filter by Sessions",
-            options=config['session_types'],
-            default=config['default_session'],
-            help="Select trading sessions to include in analysis"
-        )
-    else:
-        session_filter = None
-    
     ticker = st.sidebar.text_input(
         "Ticker Symbol (for labeling)",
         value="",
         help="Optional: Enter ticker symbol for output labeling"
     )
+    
+    start_date = None
+    end_date = None
 
-else:  # Yahoo Finance
-    st.sidebar.subheader("📈 Yahoo Finance")
-    st.sidebar.warning("⚠️ Limited to ~60 days of intraday data")
-    
-    asset_type = st.sidebar.selectbox(
-        "Asset Class",
-        options=['STOCKS', 'CRYPTO', 'FOREX', 'FUTURES', 'COMMODITIES']
-    )
-    
-    config = AssetConfig.get_config(asset_type)
+else:  # Yahoo Daily + Upload Intraday
+    st.sidebar.subheader("📈 Daily Data from Yahoo Finance")
+    st.sidebar.warning("⚠️ Yahoo Finance daily data will be fetched automatically with 6-month buffer")
     
     ticker = st.sidebar.text_input(
         "Ticker Symbol",
-        value=config['example_tickers'][0],
-        help=f"Enter ticker (examples: {', '.join(config['example_tickers'])})"
+        value="AAPL",
+        help="Enter ticker symbol for Yahoo Finance daily data"
     ).upper()
     
     # Date range with automatic buffer
-    col1, col2 = st.columns(2)
+    col1, col2 = st.sidebar.columns(2)
     with col1:
-        start_date = st.date_input(
+        start_date = st.sidebar.date_input(
             "Intraday Start Date",
             value=datetime.now().date() - timedelta(days=30),
-            help="Start date for intraday analysis"
+            help="Start date for your intraday data analysis"
         )
     with col2:
-        end_date = st.date_input(
+        end_date = st.sidebar.date_input(
             "End Date",
             value=datetime.now().date(),
             help="End date for analysis"
         )
     
-    st.sidebar.info("📅 Daily data will automatically include 6-month buffer for ATR calculation")
-    
+    st.sidebar.success("📅 Daily data will include automatic 6-month buffer for ATR calculation")
     daily_file = None
-    intraday_file = None
+
+# Asset configuration (common to both options)
+st.sidebar.subheader("🏷️ Asset Configuration")
+asset_type = st.sidebar.selectbox(
+    "Asset Class",
+    options=['STOCKS', 'STOCKS_24H', 'CRYPTO', 'FOREX', 'FUTURES', 'COMMODITIES'],
+    help="Select asset type for appropriate market handling"
+)
+
+# Extended hours for stocks
+extended_hours = False
+if asset_type == 'STOCKS':
+    extended_hours = st.sidebar.checkbox(
+        "Include Extended Hours",
+        value=False,
+        help="Include pre-market (4AM) and after-hours (8PM) data"
+    )
+
+config = AssetConfig.get_config(asset_type, extended_hours)
+
+# Session filtering
+if len(config['session_types']) > 1:
+    session_filter = st.sidebar.multiselect(
+        "Filter by Sessions",
+        options=config['session_types'],
+        default=config['default_session'],
+        help="Select trading sessions to include in analysis"
+    )
+else:
     session_filter = None
-    extended_hours = False
+
+st.sidebar.info("""
+📋 **Required Columns:**
+- **Daily**: Date, Open, High, Low, Close
+- **Intraday**: Datetime (or Date+Time), Open, High, Low, Close
+- **Optional**: Volume, Session (PM/R/AH)
+""")
 
 # Advanced settings
 with st.sidebar.expander("⚙️ Advanced Settings"):
@@ -992,11 +987,14 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
 
 # Generate button
 if st.button('🚀 Generate Enhanced ATR Analysis'):
-    if data_source == "Upload Files":
-        if daily_file is None or intraday_file is None:
-            st.error("Please upload both daily and intraday data files")
+    # First check if intraday file is uploaded (always required)
+    if intraday_file is None:
+        st.error("❌ Please upload intraday data file - this is required for all analysis types")
+    elif data_source == "Upload Both Files":
+        if daily_file is None:
+            st.error("❌ Please upload daily data file")
         else:
-            with st.spinner(f'Analyzing uploaded data with validation ({config["description"]})...'):
+            with st.spinner(f'Analyzing uploaded files with validation ({config["description"]})...'):
                 try:
                     result_df, debug_messages = main_flexible(
                         ticker=ticker or "UPLOADED_DATA",
@@ -1009,27 +1007,26 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                         extended_hours=extended_hours
                     )
                     
-                    display_results(result_df, debug_messages, ticker or "UPLOADED_DATA", asset_type, "Files Uploaded")
+                    display_results(result_df, debug_messages, ticker or "UPLOADED_DATA", asset_type, "Both Files Uploaded")
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
                     import traceback
                     st.error(traceback.format_exc())
     
-    elif data_source == "Yahoo Finance (Limited)":
+    elif data_source == "Yahoo Daily + Upload Intraday":
         if not ticker:
-            st.error("Please enter a ticker symbol")
+            st.error("❌ Please enter a ticker symbol for Yahoo Finance daily data")
         elif start_date >= end_date:
-            st.error("Start date must be before end date")
+            st.error("❌ Start date must be before end date")
         else:
-            st.warning("⚠️ Using Yahoo Finance only - limited to ~60 days of intraday data")
-            with st.spinner(f'Fetching all data from Yahoo Finance for {ticker}...'):
+            with st.spinner(f'Fetching daily data from Yahoo Finance for {ticker} and analyzing with uploaded intraday data...'):
                 try:
                     result_df, debug_messages = main_flexible(
                         ticker=ticker,
                         asset_type=asset_type,
-                        daily_file=None,
-                        intraday_file=None,
+                        daily_file=None,  # Will fetch from Yahoo
+                        intraday_file=intraday_file,
                         start_date=start_date,
                         end_date=end_date,
                         atr_period=atr_period,
@@ -1038,7 +1035,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                         extended_hours=extended_hours
                     )
                     
-                    display_results(result_df, debug_messages, ticker, asset_type, "Yahoo Finance Only")
+                    display_results(result_df, debug_messages, ticker, asset_type, "Yahoo Daily + Uploaded Intraday")
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
@@ -1049,6 +1046,11 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
 st.markdown("""
 ---
 ### 🔧 Enhanced Features
+
+#### 📊 **Flexible Daily Data Sources**
+- **Upload both files** - Complete control over both daily and intraday data
+- **Yahoo daily + Upload intraday** - Use Yahoo Finance for daily data (with automatic 6-month buffer) plus your own intraday CSV
+- **Always requires intraday upload** - Yahoo Finance doesn't provide sufficient intraday history
 
 #### 🔍 **Data Alignment Validation**
 - **Automatic validation** of daily vs intraday data alignment
@@ -1075,6 +1077,49 @@ st.markdown("""
 - **Summary statistics CSV** for quick overview
 - **Timestamped filenames** for version control
 - **Clean ticker names** in filenames
+
+### 🎯 Data Source Options
+
+#### 1️⃣ **Upload Both Files**
+- **Daily CSV/Excel**: Your complete daily OHLC data
+- **Intraday CSV/Excel**: Your complete intraday OHLC data
+- **Full control**: Use any date range, any data source
+- **Best for**: Custom data, long historical periods, multiple years
+
+#### 2️⃣ **Yahoo Daily + Upload Intraday**
+- **Daily from Yahoo**: Automatic fetch with 6-month buffer for ATR
+- **Intraday upload**: Your detailed intraday CSV/Excel file
+- **Hybrid approach**: Leverage Yahoo's daily data with your intraday data
+- **Best for**: Recent analysis where you have intraday but want easy daily data
+
+### ⚠️ Why No Yahoo Intraday?
+
+**Yahoo Finance Limitations:**
+- Only ~60 days of intraday data available
+- Inconsistent data quality for intraday
+- Rate limiting and access restrictions
+- Missing extended hours data
+
+**Your Intraday Files Provide:**
+- **Years of historical data** if needed
+- **Consistent data quality** from your data provider
+- **Extended hours support** (pre-market, after-hours)
+- **Custom intervals** (1-min, 5-min, etc.)
+- **Session information** (PM/R/AH tags)
+
+### 📋 Recommended Data Sources
+
+**For Daily Data:**
+- **Broker exports** (TD Ameritrade, Interactive Brokers, etc.)
+- **Financial data providers** (Alpha Vantage, Quandl, etc.)
+- **Yahoo Finance** (built-in option)
+- **Manual downloads** from financial websites
+
+**For Intraday Data:**
+- **Trading platforms** (ThinkorSwim, TradeStation, etc.)
+- **Data vendors** (IEX, Polygon, Alpaca, etc.)
+- **Broker API exports**
+- **Third-party tools** (TradingView exports, etc.)
 
 ### 🎯 Asset-Specific Enhancements
 
