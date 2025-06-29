@@ -780,7 +780,7 @@ if st.button('🚀 Generate ATR Analysis'):
         else:
             with st.spinner(f'Analyzing uploaded data ({config["description"]})...'):
                 try:
-                    result_df, debug_messages = main_flexible_hybrid(
+                    result_df, debug_messages, trading_days_count = main_flexible_hybrid(
                         ticker=ticker or "UPLOADED_DATA",
                         asset_type=asset_type,
                         daily_file=daily_file,
@@ -792,7 +792,7 @@ if st.button('🚀 Generate ATR Analysis'):
                         data_source=data_source
                     )
                     
-                    display_results(result_df, debug_messages, ticker or "UPLOADED_DATA", asset_type, "Both Files Uploaded")
+                    display_results(result_df, debug_messages, ticker or "UPLOADED_DATA", asset_type, "Both Files Uploaded", trading_days_count)
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
@@ -807,7 +807,7 @@ if st.button('🚀 Generate ATR Analysis'):
         else:
             with st.spinner(f'Analyzing {ticker} with hybrid data sources...'):
                 try:
-                    result_df, debug_messages = main_flexible_hybrid(
+                    result_df, debug_messages, trading_days_count = main_flexible_hybrid(
                         ticker=ticker,
                         asset_type=asset_type,
                         daily_file=None,  # Will fetch from Yahoo
@@ -821,7 +821,7 @@ if st.button('🚀 Generate ATR Analysis'):
                         data_source=data_source
                     )
                     
-                    display_results(result_df, debug_messages, ticker, asset_type, "Yahoo Daily + Uploaded Intraday")
+                    display_results(result_df, debug_messages, ticker, asset_type, "Yahoo Daily + Uploaded Intraday", trading_days_count)
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
@@ -835,7 +835,7 @@ if st.button('🚀 Generate ATR Analysis'):
             st.warning("⚠️ Using Yahoo Finance only - limited to ~60 days of intraday data")
             with st.spinner(f'Fetching all data from Yahoo Finance for {ticker}...'):
                 try:
-                    result_df, debug_messages = main_flexible_hybrid(
+                    result_df, debug_messages, trading_days_count = main_flexible_hybrid(
                         ticker=ticker,
                         asset_type=asset_type,
                         daily_file=None,
@@ -849,13 +849,13 @@ if st.button('🚀 Generate ATR Analysis'):
                         data_source=data_source
                     )
                     
-                    display_results(result_df, debug_messages, ticker, asset_type, "Yahoo Finance Only")
+                    display_results(result_df, debug_messages, ticker, asset_type, "Yahoo Finance Only", trading_days_count)
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
 
-def display_results(result_df, debug_messages, ticker, asset_type, data_source_label):
-    """Helper function to display analysis results"""
+def display_results(result_df, debug_messages, ticker, asset_type, data_source_label, trading_days_count=0):
+    """Helper function to display analysis results with trading days count"""
     # Show debug info
     with st.expander('📋 Processing Information'):
         for msg in debug_messages:
@@ -866,19 +866,28 @@ def display_results(result_df, debug_messages, ticker, asset_type, data_source_l
         result_df['AssetType'] = asset_type
         result_df['DataSource'] = data_source_label
         
-        # Show summary stats
+        # Show summary stats with trading days
         st.subheader('📊 Summary Statistics')
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             st.metric('Total Records', len(result_df))
         with col2:
-            st.metric('Unique Dates', result_df['Date'].nunique())
+            st.metric('Trading Days', trading_days_count)
         with col3:
+            st.metric('Unique Dates', result_df['Date'].nunique())
+        with col4:
             goals_hit = len(result_df[result_df['GoalHit'] == 'Yes'])
             st.metric('Goals Hit', goals_hit)
-        with col4:
+        with col5:
             hit_rate = goals_hit / len(result_df) * 100 if len(result_df) > 0 else 0
             st.metric('Hit Rate', f'{hit_rate:.1f}%')
+        
+        # Show ATR validation
+        if 'PreviousATR' in result_df.columns:
+            latest_atr = result_df['PreviousATR'].iloc[-1]
+            st.subheader('🔍 ATR Validation')
+            st.write(f"**Latest ATR in results: {latest_atr:.2f}**")
+            st.write("This should match Excel calculations")
         
         # Show data preview
         st.subheader('📋 Results Preview')
@@ -886,7 +895,7 @@ def display_results(result_df, debug_messages, ticker, asset_type, data_source_l
         
         # Download button
         ticker_clean = ticker.replace("^", "").replace("=", "_")
-        output_filename = f'{ticker_clean}_{asset_type}_ATR_analysis.csv'
+        output_filename = f'{ticker_clean}_{asset_type}_ATR_analysis_FIXED.csv'
         st.download_button(
             '⬇️ Download Results CSV',
             data=result_df.to_csv(index=False),
@@ -894,7 +903,7 @@ def display_results(result_df, debug_messages, ticker, asset_type, data_source_l
             mime='text/csv'
         )
         
-        st.success(f'🎉 Analysis complete for {ticker}!')
+        st.success(f'🎉 Analysis complete for {ticker} with FIXED 0930 logic!')
         
     else:
         st.warning('⚠️ No results generated - check processing information above')
