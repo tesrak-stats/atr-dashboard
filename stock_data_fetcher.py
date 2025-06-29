@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import io
 
-# Output interval selection (common for both data sources)
+       # Output interval selection (common for both data sources)
 output_intervals = {
     "1 minute": 1,
     "2 minutes": 2,
@@ -73,7 +73,7 @@ if data_source == "Yahoo Finance":
         start_date = st.date_input(
             "Start Date",
             value=datetime.now() - timedelta(days=30),
-            help="Select start date for data fetch"
+            help="Select start date for data fetch (no artificial limits)"
         )
     with col2:
         end_date = st.date_input(
@@ -378,6 +378,15 @@ def fetch_stock_data(symbol, start, end, interval, include_extended_hours):
     """Fetch stock data from Yahoo Finance"""
     try:
         ticker_obj = yf.Ticker(symbol)
+        
+        # Add some validation before making the request
+        if start >= end:
+            st.error(f"❌ Start date ({start}) must be before end date ({end})")
+            return None
+            
+        # Show what we're requesting
+        st.info(f"🔍 Requesting {symbol} data from {start} to {end} at {interval} intervals...")
+        
         data = ticker_obj.history(
             start=start,
             end=end,
@@ -386,13 +395,88 @@ def fetch_stock_data(symbol, start, end, interval, include_extended_hours):
             prepost=include_extended_hours
         )
         
+        # Enhanced empty data handling
         if data.empty:
-            st.error(f"No data found for ticker {symbol}")
-            return None
+            st.error(f"❌ No data found for {symbol}")
+            st.warning(f"""
+            **Possible reasons:**
+            - Symbol '{symbol}' doesn't exist or is invalid
+            - No data available for the requested date range ({start} to {end})
+            - The interval '{interval}' may not be supported for this date range
+            - Market was closed for the entire period
             
+            **Suggestions:**
+            - Try a different date range (more recent dates)
+            - Use daily interval instead of intraday for historical data  
+            - Verify the ticker symbol is correct
+            """)
+            return None
+        
+        # Check if we got significantly less data than expected
+        expected_days = (end - start).days
+        actual_days = (data.index[-1] - data.index[0]).days
+        
+        if expected_days > 30 and actual_days < (expected_days * 0.1):  # Got less than 10% of expected range
+            st.warning(f"""
+            ⚠️ **Limited data returned**: Got {actual_days} days of data, expected ~{expected_days} days
+            
+            **Actual data range**: {data.index[0].strftime('%Y-%m-%d')} to {data.index[-1].strftime('%Y-%m-%d')}
+            
+            This may indicate limited historical data availability for {symbol} at the {interval} interval.
+            """)
+        
+        # Success message with actual data range
+        st.success(f"""
+        ✅ **Successfully fetched {len(data)} records**
+        - **Symbol**: {symbol}
+        - **Actual range**: {data.index[0].strftime('%Y-%m-%d')} to {data.index[-1].strftime('%Y-%m-%d')}
+        - **Interval**: {interval}
+        - **Extended hours**: {'Yes' if include_extended_hours else 'No'}
+        """)
+        
         return data
+        
     except Exception as e:
-        st.error(f"Error fetching data: {str(e)}")
+        error_msg = str(e)
+        st.error(f"❌ **Error fetching data for {symbol}**")
+        
+        # Parse common yfinance errors and provide helpful messages
+        if "Invalid ticker" in error_msg or "not found" in error_msg.lower():
+            st.error(f"""
+            **Invalid Symbol**: '{symbol}' is not a valid ticker symbol.
+            
+            **Common fixes:**
+            - Check spelling (AAPL not APPLE)
+            - Use Yahoo Finance format (^GSPC for S&P 500)
+            - Try searching on finance.yahoo.com first
+            """)
+        elif "period" in error_msg.lower() or "interval" in error_msg.lower():
+            st.error(f"""
+            **Invalid Period/Interval**: The combination of date range and interval is not supported.
+            
+            **Common issues:**
+            - Intraday intervals (1m, 5m) limited to ~60 days
+            - Some intervals not available for all symbols
+            - Very old dates may not support intraday data
+            
+            **Try:**
+            - Use daily (1d) interval for historical data
+            - Reduce date range for intraday data
+            """)
+        elif "timeout" in error_msg.lower() or "connection" in error_msg.lower():
+            st.error(f"""
+            **Connection Error**: Unable to connect to Yahoo Finance.
+            
+            **Try:**
+            - Check your internet connection
+            - Wait a moment and try again
+            - Yahoo Finance may be temporarily unavailable
+            """)
+        else:
+            # Show the raw error for debugging
+            st.error(f"**Raw error**: {error_msg}")
+            st.info("If this error persists, try a different date range or interval.")
+        
         return None
 
 # Function to resample data to custom intervals
