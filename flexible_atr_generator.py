@@ -52,6 +52,104 @@ def generate_atr_levels(close_price, atr_value, custom_ratios=None):
     
     return levels
 
+class TickerMapper:
+    """Handle ticker symbol mappings for different data sources"""
+    
+    @staticmethod
+    def get_yahoo_ticker(input_ticker):
+        """Convert common ticker variations to Yahoo Finance format"""
+        
+        # Common ticker mappings
+        ticker_mappings = {
+            # S&P 500 variations
+            'SPX': '^GSPC',
+            'SP500': '^GSPC',
+            'S&P500': '^GSPC',
+            'SPY': 'SPY',  # ETF, no change needed
+            
+            # NASDAQ variations  
+            'NDX': '^NDX',
+            'NASDAQ': '^IXIC',
+            'COMP': '^IXIC',
+            'QQQ': 'QQQ',  # ETF, no change needed
+            
+            # Dow Jones variations
+            'DJI': '^DJI',
+            'DJIA': '^DJI',
+            'DOW': '^DJI',
+            'DIA': 'DIA',  # ETF, no change needed
+            
+            # Russell variations
+            'RUT': '^RUT',
+            'RUSSELL': '^RUT',
+            'IWM': 'IWM',  # ETF, no change needed
+            
+            # VIX variations
+            'VIX': '^VIX',
+            'VOLATILITY': '^VIX',
+            
+            # Currency pairs (Forex)
+            'EURUSD': 'EURUSD=X',
+            'GBPUSD': 'GBPUSD=X', 
+            'USDJPY': 'USDJPY=X',
+            'USDCAD': 'USDCAD=X',
+            'AUDUSD': 'AUDUSD=X',
+            'NZDUSD': 'NZDUSD=X',
+            'USDCHF': 'USDCHF=X',
+            
+            # Crypto variations
+            'BITCOIN': 'BTC-USD',
+            'BTC': 'BTC-USD',
+            'ETHEREUM': 'ETH-USD', 
+            'ETH': 'ETH-USD',
+            'LITECOIN': 'LTC-USD',
+            'LTC': 'LTC-USD',
+            
+            # Futures (common contracts)
+            'ES': 'ES=F',
+            'NQ': 'NQ=F',
+            'YM': 'YM=F',
+            'RTY': 'RTY=F',
+            'CL': 'CL=F',  # Crude Oil
+            'GC': 'GC=F',  # Gold
+            'SI': 'SI=F',  # Silver
+            'NG': 'NG=F',  # Natural Gas
+            
+            # Bonds
+            'TNX': '^TNX',  # 10-Year Treasury
+            'TYX': '^TYX',  # 30-Year Treasury
+            'FVX': '^FVX',  # 5-Year Treasury
+            'IRX': '^IRX',  # 3-Month Treasury
+        }
+        
+        # Convert to uppercase for matching
+        input_upper = input_ticker.upper().strip()
+        
+        # Return mapped ticker if found, otherwise return original
+        mapped_ticker = ticker_mappings.get(input_upper, input_ticker)
+        
+        return mapped_ticker
+    
+    @staticmethod
+    def suggest_alternatives(input_ticker):
+        """Suggest alternative ticker formats if the input fails"""
+        
+        suggestions = []
+        input_upper = input_ticker.upper().strip()
+        
+        # Common patterns to try
+        variations = [
+            f"^{input_upper}",  # Add caret for indices
+            f"{input_upper}=X",  # Add =X for forex
+            f"{input_upper}=F",  # Add =F for futures
+            f"{input_upper}-USD",  # Add -USD for crypto
+        ]
+        
+        # Remove duplicates and original
+        variations = [v for v in variations if v != input_ticker]
+        
+        return variations[:3]  # Return top 3 suggestions
+
 class AssetConfig:
     """Configuration for different asset classes"""
     
@@ -192,9 +290,10 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
     
     return is_valid, warnings, recommendations
 
-def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=None):
+def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=None, intraday_data=None):
     """
     Load daily data from uploaded file or Yahoo Finance
+    If using Yahoo Finance, automatically detect date range from intraday data
     """
     if uploaded_file is not None:
         try:
@@ -241,8 +340,68 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
             st.error(f"Error loading daily data: {str(e)}")
             return None
     
+    elif ticker and intraday_data is not None:
+        # Smart auto-detection from intraday data
+        try:
+            # Apply ticker mapping for Yahoo Finance
+            original_ticker = ticker
+            yahoo_ticker = TickerMapper.get_yahoo_ticker(ticker)
+            
+            if yahoo_ticker != original_ticker:
+                st.info(f"🔄 Mapped ticker: '{original_ticker}' → '{yahoo_ticker}' for Yahoo Finance")
+            
+            st.info(f"🔍 Analyzing intraday data to determine optimal daily data range...")
+            
+            # Get date range from intraday data
+            intraday_dates = pd.to_datetime(intraday_data['Date'] if 'Date' in intraday_data.columns 
+                                          else intraday_data['Datetime']).dt.date
+            
+            intraday_start = intraday_dates.min()
+            intraday_end = intraday_dates.max()
+            
+            # Calculate smart date range with buffer
+            buffer_start = intraday_start - timedelta(days=180)  # 6 months buffer
+            fetch_end = intraday_end + timedelta(days=5)  # Small buffer for end date
+            
+            st.info(f"📊 Intraday data spans: {intraday_start} to {intraday_end}")
+            st.info(f"📈 Fetching Yahoo daily data for '{yahoo_ticker}' from {buffer_start} to {fetch_end}")
+            
+            # Fetch from Yahoo Finance
+            daily_data = yf.download(yahoo_ticker, start=buffer_start, end=fetch_end, interval='1d', progress=False)
+            
+            if daily_data.empty:
+                st.error(f"❌ No daily data found for '{yahoo_ticker}' in the calculated date range")
+                
+                # Suggest alternatives
+                alternatives = TickerMapper.suggest_alternatives(original_ticker)
+                if alternatives:
+                    st.info("💡 Try these alternative ticker formats:")
+                    for alt in alternatives:
+                        st.info(f"   • {alt}")
+                
+                return None
+            
+            daily_data.reset_index(inplace=True)
+            daily_data = standardize_columns(daily_data)
+            
+            st.success(f"✅ Auto-fetched daily data from Yahoo: {len(daily_data)} records")
+            st.success(f"📅 Daily data range: {daily_data['Date'].min().date()} to {daily_data['Date'].max().date()}")
+            return daily_data
+            
+        except Exception as e:
+            st.error(f"Error auto-fetching from Yahoo Finance for '{yahoo_ticker}': {str(e)}")
+            
+            # Suggest alternatives on error
+            alternatives = TickerMapper.suggest_alternatives(original_ticker)
+            if alternatives:
+                st.info("💡 If the ticker wasn't found, try these alternative formats:")
+                for alt in alternatives:
+                    st.info(f"   • {alt}")
+            
+            return None
+    
     elif ticker and start_date and end_date:
-        # Fallback to Yahoo Finance
+        # Fallback to manual date range (for backward compatibility)
         try:
             st.info(f"📈 Fetching daily data from Yahoo Finance for {ticker}...")
             
@@ -649,16 +808,7 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
         debug_info.append(f"Special OPEN handling: {asset_config['has_open_special']}")
         debug_info.append(f"Extended Hours: {extended_hours}")
         
-        # Load daily data
-        daily = load_daily_data(daily_file, ticker, start_date, end_date)
-        
-        if daily is None:
-            debug_info.append("❌ Failed to load daily data")
-            return pd.DataFrame(), debug_info
-        
-        debug_info.append(f"Daily data loaded: {daily.shape}")
-        
-        # Load intraday data
+        # Load intraday data FIRST (needed for smart daily data fetching)
         if intraday_file is None:
             debug_info.append("⚠️ No intraday data provided - analysis cannot proceed")
             return pd.DataFrame(), debug_info
@@ -671,6 +821,20 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
         
         debug_info.append(f"Intraday data loaded: {intraday.shape}")
         debug_info.append(f"Intraday date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
+        
+        # Load daily data (now can use intraday data for smart Yahoo fetching)
+        if daily_file is not None:
+            # Upload Both Files scenario
+            daily = load_daily_data(daily_file)
+        else:
+            # Yahoo Daily + Upload Intraday scenario - use smart auto-detection
+            daily = load_daily_data(uploaded_file=None, ticker=ticker, intraday_data=intraday)
+        
+        if daily is None:
+            debug_info.append("❌ Failed to load daily data")
+            return pd.DataFrame(), debug_info
+        
+        debug_info.append(f"Daily data loaded: {daily.shape}")
         
         # Validate data alignment
         st.subheader("🔍 Data Alignment Validation")
@@ -902,30 +1066,27 @@ if data_source == "Upload Both Files":
 
 else:  # Yahoo Daily + Upload Intraday
     st.sidebar.subheader("📈 Daily Data from Yahoo Finance")
-    st.sidebar.warning("⚠️ Yahoo Finance daily data will be fetched automatically with 6-month buffer")
+    st.sidebar.info("📅 **Smart Auto-Detection**: Daily data will be automatically fetched based on your intraday file's date range + 6-month buffer")
     
     ticker = st.sidebar.text_input(
         "Ticker Symbol",
-        value="AAPL",
-        help="Enter ticker symbol for Yahoo Finance daily data"
+        value="SPX",
+        help="Enter ticker symbol - system will auto-map to Yahoo Finance format (e.g., SPX → ^GSPC)"
     ).upper()
     
-    # Date range with automatic buffer
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        start_date = st.sidebar.date_input(
-            "Intraday Start Date",
-            value=datetime.now().date() - timedelta(days=30),
-            help="Start date for your intraday data analysis"
-        )
-    with col2:
-        end_date = st.sidebar.date_input(
-            "End Date",
-            value=datetime.now().date(),
-            help="End date for analysis"
-        )
+    # Show ticker mapping preview
+    if ticker:
+        mapped_ticker = TickerMapper.get_yahoo_ticker(ticker)
+        if mapped_ticker != ticker:
+            st.sidebar.success(f"✅ Will map: {ticker} → {mapped_ticker}")
+        else:
+            st.sidebar.info(f"📈 Will fetch: {ticker}")
     
-    st.sidebar.success("📅 Daily data will include automatic 6-month buffer for ATR calculation")
+    st.sidebar.success("✨ No date selection needed - the system will analyze your intraday file and fetch the appropriate daily data range automatically!")
+    
+    # Set these to None - will be determined from intraday data
+    start_date = None
+    end_date = None
     daily_file = None
 
 # Asset configuration (common to both options)
@@ -1017,25 +1178,21 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
     elif data_source == "Yahoo Daily + Upload Intraday":
         if not ticker:
             st.error("❌ Please enter a ticker symbol for Yahoo Finance daily data")
-        elif start_date >= end_date:
-            st.error("❌ Start date must be before end date")
         else:
-            with st.spinner(f'Fetching daily data from Yahoo Finance for {ticker} and analyzing with uploaded intraday data...'):
+            with st.spinner(f'Auto-detecting date range from intraday data and fetching daily data from Yahoo Finance for {ticker}...'):
                 try:
                     result_df, debug_messages = main_flexible(
                         ticker=ticker,
                         asset_type=asset_type,
-                        daily_file=None,  # Will fetch from Yahoo
+                        daily_file=None,  # Will auto-fetch from Yahoo based on intraday data
                         intraday_file=intraday_file,
-                        start_date=start_date,
-                        end_date=end_date,
                         atr_period=atr_period,
                         custom_ratios=custom_ratios,
                         session_filter=session_filter,
                         extended_hours=extended_hours
                     )
                     
-                    display_results(result_df, debug_messages, ticker, asset_type, "Yahoo Daily + Uploaded Intraday")
+                    display_results(result_df, debug_messages, ticker, asset_type, "Yahoo Daily (Auto-detected) + Uploaded Intraday")
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
@@ -1086,26 +1243,43 @@ st.markdown("""
 - **Full control**: Use any date range, any data source
 - **Best for**: Custom data, long historical periods, multiple years
 
-#### 2️⃣ **Yahoo Daily + Upload Intraday**
-- **Daily from Yahoo**: Automatic fetch with 6-month buffer for ATR
-- **Intraday upload**: Your detailed intraday CSV/Excel file
-- **Hybrid approach**: Leverage Yahoo's daily data with your intraday data
-- **Best for**: Recent analysis where you have intraday but want easy daily data
+#### 2️⃣ **Yahoo Daily + Upload Intraday** ✨ 
+- **Daily from Yahoo**: Automatically detects your intraday date range and fetches appropriate daily data
+- **Intraday upload**: Your detailed intraday CSV/Excel file  
+- **Zero configuration**: No date inputs needed - the system analyzes your intraday file and fetches optimal daily data range
+- **Smart buffer**: Automatically includes 6-month buffer for proper ATR calculation
+- **Best for**: Recent analysis where you have intraday but want hassle-free daily data
 
-### ⚠️ Why No Yahoo Intraday?
+### 🎯 **Smart Ticker Mapping**
 
-**Yahoo Finance Limitations:**
-- Only ~60 days of intraday data available
-- Inconsistent data quality for intraday
-- Rate limiting and access restrictions
-- Missing extended hours data
+The system automatically handles common ticker symbol variations:
 
-**Your Intraday Files Provide:**
-- **Years of historical data** if needed
-- **Consistent data quality** from your data provider
-- **Extended hours support** (pre-market, after-hours)
-- **Custom intervals** (1-min, 5-min, etc.)
-- **Session information** (PM/R/AH tags)
+**Index Mappings:**
+- `SPX` → `^GSPC` (S&P 500)
+- `NDX` → `^NDX` (NASDAQ-100) 
+- `DJI` → `^DJI` (Dow Jones)
+- `RUT` → `^RUT` (Russell 2000)
+- `VIX` → `^VIX` (Volatility Index)
+
+**Forex Mappings:**
+- `EURUSD` → `EURUSD=X`
+- `GBPUSD` → `GBPUSD=X`
+- `USDJPY` → `USDJPY=X`
+
+**Crypto Mappings:**
+- `BTC` → `BTC-USD`
+- `ETH` → `ETH-USD`
+
+**Futures Mappings:**
+- `ES` → `ES=F` (E-mini S&P)
+- `NQ` → `NQ=F` (E-mini NASDAQ)
+- `CL` → `CL=F` (Crude Oil)
+- `GC` → `GC=F` (Gold)
+
+**Error Handling:**
+- If a ticker fails, the system suggests alternative formats
+- Shows clear mapping messages: "SPX → ^GSPC"
+- Provides helpful suggestions for common patterns
 
 ### 📋 Recommended Data Sources
 
