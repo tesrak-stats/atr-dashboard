@@ -1,10 +1,4 @@
-import streamlit as st
-import yfinance as yf
-import pandas as pd
-from datetime import datetime, timedelta
-import io
-
-       # Output interval selection (common for both data sources)
+# Output interval selection (common for both data sources)
 output_intervals = {
     "1 minute": 1,
     "2 minutes": 2,
@@ -30,7 +24,11 @@ output_interval = st.sidebar.selectbox(
 # Requirements: streamlit, yfinance, pandas
 # Deploy to: Streamlit Cloud via GitHub
 
-
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+from datetime import datetime, timedelta
+import io
 
 # Page configuration
 st.set_page_config(
@@ -73,12 +71,16 @@ if data_source == "Yahoo Finance":
         start_date = st.date_input(
             "Start Date",
             value=datetime.now() - timedelta(days=30),
-            help="Select start date for data fetch (no artificial limits)"
+            min_value=datetime(1850, 1, 1).date(),
+            max_value=datetime(2099, 12, 31).date(),
+            help="Select start date for data fetch (goes back to 1850)"
         )
     with col2:
         end_date = st.date_input(
             "End Date",
             value=datetime.now(),
+            min_value=datetime(1850, 1, 1).date(),
+            max_value=datetime(2099, 12, 31).date(),
             help="Select end date for data fetch"
         )
 
