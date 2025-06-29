@@ -1,4 +1,4 @@
-import streamlit as st
+# --- Price labels as annotations (locked to lines) ---import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import json
@@ -46,7 +46,7 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.40 - Fixed TOTAL in Time Order") # VERSION BUMP
+    st.caption("🔧 App Version: v2.3.43 - Changed Make Default to Toggle") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
@@ -159,9 +159,15 @@ with col1_ui:
                                    value=st.session_state.expanded_view_pref, 
                                    key="expanded_toggle")
 with col2_ui:
-    if st.button("💾 Make Default for Session", help="Remember this choice until you close your browser"):
-        st.session_state.expanded_view_pref = show_expanded_view
-        st.success("✅ Session default updated!")
+    make_default = st.checkbox("💾 Make Default for Session", 
+                              value=False,
+                              help="Remember this view choice until you close your browser",
+                              key="make_default_toggle")
+
+# Update session preference when toggle is checked
+if make_default:
+    st.session_state.expanded_view_pref = show_expanded_view
+    st.success("✅ Session default updated!")
 
 if show_expanded_view != st.session_state.expanded_view_pref:
     st.session_state.expanded_view_pref = show_expanded_view
@@ -439,9 +445,9 @@ for level in display_fib_levels:
 fig.update_layout(
     title=f"{price_direction} | Trigger {trigger_level} at {trigger_time}",
     xaxis=dict(
-        title="Hour Goal Was Reached (Eastern Time)",
+        title="Projected Completion Time (Eastern Time)",
         categoryorder="array",
-        categoryarray=time_order,
+        categoryarray=display_columns if not show_expanded_view else time_order,  # Use display_columns for focused view
         tickmode="array",
         tickvals=display_columns,
         ticktext=display_columns,
@@ -449,7 +455,7 @@ fig.update_layout(
         fixedrange=False if not show_expanded_view else True  # Allow panning in mobile view
     ),
     yaxis=dict(
-        title="Fib Level",
+        title="",  # Remove title from left axis
         categoryorder="array",
         categoryarray=display_fib_levels,
         tickmode="array",
@@ -467,7 +473,31 @@ fig.update_layout(
     margin=dict(l=40 if not show_expanded_view else 80, r=80 if not show_expanded_view else 150, t=30 if not show_expanded_view else 60, b=80 if not show_expanded_view else 60)
 )
 
-# --- Price labels as annotations (locked to lines) ---
+# Add "Fib Level" title above left axis (dimmed)
+fig.add_annotation(
+    text="Fib Level",
+    x=-0.05,  # Left side
+    y=max(display_fib_levels) + 0.15,  # Above the chart
+    xref="paper",
+    yref="y",
+    showarrow=False,
+    font=dict(color="gray", size=12 * font_size_multiplier),  # Dimmed gray color
+    xanchor="center",
+    yanchor="bottom"
+)
+
+# Add "Price Level" title above right side (dimmed)
+fig.add_annotation(
+    text="Price Level", 
+    x=1.08,  # Right side (same position as price values)
+    y=max(display_fib_levels) + 0.15,  # Above the chart
+    xref="paper", 
+    yref="y",
+    showarrow=False,
+    font=dict(color="gray", size=12 * font_size_multiplier),  # Dimmed gray color
+    xanchor="center",
+    yanchor="bottom"
+)
 if price_levels_dict:
     for level in display_fib_levels:
         level_key = f"{level:+.3f}"
