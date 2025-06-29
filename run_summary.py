@@ -136,9 +136,10 @@ def generate_excel_report(summary_df, metadata):
                         continue
                     
                     # Get summary stats for this trigger-goal-time combination
-                    total_triggers = time_data['NumTriggers'].iloc[0] if len(time_data) > 0 else 0
+                    # The summary DataFrame uses 'ActionableTriggers' as the column name
+                    total_triggers = time_data['TotalTriggers'].iloc[0] if len(time_data) > 0 else 0
                     open_completions = time_data['OpenCompletions'].iloc[0] if len(time_data) > 0 else 0
-                    actionable_triggers = total_triggers - open_completions
+                    actionable_triggers = time_data['ActionableTriggers'].iloc[0] if len(time_data) > 0 else 0
                     
                     # Goal level (only show for first trigger time)
                     goal_cell = ws.cell(row=current_row, column=1, value=f"{goal_level:+.3f}" if i == 0 else "")
