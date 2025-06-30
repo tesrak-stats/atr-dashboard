@@ -1593,7 +1593,7 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
 # Modified Generate button section
 if st.button('🚀 Generate Enhanced ATR Analysis'):
     # First check if intraday files are uploaded
-    if not intraday_file:
+    if intraday_file is None:
         st.error("❌ Please upload intraday data file(s)")
     elif data_source == "Upload Both Files":
         if daily_file is None:
