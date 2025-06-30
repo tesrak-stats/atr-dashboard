@@ -349,6 +349,7 @@ if len(filtered) > 0:
     for _, row in goal_summary.iterrows():
         goal_level = row['GoalLevel']
         if goal_level == trigger_level:
+            # Still skip trigger level for totals since it would be meaningless
             continue
         total_hits = row['NumHits']
         total_triggers = row['NumTriggers']
@@ -472,7 +473,7 @@ for level in display_fib_levels:
             continue
         
         if t == "TOTAL":
-            if level in goal_totals and level != trigger_level:
+            if level in goal_totals:
                 total_data = goal_totals[level]
                 pct = total_data["pct"]
                 hits = total_data["hits"]
@@ -504,7 +505,7 @@ for level in display_fib_levels:
             continue
         
         if t == "REMAINING":
-            if level in goal_remaining and level != trigger_level:
+            if level in goal_remaining:
                 remaining_data = goal_remaining[level]
                 remaining_pct = remaining_data["pct"]
                 total_pct = remaining_data["total_pct"]
@@ -564,10 +565,7 @@ for level in display_fib_levels:
             else:
                 is_before_trigger = False
             
-            if level == trigger_level:
-                display_text = ""
-                hover = "Same level as trigger"
-            elif is_before_trigger:
+            if is_before_trigger:
                 display_text = ""
                 hover = "Before trigger time"
             else:
@@ -600,10 +598,7 @@ for level in display_fib_levels:
                 else:
                     is_before_trigger = False
                 
-                if level == trigger_level:
-                    display = ""
-                    hover = "Same level as trigger"
-                elif is_before_trigger:
+                if is_before_trigger:
                     display = ""
                     hover = "Before trigger time"
                 else:
