@@ -834,6 +834,14 @@ def load_intraday_data(uploaded_file):
     Load intraday data from uploaded file with progress tracking
     """
     try:
+        # Handle case where uploaded_file might be a list (safety check)
+        if isinstance(uploaded_file, list):
+            if len(uploaded_file) > 0:
+                uploaded_file = uploaded_file[0]
+            else:
+                st.error("No intraday files provided")
+                return None
+        
         progress_bar = st.progress(0)
         status_text = st.empty()
         
@@ -1403,10 +1411,13 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
                 debug_info.append("⚠️ No intraday data provided - analysis cannot proceed")
                 return pd.DataFrame(), debug_info
             
-            if len(intraday_file) == 1:
-                intraday = load_intraday_data(intraday_file)
-            else:
-                intraday = load_intraday_data_enhanced(intraday_file)
+            # Debug information
+            debug_info.append(f"🔧 DEBUG: intraday_file type: {type(intraday_file)}")
+            if hasattr(intraday_file, 'name'):
+                debug_info.append(f"🔧 DEBUG: intraday_file.name: {intraday_file.name}")
+            
+            # Handle single file from Streamlit uploader (not a list)
+            intraday = load_intraday_data(intraday_file)
         else:
             intraday = intraday_data
         
@@ -1792,7 +1803,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis with SYSTEMATIC Logic'):
                         ticker=ticker or "UPLOADED_DATA",
                         asset_type=asset_type,
                         daily_file=daily_file,
-                        intraday_file=intraday_file,
+                        intraday_file=intraday_file,  # Pass single file directly
                         atr_period=atr_period,
                         custom_ratios=custom_ratios,
                         session_filter=session_filter,
@@ -1816,7 +1827,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis with SYSTEMATIC Logic'):
                         ticker=ticker,
                         asset_type=asset_type,
                         daily_file=None,
-                        intraday_file=[intraday_file],
+                        intraday_file=intraday_file,  # Pass single file directly
                         atr_period=atr_period,
                         custom_ratios=custom_ratios,
                         session_filter=session_filter,
