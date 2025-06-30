@@ -1659,7 +1659,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                             intraday_data=intraday_data
                         )
                         
-                        display_results(result_df, debug_messages, ticker, asset_type,) 
+                        display_results(result_df, debug_messages, ticker, asset_type,
                                       f"Yahoo Daily + Multi-file: {len(intraday_file)} files")
                         
                 except Exception as e:
