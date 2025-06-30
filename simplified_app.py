@@ -297,7 +297,7 @@ if show_expanded_view:
     for hour in ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]:
         time_order.append(hour)
         time_order.append(f"{str(int(hour[:2])+1).zfill(2)}30")
-    time_order.extend(["SPACER", "TOTAL", "REMAINING"])
+    time_order.extend(["SPACER", "TOTAL", "SPACER2", "REMAINING"])
 else:
     # Focused view - make sure time_order includes everything in display_columns
     time_order = display_columns
