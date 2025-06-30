@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import os
 import json
 import os
@@ -915,9 +915,15 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
                 intraday_end = intraday_dates.max()
                 
             # Ensure we have date objects for timedelta operations
-            if not isinstance(intraday_start, datetime.date):
+            # Convert to date objects safely
+            try:
+                if hasattr(intraday_start, 'date'):
+                    intraday_start = intraday_start.date()
+                if hasattr(intraday_end, 'date'):
+                    intraday_end = intraday_end.date()
+            except:
+                # If conversion fails, try pandas conversion
                 intraday_start = pd.to_datetime(intraday_start).date()
-            if not isinstance(intraday_end, datetime.date):
                 intraday_end = pd.to_datetime(intraday_end).date()
             
             # Calculate smart date range with buffer
