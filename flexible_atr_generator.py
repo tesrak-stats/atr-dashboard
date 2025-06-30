@@ -1404,7 +1404,7 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
                 return pd.DataFrame(), debug_info
             
             if len(intraday_file) == 1:
-                intraday = load_intraday_data(intraday_file[0])
+                intraday = load_intraday_data(intraday_file)
             else:
                 intraday = load_intraday_data_enhanced(intraday_file)
         else:
@@ -1792,7 +1792,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis with SYSTEMATIC Logic'):
                         ticker=ticker or "UPLOADED_DATA",
                         asset_type=asset_type,
                         daily_file=daily_file,
-                        intraday_file=[intraday_file],
+                        intraday_file=intraday_file,
                         atr_period=atr_period,
                         custom_ratios=custom_ratios,
                         session_filter=session_filter,
