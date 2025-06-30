@@ -1659,8 +1659,8 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                             intraday_data=intraday_data
                         )
                         
-                        display_results(result_df, debug_messages, ticker, asset_type, 
-                                      f"Yahoo Daily + Single file: {intraday_file.name})"
+                        display_results(result_df, debug_messages, ticker, asset_type,) 
+                                      f"Yahoo Daily + Single file: {intraday_file.name}"
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
