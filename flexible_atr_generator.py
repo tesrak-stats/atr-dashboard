@@ -1228,7 +1228,7 @@ def check_goal_hit(candle, goal_level, trigger_level, goal_price):
     else:  # Below goal
         return candle['Low'] <= goal_price
 
-def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_file=None, 
+def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_files=None, 
                  start_date=None, end_date=None, atr_period=14, custom_ratios=None, 
                  session_filter=None, extended_hours=False, intraday_data=None):  # Add this parameter
     """
@@ -1245,11 +1245,11 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
         debug_info.append(f"Extended Hours: {extended_hours}")
         
         # Load intraday data FIRST (needed for smart daily data fetching)
-        if intraday_file is None:
+        if intraday_files is None:
             debug_info.append("⚠️ No intraday data provided - analysis cannot proceed")
             return pd.DataFrame(), debug_info
         
-        intraday = load_intraday_data(intraday_file)
+        intraday = load_intraday_data(intraday_files)
         
         if intraday is None:
             debug_info.append("❌ Failed to load intraday data")
@@ -1611,7 +1611,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                             ticker=ticker or "UPLOADED_DATA",
                             asset_type=asset_type,
                             daily_file=daily_file,
-                            intraday_file=None,  # Pass None since we already loaded the data
+                            intraday_files=None,  # Pass None since we already loaded the data
                             atr_period=atr_period,
                             custom_ratios=custom_ratios,
                             session_filter=session_filter,
@@ -1647,7 +1647,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                             ticker=ticker,
                             asset_type=asset_type,
                             daily_file=None,
-                            intraday_file=None,
+                            intraday_files=None,
                             atr_period=atr_period,
                             custom_ratios=custom_ratios,
                             session_filter=session_filter,
@@ -1673,7 +1673,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                         ticker=ticker,
                         asset_type=asset_type,
                         daily_file=None,  # Will auto-fetch from Yahoo based on intraday data
-                        intraday_file=intraday_file,
+                        intraday_files=intraday_files,
                         atr_period=atr_period,
                         custom_ratios=custom_ratios,
                         session_filter=session_filter,
