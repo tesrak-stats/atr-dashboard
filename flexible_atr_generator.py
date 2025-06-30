@@ -1245,7 +1245,7 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
         debug_info.append(f"Extended Hours: {extended_hours}")
         
         # Load intraday data FIRST (needed for smart daily data fetching)
-        if intraday_files is None:
+        if not intraday_files:
             debug_info.append("⚠️ No intraday data provided - analysis cannot proceed")
             return pd.DataFrame(), debug_info
         
