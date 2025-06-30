@@ -716,8 +716,7 @@ if uploaded_file is not None:
         total_open_completions = total_open_comps['TotalOpenCompletions'].iloc[0] if len(total_open_comps) > 0 else 0
         
         for goal_level in all_goals:
-            if goal_level == trigger_level:  # Skip same level
-                continue
+            
             
             # Get OPEN completions for this specific trigger-goal combination
             open_comps = open_completion_counts[
