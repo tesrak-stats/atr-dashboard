@@ -606,7 +606,7 @@ st.write("---")  # Separator before continuing to Basic Statistics
     
     # Show basic stats
 st.write("## Basic Statistics")
-    col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.metric("Total Records", len(df))
