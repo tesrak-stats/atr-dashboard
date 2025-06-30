@@ -534,44 +534,75 @@ if uploaded_file is not None:
     df['TriggerTimeBucket'] = df['TriggerTime'].apply(bucket_time)
     df['GoalTimeBucket'] = df['GoalTime'].apply(lambda x: bucket_time(x) if pd.notna(x) and x != '' else 'N/A')
 
-    # Add this debugging section to your Streamlit app after loading the CSV
+    # ADD THIS ENTIRE SECTION TO REPLACE THE PROBLEMATIC DEBUG CODE
 
 st.write("## 🔍 Debug: Unknown Trigger Times")
 
 # Check for missing/null trigger times in original data
-null_trigger_times = df[df['TriggerTime'].isna()]
-st.write(f"**Records with null/NaN TriggerTime:** {len(null_trigger_times)}")
+try:
+    null_mask = pd.isna(df['TriggerTime']) | df['TriggerTime'].isnull()
+    null_trigger_times = df[null_mask]
+    st.write(f"**Records with null/NaN TriggerTime:** {len(null_trigger_times)}")
 
-if len(null_trigger_times) > 0:
-    st.write("**Sample records with null TriggerTime:**")
-    st.dataframe(null_trigger_times[['Date', 'TriggerLevel', 'TriggerTime', 'Direction', 'GoalLevel', 'GoalTime']].head(10))
-    
-    # Show unique patterns
-    st.write("**Date distribution of null trigger times:**")
-    date_counts = null_trigger_times['Date'].value_counts().head(10)
-    st.dataframe(date_counts)
+    if len(null_trigger_times) > 0:
+        st.write("**Sample records with null TriggerTime:**")
+        st.dataframe(null_trigger_times[['Date', 'TriggerLevel', 'TriggerTime', 'Direction', 'GoalLevel', 'GoalTime']].head(10))
+        
+        # Show unique patterns
+        st.write("**Date distribution of null trigger times:**")
+        date_counts = null_trigger_times['Date'].value_counts().head(10)
+        st.dataframe(date_counts)
+except Exception as e:
+    st.error(f"Error checking null trigger times: {e}")
+    st.write("**TriggerTime column info:**")
+    st.write(f"Data type: {df['TriggerTime'].dtype}")
+    st.write(f"First 10 values: {df['TriggerTime'].head(10).tolist()}")
 
 # Check what gets bucketed as "Unknown"
-unknown_bucketed = df[df['TriggerTimeBucket'] == 'Unknown']
-st.write(f"**Records bucketed as 'Unknown':** {len(unknown_bucketed)}")
+try:
+    unknown_bucketed = df[df['TriggerTimeBucket'] == 'Unknown']
+    st.write(f"**Records bucketed as 'Unknown':** {len(unknown_bucketed)}")
 
-if len(unknown_bucketed) > 0:
-    st.write("**Sample records bucketed as Unknown:**")
-    st.dataframe(unknown_bucketed[['Date', 'TriggerLevel', 'TriggerTime', 'TriggerTimeBucket', 'Direction']].head(10))
+    if len(unknown_bucketed) > 0:
+        st.write("**Sample records bucketed as Unknown:**")
+        st.dataframe(unknown_bucketed[['Date', 'TriggerLevel', 'TriggerTime', 'TriggerTimeBucket', 'Direction']].head(10))
+except Exception as e:
+    st.error(f"Error checking Unknown bucketed records: {e}")
 
 # Check unique values in original TriggerTime column
-st.write("**Unique TriggerTime values (first 20):**")
-unique_trigger_times = df['TriggerTime'].unique()
-st.write(f"Total unique values: {len(unique_trigger_times)}")
-st.write("Sample values:", unique_trigger_times[:20])
+try:
+    st.write("**Unique TriggerTime values (first 20):**")
+    unique_trigger_times = df['TriggerTime'].unique()
+    st.write(f"Total unique values: {len(unique_trigger_times)}")
+    st.write("Sample values:", unique_trigger_times[:20])
+except Exception as e:
+    st.error(f"Error checking unique trigger times: {e}")
 
 # Check for non-standard values that might not be handled correctly
-non_numeric_triggers = df[~df['TriggerTime'].apply(lambda x: pd.isna(x) or isinstance(x, (int, float)) or (isinstance(x, str) and x.upper() == 'OPEN'))]
-st.write(f"**Non-standard TriggerTime values:** {len(non_numeric_triggers)}")
+try:
+    def is_standard_time(x):
+        if pd.isna(x):
+            return True  # NaN is expected
+        if isinstance(x, (int, float)):
+            return True  # Numeric is expected
+        if isinstance(x, str) and x.upper() == 'OPEN':
+            return True  # OPEN is expected
+        return False  # Everything else is non-standard
+    
+    non_standard_mask = ~df['TriggerTime'].apply(is_standard_time)
+    non_numeric_triggers = df[non_standard_mask]
+    st.write(f"**Non-standard TriggerTime values:** {len(non_numeric_triggers)}")
 
-if len(non_numeric_triggers) > 0:
-    st.write("**Sample non-standard values:**")
-    st.dataframe(non_numeric_triggers[['TriggerTime', 'Date', 'TriggerLevel']].head(10))
+    if len(non_numeric_triggers) > 0:
+        st.write("**Sample non-standard values:**")
+        st.dataframe(non_numeric_triggers[['TriggerTime', 'Date', 'TriggerLevel']].head(10))
+except Exception as e:
+    st.error(f"Error checking non-standard values: {e}")
+
+st.write("---")  # Separator before continuing to Basic Statistics
+
+    
+
     
     # Show basic stats
     st.write("## Basic Statistics")
