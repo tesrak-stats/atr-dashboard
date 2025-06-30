@@ -3,6 +3,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import json
 import os
+from datetime import datetime, time
+try:
+    from zoneinfo import ZoneInfo  # Python 3.9+
+    USE_ZONEINFO = True
+except ImportError:
+    import pytz  # Fallback for older Python versions
+    USE_ZONEINFO = False
 from daily_atr_updater import calculate_atr_levels
 
 # --- Ticker Configuration (expandable for future tickers) ---
@@ -13,6 +20,71 @@ ticker_config = {
         "ticker_symbol": "^GSPC"
     }
 }
+
+def get_current_market_time():
+    """Get current Eastern Time and determine market time slot"""
+    if USE_ZONEINFO:
+        et = ZoneInfo('US/Eastern')
+        current_et = datetime.now(et)
+    else:
+        et = pytz.timezone('US/Eastern')
+        current_et = datetime.now(et)
+    current_time = current_et.time()
+    
+    # Define market time slots
+    time_slots = [
+        (time(9, 30), "OPEN"),
+        (time(9, 0), "0900"),
+        (time(10, 0), "1000"),
+        (time(11, 0), "1100"),
+        (time(12, 0), "1200"),
+        (time(13, 0), "1300"),
+        (time(14, 0), "1400"),
+        (time(15, 0), "1500"),
+        (time(16, 0), "CLOSE")
+    ]
+    
+    # Sort by time to find current slot
+    time_slots.sort(key=lambda x: x[0])
+    
+    current_slot = "PREMARKET"
+    for slot_time, slot_name in time_slots:
+        if current_time >= slot_time:
+            current_slot = slot_name
+        else:
+            break
+    
+    # If after 4 PM, consider it AFTERHOURS
+    if current_time >= time(16, 0):
+        current_slot = "AFTERHOURS"
+    
+    return current_et, current_slot
+
+def calculate_remaining_probability(total_pct, completed_hourly_pcts, current_time_slot, time_order):
+    """
+    Calculate remaining probability based on current time
+    total_pct: Total probability for the day
+    completed_hourly_pcts: Dictionary of {time_slot: percentage} for completed hours
+    current_time_slot: Current market time slot
+    time_order: List of time slots in order
+    """
+    if current_time_slot in ["PREMARKET", "AFTERHOURS", "CLOSE"]:
+        return total_pct, "N/A"
+    
+    # Find current position in time order
+    try:
+        current_index = time_order.index(current_time_slot)
+    except ValueError:
+        return total_pct, "Current"
+    
+    # Sum up probabilities for completed time slots
+    completed_probability = 0
+    for i, time_slot in enumerate(time_order):
+        if i < current_index and time_slot in completed_hourly_pcts:
+            completed_probability += completed_hourly_pcts[time_slot]
+    
+    remaining_pct = max(0, total_pct - completed_probability)
+    return remaining_pct, current_time_slot
 
 def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
     """
@@ -42,13 +114,26 @@ def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
         st.error(f"Error getting ATR levels: {str(e)}")
         return {"status": "error", "error": str(e)}
 
+# --- Get Current Market Time ---
+current_et_time, current_market_slot = get_current_market_time()
+
 # --- Page Layout with Ticker Selector ---
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.3.45 - Fresh Rewrite to Fix Import") # VERSION BUMP
+    st.caption("🔧 App Version: v2.4.0 - Added Remaining Probability") # VERSION BUMP
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
+
+# Display current market time
+if current_market_slot in ["PREMARKET", "AFTERHOURS"]:
+    time_color = "🔴"
+elif current_market_slot == "CLOSE":
+    time_color = "⚫"
+else:
+    time_color = "🟢"
+
+st.info(f"{time_color} **Current ET:** {current_et_time.strftime('%I:%M %p')} | **Market Slot:** {current_market_slot}")
 
 # --- Load data based on selected ticker ---
 try:
@@ -85,14 +170,16 @@ with st.expander("❓ What's This? - How to Use This Chart"):
     - **Columns (Times):** Hours during the trading day when the target was reached
     - **Percentages:** Historical success rate - how often price reached that level by that time
     - **Colors:** Match the horizontal line colors for easy reference
+    - **Remaining:** Shows probability left for the day based on current market time
     
     🎯 **How to Use:**
     1. **Select Price Location:** Above or Below Trigger Level
     2. **Pick Trigger Level:** The level that has been traded at for the first time today
     3. **Choose Trigger Time:** When the trigger level was hit
     4. **Read Results:** See probability of reaching other levels throughout the day
+    5. **Check Remaining:** See how much probability is left based on current time
     
-    💡 **Example:** If price goes Above 0.0 at OPEN, there's a X% chance it reaches +0.618 by 1000 hours.
+    💡 **Example:** If price goes Above 0.0 at OPEN, there's a X% chance it reaches +0.618 by 1000 hours, with Y% remaining probability after current time.
     """)
 
 # --- Chart Title and Labels ---
@@ -174,23 +261,23 @@ if show_expanded_view != st.session_state.expanded_view_pref:
 
 # --- Display configuration ---
 if show_expanded_view:
-    display_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "TOTAL"]
+    display_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "TOTAL", "REMAINING"]
     display_fib_levels = fib_levels
     chart_height = 700
-    chart_width = 1600
+    chart_width = 1800
     font_size_multiplier = 1.0
     use_container_width = False
 else:
     current_hour_index = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"].index(trigger_time)
     
     if trigger_time == "OPEN":
-        # For OPEN trigger: 0900, 1000, 1100, TOTAL
-        display_columns = ["0900", "1000", "1100", "TOTAL"]
+        # For OPEN trigger: 0900, 1000, 1100, TOTAL, REMAINING
+        display_columns = ["0900", "1000", "1100", "TOTAL", "REMAINING"]
     else:
-        # For other triggers: trigger + 2 more hours + TOTAL
+        # For other triggers: trigger + 2 more hours + TOTAL + REMAINING
         end_index = min(current_hour_index + 3, 7)
         time_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"][current_hour_index:end_index + 1]
-        display_columns = time_columns + ["TOTAL"]
+        display_columns = time_columns + ["TOTAL", "REMAINING"]
     
     trigger_index = fib_levels.index(trigger_level)
     start_fib = max(0, trigger_index - 3)
@@ -199,19 +286,18 @@ else:
     
     # Mobile focused view - optimize for readability
     chart_height = 400
-    chart_width = 600
+    chart_width = 700
     font_size_multiplier = 1.0
     use_container_width = False
 
-# Create time_order - ensure TOTAL is always included for focused view
+# Create time_order - ensure TOTAL and REMAINING are always included for focused view
 if show_expanded_view:
     # Full time_order with spacers for expanded view
     time_order = ["OPEN", "0830"]
     for hour in ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]:
         time_order.append(hour)
         time_order.append(f"{str(int(hour[:2])+1).zfill(2)}30")
-    time_order.append("SPACER")
-    time_order.append("TOTAL")
+    time_order.extend(["SPACER", "TOTAL", "REMAINING"])
 else:
     # Focused view - make sure time_order includes everything in display_columns
     time_order = display_columns
@@ -250,11 +336,15 @@ for _, row in filtered.iterrows():
 
 # --- Calculate total completion rate for each goal level ---
 goal_totals = {}
+goal_remaining = {}
 if len(filtered) > 0:
     goal_summary = filtered.groupby('GoalLevel').agg({
         'NumHits': 'sum',
         'NumTriggers': 'first'
     }).reset_index()
+    
+    # Standard time order for calculations
+    standard_time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
     
     for _, row in goal_summary.iterrows():
         goal_level = row['GoalLevel']
@@ -267,6 +357,23 @@ if len(filtered) > 0:
             "hits": total_hits,
             "triggers": total_triggers,
             "pct": total_pct
+        }
+        
+        # Calculate remaining probability
+        hourly_pcts = {}
+        for time_slot in standard_time_order:
+            key = (goal_level, time_slot)
+            if key in data_lookup:
+                hourly_pcts[time_slot] = data_lookup[key]["pct"]
+        
+        remaining_pct, current_slot_info = calculate_remaining_probability(
+            total_pct, hourly_pcts, current_market_slot, standard_time_order
+        )
+        
+        goal_remaining[goal_level] = {
+            "pct": remaining_pct,
+            "current_slot": current_slot_info,
+            "total_pct": total_pct
         }
 
 # --- Get OPEN trigger data for tooltip ---
@@ -396,6 +503,51 @@ for level in display_fib_levels:
                 ))
             continue
         
+        if t == "REMAINING":
+            if level in goal_remaining and level != trigger_level:
+                remaining_data = goal_remaining[level]
+                remaining_pct = remaining_data["pct"]
+                total_pct = remaining_data["total_pct"]
+                current_slot = remaining_data["current_slot"]
+                
+                line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
+                if level in [1.0, -1.0]:
+                    font_size = font_size - 1
+                
+                if current_slot == "N/A":
+                    display_text = "N/A"
+                    hover = "Market closed or no data"
+                    text_color = "gray"
+                else:
+                    display_text = f"{remaining_pct:.1f}%"
+                    completed_pct = total_pct - remaining_pct
+                    hover = f"Remaining: {remaining_pct:.1f}% (Total: {total_pct:.1f}%, Completed: {completed_pct:.1f}%) | Current: {current_slot}"
+                    
+                    # Color code based on remaining probability
+                    if remaining_pct > 15:
+                        text_color = "lime"
+                    elif remaining_pct > 5:
+                        text_color = "orange"
+                    else:
+                        text_color = "red"
+                
+                fig.add_trace(go.Scatter(
+                    x=[t], y=[level + text_offset],
+                    mode="text", text=[display_text],
+                    hovertext=[hover], hoverinfo="text",
+                    textfont=dict(color=text_color, size=font_size),
+                    showlegend=False
+                ))
+            else:
+                fig.add_trace(go.Scatter(
+                    x=[t], y=[level + text_offset],
+                    mode="text", text=[""],
+                    hoverinfo="skip",
+                    textfont=dict(color="white", size=12),
+                    showlegend=False
+                ))
+            continue
+        
         # Regular time columns
         key = (level, t)
         if key in data_lookup:
@@ -435,7 +587,7 @@ for level in display_fib_levels:
                 showlegend=False
             ))
         else:
-            if t not in ["OPEN", "TOTAL"]:
+            if t not in ["OPEN", "TOTAL", "REMAINING"]:
                 line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
                 if level in [1.0, -1.0]:
                     font_size = font_size - 1
@@ -527,4 +679,4 @@ with col1:
         st.caption(f"📊 ATR levels from {atr_data.get('reference_date', 'unknown')} | Close: {atr_data.get('reference_close', 'N/A')} | ATR: {atr_data.get('reference_atr', 'N/A')}{age_warning}")
 
 # --- Legend/Key ---
-st.caption("📋 **Chart Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | Percentages show probability of reaching target level by specified time")
+st.caption("📋 **Chart Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | **Remaining Colors:** 🟢 >15% | 🟠 5-15% | 🔴 <5% | Percentages show probability of reaching target level by specified time")
