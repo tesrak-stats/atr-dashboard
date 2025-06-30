@@ -533,6 +533,45 @@ if uploaded_file is not None:
     st.write("🕐 Applying time bucketing...")
     df['TriggerTimeBucket'] = df['TriggerTime'].apply(bucket_time)
     df['GoalTimeBucket'] = df['GoalTime'].apply(lambda x: bucket_time(x) if pd.notna(x) and x != '' else 'N/A')
+
+    # Add this debugging section to your Streamlit app after loading the CSV
+
+st.write("## 🔍 Debug: Unknown Trigger Times")
+
+# Check for missing/null trigger times in original data
+null_trigger_times = df[df['TriggerTime'].isna()]
+st.write(f"**Records with null/NaN TriggerTime:** {len(null_trigger_times)}")
+
+if len(null_trigger_times) > 0:
+    st.write("**Sample records with null TriggerTime:**")
+    st.dataframe(null_trigger_times[['Date', 'TriggerLevel', 'TriggerTime', 'Direction', 'GoalLevel', 'GoalTime']].head(10))
+    
+    # Show unique patterns
+    st.write("**Date distribution of null trigger times:**")
+    date_counts = null_trigger_times['Date'].value_counts().head(10)
+    st.dataframe(date_counts)
+
+# Check what gets bucketed as "Unknown"
+unknown_bucketed = df[df['TriggerTimeBucket'] == 'Unknown']
+st.write(f"**Records bucketed as 'Unknown':** {len(unknown_bucketed)}")
+
+if len(unknown_bucketed) > 0:
+    st.write("**Sample records bucketed as Unknown:**")
+    st.dataframe(unknown_bucketed[['Date', 'TriggerLevel', 'TriggerTime', 'TriggerTimeBucket', 'Direction']].head(10))
+
+# Check unique values in original TriggerTime column
+st.write("**Unique TriggerTime values (first 20):**")
+unique_trigger_times = df['TriggerTime'].unique()
+st.write(f"Total unique values: {len(unique_trigger_times)}")
+st.write("Sample values:", unique_trigger_times[:20])
+
+# Check for non-standard values that might not be handled correctly
+non_numeric_triggers = df[~df['TriggerTime'].apply(lambda x: pd.isna(x) or isinstance(x, (int, float)) or (isinstance(x, str) and x.upper() == 'OPEN'))]
+st.write(f"**Non-standard TriggerTime values:** {len(non_numeric_triggers)}")
+
+if len(non_numeric_triggers) > 0:
+    st.write("**Sample non-standard values:**")
+    st.dataframe(non_numeric_triggers[['TriggerTime', 'Date', 'TriggerLevel']].head(10))
     
     # Show basic stats
     st.write("## Basic Statistics")
