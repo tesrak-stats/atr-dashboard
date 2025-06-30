@@ -714,6 +714,12 @@ def download_yahoo_data_chunked(ticker, start_date, end_date, chunk_years=3, max
     """
     import time
     
+    # Ensure we have date objects, not datetime objects
+    if hasattr(start_date, 'date'):
+        start_date = start_date.date()
+    if hasattr(end_date, 'date'):
+        end_date = end_date.date()
+    
     all_data = []
     current_start = start_date
     
@@ -728,13 +734,14 @@ def download_yahoo_data_chunked(ticker, start_date, end_date, chunk_years=3, max
         chunk_count += 1
         
         # Calculate chunk end date (don't exceed final end_date)
-        chunk_end = min(current_start + timedelta(days=chunk_years * 365), end_date)
+        chunk_end_date = current_start + timedelta(days=chunk_years * 365)
+        chunk_end = min(chunk_end_date, end_date)
         
         # Update progress
         days_processed = (current_start - start_date).days
         progress = min(days_processed / total_days, 1.0)
         progress_bar.progress(progress)
-        status_text.text(f"📊 Downloading chunk {chunk_count}: {current_start.date()} to {chunk_end.date()}")
+        status_text.text(f"📊 Downloading chunk {chunk_count}: {current_start} to {chunk_end}")
         
         # Try to download this chunk with retries
         chunk_data = None
@@ -769,7 +776,7 @@ def download_yahoo_data_chunked(ticker, start_date, end_date, chunk_years=3, max
             
             # Give user choice
             user_choice = st.radio(
-                f"How to handle failed chunk {chunk_count} ({current_start.date()} to {chunk_end.date()})?",
+                f"How to handle failed chunk {chunk_count} ({current_start} to {chunk_end})?",
                 ["Skip this chunk and continue", "Stop download and use partial data", "Retry with smaller chunks"],
                 key=f"chunk_error_{chunk_count}"
             )
@@ -821,7 +828,17 @@ def download_yahoo_data_chunked(ticker, start_date, end_date, chunk_years=3, max
         
         st.success(f"✅ Chunked download complete: {len(combined_data)} total records")
         if 'Date' in combined_data.columns:
-            st.info(f"📅 Final date range: {combined_data['Date'].min()} to {combined_data['Date'].max()}")
+            # Safe date display
+            try:
+                date_min = combined_data['Date'].min()
+                date_max = combined_data['Date'].max()
+                if hasattr(date_min, 'date'):
+                    date_min = date_min.date()
+                if hasattr(date_max, 'date'):
+                    date_max = date_max.date()
+                st.info(f"📅 Final date range: {date_min} to {date_max}")
+            except Exception as e:
+                st.info(f"📅 Final dataset ready with {len(combined_data)} records")
         
         return combined_data
     else:
