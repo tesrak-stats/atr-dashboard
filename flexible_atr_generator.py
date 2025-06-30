@@ -1343,7 +1343,13 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                     below_trigger_time = 'OPEN'
                     below_trigger_row = 0
                 
-                # Check intraday candles for below trigger
+                # If OPEN didn't trigger, check 0930 candle High/Low
+                elif day_data.iloc[0]['Low'] <= trigger_price:
+                    below_triggered = True
+                    below_trigger_time = '0930'
+                    below_trigger_row = 0
+                
+                # Check intraday candles for below trigger (only if neither OPEN nor 0930 triggered)
                 if not below_triggered:
                     for idx, row in day_data.iloc[1:].iterrows():
                         if row['Low'] <= trigger_price:
@@ -1499,7 +1505,13 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                     above_trigger_time = 'OPEN'
                     above_trigger_row = 0
                 
-                # Check intraday candles for above trigger (only if not already triggered at OPEN)
+                # If OPEN didn't trigger, check 0930 candle High/Low
+                elif day_data.iloc[0]['High'] >= trigger_price:
+                    above_triggered = True
+                    above_trigger_time = '0930'
+                    above_trigger_row = 0
+                
+                # Check intraday candles for above trigger (only if neither OPEN nor 0930 triggered)
                 if not above_triggered:
                     for idx, row in day_data.iloc[1:].iterrows():
                         if row['High'] >= trigger_price:
