@@ -10,7 +10,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 def bucket_time(time_value):
     """Convert numeric times to hour buckets for dashboard display"""
     if pd.isna(time_value):
-        return "Unknown"
+        return "No Trigger"  # Changed from "Unknown" to be more descriptive
     
     # Handle string times (like "OPEN")
     if isinstance(time_value, str):
@@ -535,13 +535,13 @@ if uploaded_file is not None:
     df['GoalTimeBucket'] = df['GoalTime'].apply(lambda x: bucket_time(x) if pd.notna(x) and x != '' else 'N/A')
 
     # Debug section - moved INSIDE the main if block
-    st.write("## 🔍 Debug: Unknown Trigger Times")
+    st.write("## 🔍 Debug: Null Trigger Times (Now Preserved)")
 
     # Check for missing/null trigger times in original data
     try:
         null_mask = pd.isna(df['TriggerTime']) | df['TriggerTime'].isnull()
         null_trigger_times = df[null_mask]
-        st.write(f"**Records with null/NaN TriggerTime:** {len(null_trigger_times)}")
+        st.write(f"**Records with null/NaN TriggerTime (preserved as 'No Trigger'):** {len(null_trigger_times)}")
 
         if len(null_trigger_times) > 0:
             st.write("**Sample records with null TriggerTime:**")
@@ -557,16 +557,17 @@ if uploaded_file is not None:
         st.write(f"Data type: {df['TriggerTime'].dtype}")
         st.write(f"First 10 values: {df['TriggerTime'].head(10).tolist()}")
 
-    # Check what gets bucketed as "Unknown"
+    # Check what gets bucketed as "No Trigger"
     try:
-        unknown_bucketed = df[df['TriggerTimeBucket'] == 'Unknown']
-        st.write(f"**Records bucketed as 'Unknown':** {len(unknown_bucketed)}")
+        no_trigger_bucketed = df[df['TriggerTimeBucket'] == 'No Trigger']
+        st.write(f"**Records bucketed as 'No Trigger':** {len(no_trigger_bucketed)}")
 
-        if len(unknown_bucketed) > 0:
-            st.write("**Sample records bucketed as Unknown:**")
-            st.dataframe(unknown_bucketed[['Date', 'TriggerLevel', 'TriggerTime', 'TriggerTimeBucket', 'Direction']].head(10))
+        if len(no_trigger_bucketed) > 0:
+            st.write("**Sample records bucketed as No Trigger:**")
+            st.dataframe(no_trigger_bucketed[['Date', 'TriggerLevel', 'TriggerTime', 'TriggerTimeBucket', 'Direction']].head(10))
+            st.info("💡 These records will appear in Excel as '0 trigger' scenarios to show complete trigger-goal matrix")
     except Exception as e:
-        st.error(f"Error checking Unknown bucketed records: {e}")
+        st.error(f"Error checking No Trigger bucketed records: {e}")
 
     # Check unique values in original TriggerTime column
     try:
@@ -576,27 +577,6 @@ if uploaded_file is not None:
         st.write("Sample values:", unique_trigger_times[:20])
     except Exception as e:
         st.error(f"Error checking unique trigger times: {e}")
-
-    # Check for non-standard values that might not be handled correctly
-    try:
-        def is_standard_time(x):
-            if pd.isna(x):
-                return True  # NaN is expected
-            if isinstance(x, (int, float)):
-                return True  # Numeric is expected
-            if isinstance(x, str) and x.upper() == 'OPEN':
-                return True  # OPEN is expected
-            return False  # Everything else is non-standard
-        
-        non_standard_mask = ~df['TriggerTime'].apply(is_standard_time)
-        non_numeric_triggers = df[non_standard_mask]
-        st.write(f"**Non-standard TriggerTime values:** {len(non_numeric_triggers)}")
-
-        if len(non_numeric_triggers) > 0:
-            st.write("**Sample non-standard values:**")
-            st.dataframe(non_numeric_triggers[['TriggerTime', 'Date', 'TriggerLevel']].head(10))
-    except Exception as e:
-        st.error(f"Error checking non-standard values: {e}")
 
     st.write("---")  # Separator before continuing to Basic Statistics
     
@@ -615,19 +595,45 @@ if uploaded_file is not None:
         hit_rate = (total_hits / len(df) * 100) if len(df) > 0 else 0
         st.metric("Overall Hit Rate", f"{hit_rate:.1f}%")
     
-    # STEP 1: Count total triggers per trigger combination
-    st.write("## Step 1: Count Total Triggers")
+    # STEP 1: Count total triggers per trigger combination (including 0-trigger scenarios)
+    st.write("## Step 1: Count Total Triggers (Including 0-Trigger Scenarios)")
     
-    trigger_events = df[['Date', 'TriggerLevel', 'TriggerTimeBucket', 'Direction']].drop_duplicates()
-    total_trigger_counts = (
-        trigger_events
+    # For "No Trigger" scenarios, we need to count them as 0 triggers
+    # Create a comprehensive list of all trigger combinations
+    all_trigger_combinations = []
+    
+    # Get actual trigger events (non-null times)
+    actual_trigger_events = df[df['TriggerTime'].notna()][['Date', 'TriggerLevel', 'TriggerTimeBucket', 'Direction']].drop_duplicates()
+    actual_trigger_counts = (
+        actual_trigger_events
         .groupby(['TriggerLevel', 'TriggerTimeBucket', 'Direction'])
         .size()
         .reset_index(name='TotalTriggers')
     )
     
-    st.write(f"✅ Found {len(total_trigger_counts)} unique trigger combinations")
-    st.write(f"✅ Total trigger events: {total_trigger_counts['TotalTriggers'].sum():,}")
+    # Get "No Trigger" scenarios 
+    no_trigger_scenarios = df[df['TriggerTimeBucket'] == 'No Trigger'][['TriggerLevel', 'Direction']].drop_duplicates()
+    no_trigger_counts = []
+    for _, row in no_trigger_scenarios.iterrows():
+        no_trigger_counts.append({
+            'TriggerLevel': row['TriggerLevel'],
+            'TriggerTimeBucket': 'No Trigger',
+            'Direction': row['Direction'],
+            'TotalTriggers': 0  # These represent 0 triggers
+        })
+    
+    no_trigger_counts_df = pd.DataFrame(no_trigger_counts)
+    
+    # Combine actual triggers and no-trigger scenarios
+    if len(no_trigger_counts_df) > 0:
+        total_trigger_counts = pd.concat([actual_trigger_counts, no_trigger_counts_df], ignore_index=True)
+    else:
+        total_trigger_counts = actual_trigger_counts
+    
+    st.write(f"✅ Found {len(actual_trigger_counts)} actual trigger combinations")
+    st.write(f"✅ Found {len(no_trigger_counts_df)} no-trigger scenarios")  
+    st.write(f"✅ Total combinations (including 0-trigger): {len(total_trigger_counts)}")
+    st.write(f"✅ Total actual trigger events: {actual_trigger_counts['TotalTriggers'].sum():,}")
     
     # STEP 2: Count OPEN completions per trigger-goal combination
     st.write("## Step 2: Count OPEN Completions per Goal")
