@@ -1636,7 +1636,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
         if not ticker:
             st.error("❌ Please enter a ticker symbol for Yahoo Finance daily data")
         else:
-            with st.spinner(f'Processing {len(intraday_file)} intraday file(s) and fetching daily data...'):
+           with st.spinner(f'Processing intraday file and fetching daily data...'):
                 try:
                     # Load intraday data (single or multiple files)
                     if len(intraday_file) == 1:
