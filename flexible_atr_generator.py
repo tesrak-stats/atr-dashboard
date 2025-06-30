@@ -1640,7 +1640,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                 try:
                     # Load intraday data (single or multiple files)
                     if intraday_file is not None:
-                        intraday_data = load_intraday_data(intraday_file[0])
+                        intraday_data = load_intraday_data(intraday_file)
                     else:
                         intraday_data = load_intraday_data_enhanced(intraday_file, target_timeframe)
                     
