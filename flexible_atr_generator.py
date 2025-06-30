@@ -639,10 +639,26 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
     if daily_data is None or intraday_data is None:
         return False, ["Missing data files"], ["Please provide both daily and intraday data"]
     
-    # Convert date columns for comparison
-    daily_dates = pd.to_datetime(daily_data['Date']).dt.date
-    intraday_dates = pd.to_datetime(intraday_data['Date'] if 'Date' in intraday_data.columns 
-                                   else intraday_data['Datetime']).dt.date
+    # Convert date columns for comparison - handle different formats safely
+    if 'Date' in daily_data.columns:
+        daily_dates = pd.to_datetime(daily_data['Date'])
+        if hasattr(daily_dates.iloc[0], 'date'):
+            daily_dates = daily_dates.dt.date
+    else:
+        st.error("Daily data missing Date column")
+        return False, ["Daily data missing Date column"], []
+    
+    if 'Date' in intraday_data.columns:
+        intraday_dates = pd.to_datetime(intraday_data['Date'])
+        if hasattr(intraday_dates.iloc[0], 'date'):
+            intraday_dates = intraday_dates.dt.date
+    elif 'Datetime' in intraday_data.columns:
+        intraday_dates = pd.to_datetime(intraday_data['Datetime'])
+        if hasattr(intraday_dates.iloc[0], 'date'):
+            intraday_dates = intraday_dates.dt.date
+    else:
+        st.error("Intraday data missing Date/Datetime column")
+        return False, ["Intraday data missing Date/Datetime column"], []
     
     daily_start = daily_dates.min()
     daily_end = daily_dates.max()
@@ -850,12 +866,21 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
                 st.error(f"Missing required columns in daily data: {missing_cols}")
                 return None
             
-            # Sort by date
+            # Sort by date and ensure proper date format
             daily['Date'] = pd.to_datetime(daily['Date'])
             daily = daily.sort_values('Date').reset_index(drop=True)
             
             st.success(f"✅ Loaded daily data: {len(daily)} records")
-            st.info(f"Date range: {daily['Date'].min().date()} to {daily['Date'].max().date()}")
+            date_min = daily['Date'].min()
+            date_max = daily['Date'].max()
+            # Handle different date formats for display
+            if hasattr(date_min, 'date'):
+                date_min_str = date_min.date()
+                date_max_str = date_max.date()
+            else:
+                date_min_str = date_min
+                date_max_str = date_max
+            st.info(f"Date range: {date_min_str} to {date_max_str}")
             
             return daily
             
@@ -877,10 +902,23 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
             
             # Get date range from intraday data
             intraday_dates = pd.to_datetime(intraday_data['Date'] if 'Date' in intraday_data.columns 
-                                          else intraday_data['Datetime']).dt.date
+                                          else intraday_data['Datetime'])
             
-            intraday_start = intraday_dates.min()
-            intraday_end = intraday_dates.max()
+            # Handle different date formats safely
+            if hasattr(intraday_dates.iloc[0], 'date'):
+                # It's already a datetime, extract date
+                intraday_start = intraday_dates.dt.date.min()
+                intraday_end = intraday_dates.dt.date.max()
+            else:
+                # It's already a date
+                intraday_start = intraday_dates.min()
+                intraday_end = intraday_dates.max()
+                
+            # Ensure we have date objects for timedelta operations
+            if not isinstance(intraday_start, datetime.date):
+                intraday_start = pd.to_datetime(intraday_start).date()
+            if not isinstance(intraday_end, datetime.date):
+                intraday_end = pd.to_datetime(intraday_end).date()
             
             # Calculate smart date range with buffer
             buffer_start = intraday_start - timedelta(days=180)  # 6 months buffer
