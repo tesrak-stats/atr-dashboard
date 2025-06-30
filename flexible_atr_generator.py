@@ -993,10 +993,25 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
                     return None
             
             # Standardize column names (after ensuring Date exists)
+            debug_info.append(f"🔧 DEBUG: Columns before standardize: {list(daily_data.columns)}")
             daily_data = standardize_columns(daily_data)
+            debug_info.append(f"🔧 DEBUG: Columns after standardize: {list(daily_data.columns)}")
             
             st.success(f"✅ Auto-fetched daily data from Yahoo: {len(daily_data)} records")
-            st.success(f"📅 Daily data range: {daily_data['Date'].min().date()} to {daily_data['Date'].max().date()}")
+            
+            # Safe date range display
+            try:
+                date_min = daily_data['Date'].min()
+                date_max = daily_data['Date'].max()
+                if hasattr(date_min, 'date'):
+                    date_min = date_min.date()
+                if hasattr(date_max, 'date'):
+                    date_max = date_max.date()
+                st.success(f"📅 Daily data range: {date_min} to {date_max}")
+            except Exception as e:
+                st.warning(f"⚠️ Date range display error: {e}")
+                st.success(f"📅 Daily data ready: {len(daily_data)} records")
+            
             return daily_data
             
         except Exception as e:
@@ -1148,47 +1163,54 @@ def standardize_columns(df):
     """
     Standardize column names across different data sources
     """
-    # Clean column names first - handle non-string column names
-    clean_columns = []
-    for col in df.columns:
-        if isinstance(col, str):
-            clean_columns.append(col.strip())
-        else:
-            # Convert non-strings (floats, numbers) to strings
-            clean_columns.append(str(col).strip())
-    
-    df.columns = clean_columns
-    
-    # Common column mappings
-    column_mappings = {
-        # Date columns
-        'date': 'Date',
-        'timestamp': 'Date', 
-        'datetime': 'Datetime',
-        # OHLC columns
-        'open': 'Open',
-        'high': 'High', 
-        'low': 'Low',
-        'close': 'Close',
-        'last': 'Close',  # Common in some data providers
-        'adj close': 'Close',
-        'adjusted_close': 'Close',
-        'settle': 'Close',  # Common in futures data
-        # Volume
-        'volume': 'Volume',
-        'vol': 'Volume',
-        # Session
-        'session': 'Session'
-    }
-    
-    # Apply mappings (case insensitive)
-    for old_name, new_name in column_mappings.items():
+    try:
+        # Clean column names first - handle non-string column names
+        clean_columns = []
         for col in df.columns:
-            if isinstance(col, str) and col.lower() == old_name:
-                df.rename(columns={col: new_name}, inplace=True)
-                break
-    
-    return df
+            if isinstance(col, str):
+                clean_columns.append(col.strip())
+            else:
+                # Convert non-strings (floats, numbers) to strings
+                clean_columns.append(str(col).strip())
+        
+        df.columns = clean_columns
+        
+        # Common column mappings
+        column_mappings = {
+            # Date columns
+            'date': 'Date',
+            'timestamp': 'Date', 
+            'datetime': 'Datetime',
+            # OHLC columns
+            'open': 'Open',
+            'high': 'High', 
+            'low': 'Low',
+            'close': 'Close',
+            'last': 'Close',  # Common in some data providers
+            'adj close': 'Close',
+            'adjusted_close': 'Close',
+            'settle': 'Close',  # Common in futures data
+            # Volume
+            'volume': 'Volume',
+            'vol': 'Volume',
+            # Session
+            'session': 'Session'
+        }
+        
+        # Apply mappings (case insensitive)
+        for old_name, new_name in column_mappings.items():
+            for col in df.columns:
+                if isinstance(col, str) and col.lower() == old_name:
+                    df.rename(columns={col: new_name}, inplace=True)
+                    break
+        
+        return df
+        
+    except Exception as e:
+        st.error(f"❌ Error in standardize_columns: {e}")
+        st.info(f"DataFrame columns: {list(df.columns)}")
+        st.info(f"DataFrame shape: {df.shape}")
+        return df  # Return original df if standardization fails
 
 def filter_by_session_and_hours(intraday_data, date, asset_config, session_filter=None):
     """
