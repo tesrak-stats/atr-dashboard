@@ -1228,7 +1228,7 @@ def check_goal_hit(candle, goal_level, trigger_level, goal_price):
     else:  # Below goal
         return candle['Low'] <= goal_price
 
-def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_files=None, 
+def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_file=None, 
                  start_date=None, end_date=None, atr_period=14, custom_ratios=None, 
                  session_filter=None, extended_hours=False, intraday_data=None):  # Add this parameter
     """
@@ -1245,15 +1245,15 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
         debug_info.append(f"Extended Hours: {extended_hours}")
         
         # Load intraday data FIRST (needed for smart daily data fetching)
-        if not intraday_files:
+        if not intraday_file:
             debug_info.append("⚠️ No intraday data provided - analysis cannot proceed")
             return pd.DataFrame(), debug_info
         
-        if len(intraday_files) == 1:
-            intraday = load_intraday_data(intraday_files[0])  # Pass the first file
+        if len(intraday_file) == 1:
+            intraday = load_intraday_data(intraday_file[0])  # Pass the first file
         else:
     # Handle multiple files case later
-            intraday = load_intraday_data_enhanced(intraday_files)
+            intraday = load_intraday_data_enhanced(intraday_file)
         
         if intraday is None:
             debug_info.append("❌ Failed to load intraday data")
@@ -1473,10 +1473,10 @@ data_source = st.sidebar.radio(
 st.sidebar.subheader("📊 Intraday Data (Required)")
 st.sidebar.info("⚠️ **Intraday data must always be uploaded as CSV/Excel - Yahoo Finance doesn't provide sufficient intraday history**")
 
-intraday_files = st.sidebar.file_uploader(
+intraday_file = st.sidebar.file_uploader(
     "Intraday OHLC Data",
     type=['csv', 'xlsx', 'xls'],
-    accept_multiple_files=True,  # This is the key change
+    accept_multiple_files=False,  # This is the key change
     help="Upload single file or multiple files - they'll be processed and combined automatically"
 )
 
@@ -1593,19 +1593,19 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
 # Modified Generate button section
 if st.button('🚀 Generate Enhanced ATR Analysis'):
     # First check if intraday files are uploaded
-    if not intraday_files:
+    if not intraday_file:
         st.error("❌ Please upload intraday data file(s)")
     elif data_source == "Upload Both Files":
         if daily_file is None:
             st.error("❌ Please upload daily data file")
         else:
-            with st.spinner(f'Processing {len(intraday_files)} intraday file(s) and analyzing...'):
+            with st.spinner(f'Processing {len(intraday_file)} intraday file(s) and analyzing...'):
                 try:
                     # Load intraday data (single or multiple files)
-                    if len(intraday_files) == 1:
-                        intraday_data = load_intraday_data(intraday_files[0])
+                    if len(intraday_file) == 1:
+                        intraday_data = load_intraday_data(intraday_file[0])
                     else:
-                        intraday_data = load_intraday_data_enhanced(intraday_files, target_timeframe)
+                        intraday_data = load_intraday_data_enhanced(intraday_file, target_timeframe)
                     
                     if intraday_data is None:
                         st.error("❌ Failed to process intraday data")
@@ -1615,7 +1615,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                             ticker=ticker or "UPLOADED_DATA",
                             asset_type=asset_type,
                             daily_file=daily_file,
-                            intraday_files=None,  # Pass None since we already loaded the data
+                            intraday_file=None,  # Pass None since we already loaded the data
                             atr_period=atr_period,
                             custom_ratios=custom_ratios,
                             session_filter=session_filter,
@@ -1624,7 +1624,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                         )
                         
                         display_results(result_df, debug_messages, ticker or "UPLOADED_DATA", asset_type, 
-                                      f"Multi-file: {len(intraday_files)} files")
+                                      f"Multi-file: {len(intraday_file)} files")
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
@@ -1636,13 +1636,13 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
         if not ticker:
             st.error("❌ Please enter a ticker symbol for Yahoo Finance daily data")
         else:
-            with st.spinner(f'Processing {len(intraday_files)} intraday file(s) and fetching daily data...'):
+            with st.spinner(f'Processing {len(intraday_file)} intraday file(s) and fetching daily data...'):
                 try:
                     # Load intraday data (single or multiple files)
-                    if len(intraday_files) == 1:
-                        intraday_data = load_intraday_data(intraday_files[0])
+                    if len(intraday_file) == 1:
+                        intraday_data = load_intraday_data(intraday_file[0])
                     else:
-                        intraday_data = load_intraday_data_enhanced(intraday_files, target_timeframe)
+                        intraday_data = load_intraday_data_enhanced(intraday_file, target_timeframe)
                     
                     if intraday_data is None:
                         st.error("❌ Failed to process intraday data")
@@ -1651,7 +1651,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                             ticker=ticker,
                             asset_type=asset_type,
                             daily_file=None,
-                            intraday_files=None,
+                            intraday_file=None,
                             atr_period=atr_period,
                             custom_ratios=custom_ratios,
                             session_filter=session_filter,
@@ -1660,7 +1660,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                         )
                         
                         display_results(result_df, debug_messages, ticker, asset_type, 
-                                      f"Yahoo Daily + Multi-file: {len(intraday_files)} files")
+                                      f"Yahoo Daily + Multi-file: {len(intraday_file)} files")
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
@@ -1677,7 +1677,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                         ticker=ticker,
                         asset_type=asset_type,
                         daily_file=None,  # Will auto-fetch from Yahoo based on intraday data
-                        intraday_files=intraday_files,
+                        intraday_file=intraday_file,
                         atr_period=atr_period,
                         custom_ratios=custom_ratios,
                         session_filter=session_filter,
