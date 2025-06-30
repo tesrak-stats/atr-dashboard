@@ -4,6 +4,399 @@ import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta
 import os
+import json
+import os
+import tempfile
+import shutil
+from datetime import datetime
+import gzip
+
+class DataProcessingCheckpoint:
+    """Handle checkpoint/resume functionality for multi-file processing"""
+    
+    def __init__(self, session_id=None):
+        # Use session-specific checkpoint file
+        if session_id is None:
+            session_id = st.session_state.get('session_id', self._generate_session_id())
+            st.session_state['session_id'] = session_id
+        
+        self.checkpoint_file = f"checkpoint_{session_id}.json"
+        self.temp_dir = f"temp_{session_id}"
+        self.state = self.load_checkpoint()
+    
+    def _generate_session_id(self):
+        """Generate unique session ID"""
+        return datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    def load_checkpoint(self):
+        """Load existing checkpoint or create new one"""
+        if os.path.exists(self.checkpoint_file):
+            try:
+                with open(self.checkpoint_file, 'r') as f:
+                    return json.load(f)
+            except:
+                pass  # If checkpoint is corrupted, start fresh
+        
+        return {
+            'processed_files': [],
+            'failed_files': [],
+            'last_successful_file': None,
+            'target_timeframe': None,
+            'start_time': None,
+            'total_files': 0,
+            'temp_data_files': [],
+            'session_id': st.session_state.get('session_id'),
+            'processing_complete': False
+        }
+    
+    def save_checkpoint(self):
+        """Save current state to disk"""
+        # Ensure temp directory exists
+        if not os.path.exists(self.temp_dir):
+            os.makedirs(self.temp_dir)
+        
+        try:
+            with open(self.checkpoint_file, 'w') as f:
+                json.dump(self.state, f, indent=2, default=str)
+        except Exception as e:
+            st.error(f"Failed to save checkpoint: {e}")
+    
+    def mark_file_processed(self, filename, temp_data_file=None, row_count=0):
+        """Mark a file as successfully processed"""
+        self.state['processed_files'].append({
+            'filename': filename,
+            'temp_file': temp_data_file,
+            'row_count': row_count,
+            'timestamp': datetime.now().isoformat()
+        })
+        self.state['last_successful_file'] = filename
+        if temp_data_file:
+            self.state['temp_data_files'].append(temp_data_file)
+        self.save_checkpoint()
+    
+    def mark_file_failed(self, filename, error_msg):
+        """Mark a file as failed with error details"""
+        self.state['failed_files'].append({
+            'filename': filename,
+            'error': str(error_msg),
+            'timestamp': datetime.now().isoformat()
+        })
+        self.save_checkpoint()
+    
+    def clear_checkpoint(self):
+        """Clear checkpoint and cleanup temp files"""
+        # Remove temp files
+        if os.path.exists(self.temp_dir):
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
+        
+        # Remove checkpoint file
+        if os.path.exists(self.checkpoint_file):
+            os.remove(self.checkpoint_file)
+        
+        # Reset state
+        self.state = {
+            'processed_files': [],
+            'failed_files': [],
+            'last_successful_file': None,
+            'target_timeframe': None,
+            'start_time': None,
+            'total_files': 0,
+            'temp_data_files': [],
+            'session_id': st.session_state.get('session_id'),
+            'processing_complete': False
+        }
+    
+    def get_processed_filenames(self):
+        """Get list of already processed filenames"""
+        return [f['filename'] for f in self.state['processed_files']]
+    
+    def get_failed_filenames(self):
+        """Get list of failed filenames"""
+        return [f['filename'] for f in self.state['failed_files']]
+
+class EnhancedDataLoader:
+    """Enhanced data loader with multi-file and resampling support"""
+    
+    def __init__(self):
+        self.checkpoint = DataProcessingCheckpoint()
+    
+    def resample_ohlc_data(self, df, timeframe='10T'):
+        """Resample OHLC data to specified timeframe"""
+        df = df.copy()
+        
+        # Ensure we have datetime column
+        if 'Datetime' not in df.columns:
+            if 'Date' in df.columns and 'Time' in df.columns:
+                df['Datetime'] = pd.to_datetime(df['Date'].astype(str) + ' ' + df['Time'].astype(str))
+            elif 'Date' in df.columns:
+                df['Datetime'] = pd.to_datetime(df['Date'])
+            else:
+                raise ValueError("Could not find datetime information")
+        else:
+            df['Datetime'] = pd.to_datetime(df['Datetime'])
+        
+        # Set datetime as index for resampling
+        df.set_index('Datetime', inplace=True)
+        
+        # Define aggregation rules
+        agg_rules = {
+            'Open': 'first',
+            'High': 'max',
+            'Low': 'min', 
+            'Close': 'last'
+        }
+        
+        # Add volume if present
+        if 'Volume' in df.columns:
+            agg_rules['Volume'] = 'sum'
+        
+        # Add session if present
+        if 'Session' in df.columns:
+            agg_rules['Session'] = 'first'
+        
+        # Resample
+        resampled = df.resample(timeframe, closed='left', label='left').agg(agg_rules)
+        
+        # Remove rows with no data (NaN in OHLC)
+        resampled = resampled.dropna(subset=['Open', 'High', 'Low', 'Close'])
+        
+        # Reset index to get Datetime back as column
+        resampled = resampled.reset_index()
+        
+        # Create Date column for compatibility
+        resampled['Date'] = resampled['Datetime'].dt.date
+        
+        return resampled
+    
+    def load_single_file_with_resampling(self, uploaded_file, target_timeframe='10T'):
+        """Load and resample a single file"""
+        try:
+            # Determine file type and load
+            if uploaded_file.name.endswith('.csv'):
+                df = pd.read_csv(uploaded_file)
+            elif uploaded_file.name.endswith(('.xlsx', '.xls')):
+                df = pd.read_excel(uploaded_file, header=0)
+            else:
+                raise ValueError(f"Unsupported file format: {uploaded_file.name}")
+            
+            # Standardize columns
+            df = standardize_columns(df)
+            
+            # Validate required columns
+            required_cols = ['Open', 'High', 'Low', 'Close']
+            missing_cols = [col for col in required_cols if col not in df.columns]
+            if missing_cols:
+                raise ValueError(f"Missing required columns: {missing_cols}")
+            
+            # Resample if needed
+            if target_timeframe != '1T':  # Don't resample if target is 1 minute
+                df_resampled = self.resample_ohlc_data(df, target_timeframe)
+            else:
+                # Still need to ensure proper datetime handling
+                if 'Datetime' not in df.columns:
+                    if 'Date' in df.columns and 'Time' in df.columns:
+                        df['Datetime'] = pd.to_datetime(df['Date'].astype(str) + ' ' + df['Time'].astype(str))
+                    elif 'Date' in df.columns:
+                        df['Datetime'] = pd.to_datetime(df['Date'])
+                    else:
+                        raise ValueError("Could not find datetime information")
+                
+                df['Date'] = pd.to_datetime(df['Datetime']).dt.date
+                df_resampled = df
+            
+            return df_resampled
+            
+        except Exception as e:
+            raise Exception(f"Error processing {uploaded_file.name}: {str(e)}")
+    
+    def load_multiple_files_with_checkpoints(self, uploaded_files, target_timeframe='10T'):
+        """Load multiple files with checkpoint support"""
+        
+        # Check for existing checkpoint
+        if self.checkpoint.state['processed_files'] or self.checkpoint.state['failed_files']:
+            st.warning("🔄 **Previous Processing Session Found**")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if self.checkpoint.state['processed_files']:
+                    st.success(f"✅ Previously processed: {len(self.checkpoint.state['processed_files'])} files")
+                    total_rows = sum(f.get('row_count', 0) for f in self.checkpoint.state['processed_files'])
+                    st.info(f"📊 Total processed rows: {total_rows:,}")
+            
+            with col2:
+                if self.checkpoint.state['failed_files']:
+                    st.error(f"❌ Previous failures: {len(self.checkpoint.state['failed_files'])} files")
+                    with st.expander("Show Failed Files"):
+                        for failed in self.checkpoint.state['failed_files']:
+                            st.error(f"• **{failed['filename']}**")
+                            st.write(f"  Error: {failed['error']}")
+            
+            # Recovery options
+            recovery_choice = st.radio(
+                "How would you like to proceed?",
+                [
+                    "Continue from checkpoint (recommended)",
+                    "Start fresh (clear all progress)", 
+                    "Skip failed files and continue"
+                ],
+                key="recovery_choice"
+            )
+            
+            if recovery_choice == "Start fresh (clear all progress)":
+                self.checkpoint.clear_checkpoint()
+                st.success("✅ Checkpoint cleared. Please re-run to start fresh.")
+                return None
+            elif recovery_choice == "Skip failed files and continue":
+                failed_names = self.checkpoint.get_failed_filenames()
+                uploaded_files = [f for f in uploaded_files if f.name not in failed_names]
+                st.info(f"📋 Skipping {len(failed_names)} failed files")
+        
+        # Initialize or update checkpoint
+        self.checkpoint.state['total_files'] = len(uploaded_files)
+        self.checkpoint.state['target_timeframe'] = target_timeframe
+        if not self.checkpoint.state['start_time']:
+            self.checkpoint.state['start_time'] = datetime.now().isoformat()
+        self.checkpoint.save_checkpoint()
+        
+        # Progress tracking
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        detail_text = st.empty()
+        
+        processed_dataframes = []
+        processed_filenames = self.checkpoint.get_processed_filenames()
+        
+        # Process files
+        for i, uploaded_file in enumerate(uploaded_files):
+            
+            # Skip already processed files
+            if uploaded_file.name in processed_filenames:
+                status_text.text(f"✅ Skipping {uploaded_file.name} (already processed)")
+                
+                # Load from temp file
+                temp_filename = os.path.join(self.checkpoint.temp_dir, f"{uploaded_file.name}_{target_timeframe}.parquet")
+                if os.path.exists(temp_filename):
+                    try:
+                        df_temp = pd.read_parquet(temp_filename)
+                        processed_dataframes.append(df_temp)
+                        detail_text.text(f"📂 Loaded {len(df_temp):,} rows from cache")
+                    except Exception as e:
+                        st.warning(f"⚠️ Could not load cached data for {uploaded_file.name}: {e}")
+                
+                progress_bar.progress((i + 1) / len(uploaded_files))
+                continue
+            
+            try:
+                # Update status
+                status_text.text(f"🔄 Processing {uploaded_file.name} ({i+1}/{len(uploaded_files)})...")
+                detail_text.text(f"📁 Loading and resampling to {target_timeframe}...")
+                
+                # Process the file
+                df_processed = self.load_single_file_with_resampling(uploaded_file, target_timeframe)
+                
+                detail_text.text(f"📊 Processed {len(df_processed):,} rows")
+                
+                # Save to temp file
+                temp_filename = os.path.join(self.checkpoint.temp_dir, f"{uploaded_file.name}_{target_timeframe}.parquet")
+                os.makedirs(self.checkpoint.temp_dir, exist_ok=True)
+                df_processed.to_parquet(temp_filename)
+                
+                # Add to collection
+                processed_dataframes.append(df_processed)
+                
+                # Update checkpoint
+                self.checkpoint.mark_file_processed(
+                    uploaded_file.name, 
+                    temp_filename, 
+                    len(df_processed)
+                )
+                
+                # Show success
+                st.success(f"✅ {uploaded_file.name}: {len(df_processed):,} bars ({target_timeframe})")
+                
+            except Exception as e:
+                # Handle error
+                error_msg = str(e)
+                st.error(f"❌ **Error with {uploaded_file.name}**")
+                st.error(f"Details: {error_msg}")
+                
+                self.checkpoint.mark_file_failed(uploaded_file.name, error_msg)
+                
+                # Give user choice
+                error_choice = st.radio(
+                    f"How to handle error with {uploaded_file.name}?",
+                    ["Skip this file and continue", "Stop processing here"],
+                    key=f"error_choice_{i}_{uploaded_file.name}"
+                )
+                
+                if error_choice == "Stop processing here":
+                    st.error("🛑 **Processing Stopped**")
+                    st.info("💾 Progress has been saved. You can resume by re-running this section.")
+                    return None
+                else:
+                    st.info(f"⏭️ Skipping {uploaded_file.name} and continuing...")
+            
+            # Update progress
+            progress_bar.progress((i + 1) / len(uploaded_files))
+        
+        # Combine all processed data
+        if processed_dataframes:
+            status_text.text("🔗 Combining all processed files...")
+            detail_text.text("📊 Sorting by datetime...")
+            
+            # Concatenate and sort
+            combined_df = pd.concat(processed_dataframes, ignore_index=True)
+            combined_df = combined_df.sort_values('Datetime').reset_index(drop=True)
+            
+            # Success summary
+            total_rows = len(combined_df)
+            date_range = f"{combined_df['Date'].min()} to {combined_df['Date'].max()}"
+            
+            st.success("🎉 **Multi-File Processing Complete!**")
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("📁 Files Processed", len(processed_dataframes))
+            with col2:
+                st.metric("📊 Total Bars", f"{total_rows:,}")
+            with col3:
+                st.metric("📅 Date Range", date_range)
+            
+            # Mark processing as complete and cleanup
+            self.checkpoint.state['processing_complete'] = True
+            self.checkpoint.save_checkpoint()
+            
+            # Clear progress indicators
+            progress_bar.empty()
+            status_text.empty()
+            detail_text.empty()
+            
+            return combined_df
+        
+        else:
+            st.warning("⚠️ No files were successfully processed")
+            return None
+
+# Modified load_intraday_data function to support both single and multiple files
+def load_intraday_data_enhanced(uploaded_files, target_timeframe='10T'):
+    """
+    Enhanced intraday data loading that supports both single and multiple files
+    """
+    if not uploaded_files:
+        return None
+    
+    # Handle single file upload (backward compatibility)
+    if not isinstance(uploaded_files, list):
+        uploaded_files = [uploaded_files]
+    
+    # Single file - use existing logic
+    if len(uploaded_files) == 1:
+        return load_intraday_data(uploaded_files[0])
+    
+    # Multiple files - use enhanced loader
+    else:
+        enhanced_loader = EnhancedDataLoader()
+        return enhanced_loader.load_multiple_files_with_checkpoints(uploaded_files, target_timeframe)
 
 def calculate_atr(df, period=14):
     """
@@ -837,7 +1230,7 @@ def check_goal_hit(candle, goal_level, trigger_level, goal_price):
 
 def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_file=None, 
                  start_date=None, end_date=None, atr_period=14, custom_ratios=None, 
-                 session_filter=None, extended_hours=False):
+                 session_filter=None, extended_hours=False, intraday_data=None):  # Add this parameter
     """
     Main function for flexible ATR analysis with file inputs
     """
@@ -1076,11 +1469,15 @@ data_source = st.sidebar.radio(
 st.sidebar.subheader("📊 Intraday Data (Required)")
 st.sidebar.info("⚠️ **Intraday data must always be uploaded as CSV/Excel - Yahoo Finance doesn't provide sufficient intraday history**")
 
-intraday_file = st.sidebar.file_uploader(
+intraday_files = st.sidebar.file_uploader(
     "Intraday OHLC Data",
     type=['csv', 'xlsx', 'xls'],
-    help="Upload intraday OHLC data (CSV or Excel) - REQUIRED for analysis"
+    accept_multiple_files=True,  # This is the key change
+    help="Upload single file or multiple files - they'll be processed and combined automatically"
 )
+
+# Add the file display logic and resampling options here...
+
 
 if data_source == "Upload Both Files":
     st.sidebar.subheader("📈 Daily Data Upload")
@@ -1189,29 +1586,77 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
     else:
         custom_ratios = None
 
-# Generate button
+# Modified Generate button section
 if st.button('🚀 Generate Enhanced ATR Analysis'):
-    # First check if intraday file is uploaded (always required)
-    if intraday_file is None:
-        st.error("❌ Please upload intraday data file - this is required for all analysis types")
+    # First check if intraday files are uploaded
+    if not intraday_files:
+        st.error("❌ Please upload intraday data file(s)")
     elif data_source == "Upload Both Files":
         if daily_file is None:
             st.error("❌ Please upload daily data file")
         else:
-            with st.spinner(f'Analyzing uploaded files with validation ({config["description"]})...'):
+            with st.spinner(f'Processing {len(intraday_files)} intraday file(s) and analyzing...'):
                 try:
-                    result_df, debug_messages = main_flexible(
-                        ticker=ticker or "UPLOADED_DATA",
-                        asset_type=asset_type,
-                        daily_file=daily_file,
-                        intraday_file=intraday_file,
-                        atr_period=atr_period,
-                        custom_ratios=custom_ratios,
-                        session_filter=session_filter,
-                        extended_hours=extended_hours
-                    )
+                    # Load intraday data (single or multiple files)
+                    if len(intraday_files) == 1:
+                        intraday_data = load_intraday_data(intraday_files[0])
+                    else:
+                        intraday_data = load_intraday_data_enhanced(intraday_files, target_timeframe)
                     
-                    display_results(result_df, debug_messages, ticker or "UPLOADED_DATA", asset_type, "Both Files Uploaded")
+                    if intraday_data is None:
+                        st.error("❌ Failed to process intraday data")
+                    else:
+                        # Continue with existing ATR analysis
+                        result_df, debug_messages = main_flexible(
+                            ticker=ticker or "UPLOADED_DATA",
+                            asset_type=asset_type,
+                            daily_file=daily_file,
+                            intraday_file=None,  # Pass None since we already loaded the data
+                            atr_period=atr_period,
+                            custom_ratios=custom_ratios,
+                            session_filter=session_filter,
+                            extended_hours=extended_hours,
+                            intraday_data=intraday_data  # Pass the processed data directly
+                        )
+                        
+                        display_results(result_df, debug_messages, ticker or "UPLOADED_DATA", asset_type, 
+                                      f"Multi-file: {len(intraday_files)} files")
+                        
+                except Exception as e:
+                    st.error(f'❌ Error: {e}')
+                    import traceback
+                    st.error(traceback.format_exc())
+    
+    # Similar modification for Yahoo Daily + Upload Intraday option...
+    elif data_source == "Yahoo Daily + Upload Intraday":
+        if not ticker:
+            st.error("❌ Please enter a ticker symbol for Yahoo Finance daily data")
+        else:
+            with st.spinner(f'Processing {len(intraday_files)} intraday file(s) and fetching daily data...'):
+                try:
+                    # Load intraday data (single or multiple files)
+                    if len(intraday_files) == 1:
+                        intraday_data = load_intraday_data(intraday_files[0])
+                    else:
+                        intraday_data = load_intraday_data_enhanced(intraday_files, target_timeframe)
+                    
+                    if intraday_data is None:
+                        st.error("❌ Failed to process intraday data")
+                    else:
+                        result_df, debug_messages = main_flexible(
+                            ticker=ticker,
+                            asset_type=asset_type,
+                            daily_file=None,
+                            intraday_file=None,
+                            atr_period=atr_period,
+                            custom_ratios=custom_ratios,
+                            session_filter=session_filter,
+                            extended_hours=extended_hours,
+                            intraday_data=intraday_data
+                        )
+                        
+                        display_results(result_df, debug_messages, ticker, asset_type, 
+                                      f"Yahoo Daily + Multi-file: {len(intraday_files)} files")
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
