@@ -608,16 +608,16 @@ st.write("---")  # Separator before continuing to Basic Statistics
 st.write("## Basic Statistics")
 col1, col2, col3, col4 = st.columns(4)
     
-    with col1:
-        st.metric("Total Records", len(df))
-    with col2:
-        st.metric("Unique Dates", df['Date'].nunique())
-    with col3:
-        total_hits = len(df[df['GoalHit'] == 'Yes'])
-        st.metric("Total Goal Hits", total_hits)
-    with col4:
-        hit_rate = (total_hits / len(df) * 100) if len(df) > 0 else 0
-        st.metric("Overall Hit Rate", f"{hit_rate:.1f}%")
+with col1:
+    st.metric("Total Records", len(df))
+with col2:
+    st.metric("Unique Dates", df['Date'].nunique())
+with col3:
+    total_hits = len(df[df['GoalHit'] == 'Yes'])
+    st.metric("Total Goal Hits", total_hits)
+with col4:
+    hit_rate = (total_hits / len(df) * 100) if len(df) > 0 else 0
+    st.metric("Overall Hit Rate", f"{hit_rate:.1f}%")
     
     # STEP 1: Count total triggers per trigger combination
     st.write("## Step 1: Count Total Triggers")
