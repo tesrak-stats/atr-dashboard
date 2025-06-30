@@ -692,10 +692,131 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
     
     return is_valid, warnings, recommendations
 
+def download_yahoo_data_chunked(ticker, start_date, end_date, chunk_years=3, max_retries=3):
+    """
+    Download Yahoo Finance data in chunks with retry logic
+    """
+    import time
+    
+    all_data = []
+    current_start = start_date
+    
+    # Calculate total timespan for progress tracking
+    total_days = (end_date - start_date).days
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    chunk_count = 0
+    
+    while current_start < end_date:
+        chunk_count += 1
+        
+        # Calculate chunk end date (don't exceed final end_date)
+        chunk_end = min(current_start + timedelta(days=chunk_years * 365), end_date)
+        
+        # Update progress
+        days_processed = (current_start - start_date).days
+        progress = min(days_processed / total_days, 1.0)
+        progress_bar.progress(progress)
+        status_text.text(f"📊 Downloading chunk {chunk_count}: {current_start.date()} to {chunk_end.date()}")
+        
+        # Try to download this chunk with retries
+        chunk_data = None
+        for attempt in range(max_retries):
+            try:
+                st.info(f"🔄 Attempt {attempt + 1}/{max_retries} for chunk {chunk_count}")
+                
+                chunk_data = yf.download(
+                    ticker, 
+                    start=current_start, 
+                    end=chunk_end + timedelta(days=1),  # Add 1 day to ensure end date is included
+                    interval='1d', 
+                    progress=False
+                )
+                
+                if not chunk_data.empty:
+                    st.success(f"✅ Chunk {chunk_count} downloaded: {len(chunk_data)} records")
+                    break
+                else:
+                    st.warning(f"⚠️ Chunk {chunk_count} returned empty data")
+                    
+            except Exception as e:
+                st.warning(f"⚠️ Chunk {chunk_count}, attempt {attempt + 1} failed: {str(e)}")
+                if attempt < max_retries - 1:
+                    wait_time = (attempt + 1) * 2  # Progressive backoff: 2s, 4s, 6s
+                    st.info(f"⏳ Waiting {wait_time} seconds before retry...")
+                    time.sleep(wait_time)
+        
+        # Check if chunk download succeeded
+        if chunk_data is None or chunk_data.empty:
+            st.error(f"❌ Failed to download chunk {chunk_count} after {max_retries} attempts")
+            
+            # Give user choice
+            user_choice = st.radio(
+                f"How to handle failed chunk {chunk_count} ({current_start.date()} to {chunk_end.date()})?",
+                ["Skip this chunk and continue", "Stop download and use partial data", "Retry with smaller chunks"],
+                key=f"chunk_error_{chunk_count}"
+            )
+            
+            if user_choice == "Skip this chunk and continue":
+                st.warning(f"⏭️ Skipping chunk {chunk_count}, continuing with next chunk...")
+                current_start = chunk_end
+                continue
+            elif user_choice == "Stop download and use partial data":
+                st.warning("🛑 Stopping download, will use partial data collected so far")
+                break
+            else:  # Retry with smaller chunks
+                st.info("🔄 Retrying with smaller chunk size...")
+                smaller_chunk_years = max(1, chunk_years // 2)
+                return download_yahoo_data_chunked(ticker, start_date, end_date, smaller_chunk_years, max_retries)
+        
+        else:
+            # Successful chunk - add to collection
+            all_data.append(chunk_data)
+        
+        # Move to next chunk
+        current_start = chunk_end
+        
+        # Small delay to be nice to Yahoo Finance
+        time.sleep(0.5)
+    
+    # Clear progress indicators
+    progress_bar.empty()
+    status_text.empty()
+    
+    # Combine all chunks
+    if all_data:
+        st.info("🔗 Combining all downloaded chunks...")
+        combined_data = pd.concat(all_data, ignore_index=False)
+        
+        # Remove any duplicate dates that might occur at chunk boundaries
+        combined_data = combined_data[~combined_data.index.duplicated(keep='first')]
+        
+        # Sort by date
+        combined_data = combined_data.sort_index()
+        
+        # CRITICAL: Reset index to convert DatetimeIndex to Date column
+        combined_data.reset_index(inplace=True)
+        
+        # Ensure Date column exists
+        if 'Date' not in combined_data.columns and len(combined_data.columns) > 0:
+            # First column should be the date after reset_index
+            combined_data.rename(columns={combined_data.columns[0]: 'Date'}, inplace=True)
+        
+        st.success(f"✅ Chunked download complete: {len(combined_data)} total records")
+        if 'Date' in combined_data.columns:
+            st.info(f"📅 Final date range: {combined_data['Date'].min()} to {combined_data['Date'].max()}")
+        
+        return combined_data
+    else:
+        st.error("❌ No data was successfully downloaded")
+        return pd.DataFrame()
+
 def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=None, intraday_data=None):
     """
     Load daily data from uploaded file or Yahoo Finance
     If using Yahoo Finance, automatically detect date range from intraday data
+    NOW WITH CHUNKED DOWNLOAD SUPPORT
     """
     if uploaded_file is not None:
         try:
@@ -768,8 +889,21 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
             st.info(f"📊 Intraday data spans: {intraday_start} to {intraday_end}")
             st.info(f"📈 Fetching Yahoo daily data for '{yahoo_ticker}' from {buffer_start} to {fetch_end}")
             
-            # Fetch from Yahoo Finance
-            daily_data = yf.download(yahoo_ticker, start=buffer_start, end=fetch_end, interval='1d', progress=False)
+            # Try chunked download first for large date ranges
+            date_span_years = (fetch_end - buffer_start).days / 365.25
+            
+            if date_span_years > 5:  # Use chunked download for > 5 years
+                st.info(f"📊 Large date range detected ({date_span_years:.1f} years). Using chunked download...")
+                daily_data = download_yahoo_data_chunked(yahoo_ticker, buffer_start, fetch_end)
+            else:
+                # Try regular download for smaller ranges
+                st.info(f"📊 Standard download for {date_span_years:.1f} years...")
+                try:
+                    daily_data = yf.download(yahoo_ticker, start=buffer_start, end=fetch_end, interval='1d', progress=False)
+                except Exception as e:
+                    st.warning(f"⚠️ Standard download failed: {e}")
+                    st.info("🔄 Falling back to chunked download...")
+                    daily_data = download_yahoo_data_chunked(yahoo_ticker, buffer_start, fetch_end)
             
             if daily_data.empty:
                 st.error(f"❌ No daily data found for '{yahoo_ticker}' in the calculated date range")
@@ -783,7 +917,21 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
                 
                 return None
             
+            # CRITICAL: Yahoo Finance returns data with DatetimeIndex, not 'Date' column
             daily_data.reset_index(inplace=True)
+            
+            # Ensure Date column exists and is properly formatted
+            if 'Date' not in daily_data.columns:
+                # Yahoo data usually has the date as index, now as first column after reset_index
+                if daily_data.index.name == 'Date' or 'Date' in str(daily_data.columns[0]).lower():
+                    # First column should be the date after reset_index
+                    daily_data.rename(columns={daily_data.columns[0]: 'Date'}, inplace=True)
+                else:
+                    st.error("❌ Could not find Date column in Yahoo Finance data")
+                    st.info(f"Available columns: {list(daily_data.columns)}")
+                    return None
+            
+            # Standardize column names (after ensuring Date exists)
             daily_data = standardize_columns(daily_data)
             
             st.success(f"✅ Auto-fetched daily data from Yahoo: {len(daily_data)} records")
@@ -810,13 +958,40 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
             # Add buffer for ATR calculation
             buffer_start = start_date - timedelta(days=180)  # 6 months buffer
             
-            daily_data = yf.download(ticker, start=buffer_start, end=end_date, interval='1d', progress=False)
+            # Try chunked download for large date ranges
+            date_span_years = (end_date - buffer_start).days / 365.25
+            
+            if date_span_years > 5:  # Use chunked download for > 5 years
+                st.info(f"📊 Large date range detected ({date_span_years:.1f} years). Using chunked download...")
+                daily_data = download_yahoo_data_chunked(ticker, buffer_start, end_date)
+            else:
+                # Try regular download for smaller ranges
+                try:
+                    daily_data = yf.download(ticker, start=buffer_start, end=end_date, interval='1d', progress=False)
+                except Exception as e:
+                    st.warning(f"⚠️ Standard download failed: {e}")
+                    st.info("🔄 Falling back to chunked download...")
+                    daily_data = download_yahoo_data_chunked(ticker, buffer_start, end_date)
             
             if daily_data.empty:
                 st.error(f"No daily data found for {ticker}")
                 return None
             
+            # CRITICAL: Yahoo Finance returns data with DatetimeIndex, not 'Date' column
             daily_data.reset_index(inplace=True)
+            
+            # Ensure Date column exists and is properly formatted
+            if 'Date' not in daily_data.columns:
+                # Yahoo data usually has the date as index, now as first column after reset_index
+                if daily_data.index.name == 'Date' or 'Date' in str(daily_data.columns[0]).lower():
+                    # First column should be the date after reset_index
+                    daily_data.rename(columns={daily_data.columns[0]: 'Date'}, inplace=True)
+                else:
+                    st.error("❌ Could not find Date column in Yahoo Finance data")
+                    st.info(f"Available columns: {list(daily_data.columns)}")
+                    return None
+            
+            # Standardize column names (after ensuring Date exists)
             daily_data = standardize_columns(daily_data)
             
             st.success(f"✅ Loaded daily data from Yahoo: {len(daily_data)} records (includes 6-month buffer)")
