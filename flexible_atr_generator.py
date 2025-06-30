@@ -1099,8 +1099,9 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                     trigger_candle = day_data.iloc[below_trigger_row]
                     
                     for goal_level in fib_levels:
-                        if goal_level == trigger_level:  # Skip same level
-                            continue
+                        # CHANGE: Allow same level for retracement testing
+                        # if goal_level == trigger_level:  # Skip same level
+                        #     continue
                         
                         goal_price = level_map[goal_level]
                         goal_hit = False
@@ -1108,7 +1109,9 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                         is_same_time = False
                         
                         # Determine goal type for BELOW trigger
-                        if goal_level < trigger_level:
+                        if goal_level == trigger_level:
+                            goal_type = 'Retest'  # Same level retest
+                        elif goal_level < trigger_level:
                             goal_type = 'Continuation'  # Further below
                         else:
                             goal_type = 'Retracement'   # Back above (includes cross-zero)
@@ -1122,15 +1125,22 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                         # 0930 TIME = high/low of 0930 candle (different from OPEN price)
                         # ============================================================================
                         
-                        # Check for goal completion - FIXED LOGIC
+                        # Check for goal completion - FIXED LOGIC (including same-level retests)
                         if below_trigger_time == 'OPEN':
                             # Step 1: Check if goal completes at OPEN price first (takes precedence)
-                            if goal_level > trigger_level:  # Above goal (CONTINUATION)
+                            if goal_level == trigger_level:  # Same level retest
+                                # For same-level retest, we need opposite direction movement
+                                # Below trigger at OPEN, so retest needs Above movement
                                 if open_price >= goal_price:
                                     goal_hit = True
                                     goal_time = 'OPEN'
                                     is_same_time = True
-                            else:  # Below goal (RETRACEMENT)
+                            elif goal_level > trigger_level:  # Above goal (RETRACEMENT)
+                                if open_price >= goal_price:
+                                    goal_hit = True
+                                    goal_time = 'OPEN'
+                                    is_same_time = True
+                            else:  # Below goal (CONTINUATION)
                                 if open_price <= goal_price:
                                     goal_hit = True
                                     goal_time = 'OPEN'
@@ -1138,14 +1148,21 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                             
                             # Step 2: Only if OPEN missed, check candles based on goal type
                             if not goal_hit:
-                                # CRITICAL: Different logic for CONTINUATION vs RETRACEMENT
-                                if goal_level > trigger_level:  # CONTINUATION - can check same candle (0930)
-                                    start_candles = day_data.iterrows()  # Include 0930 candle
-                                else:  # RETRACEMENT - must skip same candle (0930), start from 0940
+                                # CRITICAL: Different logic for CONTINUATION vs RETRACEMENT vs RETEST
+                                if goal_level == trigger_level:  # RETEST - must skip same candle (like retracement)
                                     start_candles = day_data.iloc[1:].iterrows()  # Skip 0930, start from 0940
+                                elif goal_level > trigger_level:  # RETRACEMENT - must skip same candle (0930), start from 0940
+                                    start_candles = day_data.iloc[1:].iterrows()  # Skip 0930, start from 0940
+                                else:  # CONTINUATION - can check same candle (0930)
+                                    start_candles = day_data.iterrows()  # Include 0930 candle
                                 
                                 for _, row in start_candles:
-                                    if goal_level > trigger_level:  # Above goal
+                                    if goal_level == trigger_level:  # Same level retest (opposite direction)
+                                        if row['High'] >= goal_price:  # Below trigger needs High to retest
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    elif goal_level > trigger_level:  # Above goal
                                         if row['High'] >= goal_price:  # Use High, not Open
                                             goal_hit = True
                                             goal_time = row['Time']
@@ -1160,18 +1177,18 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                             # ===== CRITICAL INTRADAY RETRACEMENT LOGIC =====
                             # For CONTINUATION goals: Can check same candle as trigger
                             # For RETRACEMENT goals: MUST skip same candle as trigger
-                            # Reason: Unknown intra-candle sequence for retracements
+                            # For RETEST goals: MUST skip same candle as trigger (like retracement)
+                            # Reason: Unknown intra-candle sequence for retracements and retests
                             # ===============================================
                             
-                            if goal_level < trigger_level:  # RETRACEMENT - Skip same candle entirely
+                            if goal_level == trigger_level:  # RETEST - Skip same candle entirely
+                                # DO NOT check trigger candle - start from next candle only
+                                pass  # Skip same-candle check for retests
+                            elif goal_level > trigger_level:  # RETRACEMENT - Skip same candle entirely  
                                 # DO NOT check trigger candle - start from next candle only
                                 pass  # Skip same-candle check for retracements
                             else:  # CONTINUATION - Can check same candle
-                                if goal_level > trigger_level:  # Above goal
-                                    if trigger_candle['High'] >= goal_price:
-                                        goal_hit = True
-                                        goal_time = below_trigger_time
-                                else:  # Below goal
+                                if goal_level < trigger_level:  # Below goal
                                     if trigger_candle['Low'] <= goal_price:
                                         goal_hit = True
                                         goal_time = below_trigger_time
@@ -1179,7 +1196,12 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                             # Check subsequent candles if not completed on trigger candle
                             if not goal_hit:
                                 for _, row in day_data.iloc[below_trigger_row + 1:].iterrows():
-                                    if goal_level > trigger_level:  # Above goal
+                                    if goal_level == trigger_level:  # Same level retest (opposite direction)
+                                        if row['High'] >= goal_price:  # Below trigger needs High to retest
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    elif goal_level > trigger_level:  # Above goal
                                         if row['High'] >= goal_price:
                                             goal_hit = True
                                             goal_time = row['Time']
@@ -1233,8 +1255,9 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                     trigger_candle = day_data.iloc[above_trigger_row]
                     
                     for goal_level in fib_levels:
-                        if goal_level == trigger_level:  # Skip same level
-                            continue
+                        # CHANGE: Allow same level for retracement testing
+                        # if goal_level == trigger_level:  # Skip same level
+                        #     continue
                         
                         goal_price = level_map[goal_level]
                         goal_hit = False
@@ -1242,20 +1265,29 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                         is_same_time = False
                         
                         # Determine goal type for ABOVE trigger
-                        if goal_level > trigger_level:
+                        if goal_level == trigger_level:
+                            goal_type = 'Retest'  # Same level retest
+                        elif goal_level > trigger_level:
                             goal_type = 'Continuation'  # Further above
                         else:
                             goal_type = 'Retracement'   # Back below (includes cross-zero)
                         
-                        # Check for goal completion - FIXED LOGIC  
+                        # Check for goal completion - FIXED LOGIC (including same-level retests)
                         if above_trigger_time == 'OPEN':
                             # Step 1: Check if goal completes at OPEN price first (takes precedence)
-                            if goal_level > trigger_level:  # Above goal
+                            if goal_level == trigger_level:  # Same level retest
+                                # For same-level retest, we need opposite direction movement
+                                # Above trigger at OPEN, so retest needs Below movement
+                                if open_price <= goal_price:
+                                    goal_hit = True
+                                    goal_time = 'OPEN'
+                                    is_same_time = True
+                            elif goal_level > trigger_level:  # Above goal (CONTINUATION)
                                 if open_price >= goal_price:
                                     goal_hit = True
                                     goal_time = 'OPEN'
                                     is_same_time = True
-                            else:  # Below goal
+                            else:  # Below goal (RETRACEMENT)
                                 if open_price <= goal_price:
                                     goal_hit = True
                                     goal_time = 'OPEN'
@@ -1264,7 +1296,12 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                             # Step 2: Only if OPEN missed, check ALL candles including 0930 (but use High/Low, not Open)
                             if not goal_hit:
                                 for _, row in day_data.iterrows():  # FIXED: Include 0930 candle
-                                    if goal_level > trigger_level:  # Above goal
+                                    if goal_level == trigger_level:  # Same level retest (opposite direction)
+                                        if row['Low'] <= goal_price:  # Above trigger needs Low to retest
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    elif goal_level > trigger_level:  # Above goal
                                         if row['High'] >= goal_price:  # Use High, not Open
                                             goal_hit = True
                                             goal_time = row['Time']
@@ -1279,10 +1316,14 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                             # ===== CRITICAL INTRADAY RETRACEMENT LOGIC =====
                             # For CONTINUATION goals: Can check same candle as trigger  
                             # For RETRACEMENT goals: MUST skip same candle as trigger
-                            # Reason: Unknown intra-candle sequence for retracements
+                            # For RETEST goals: MUST skip same candle as trigger (like retracement)
+                            # Reason: Unknown intra-candle sequence for retracements and retests
                             # ===============================================
                             
-                            if goal_level < trigger_level:  # RETRACEMENT - Skip same candle entirely
+                            if goal_level == trigger_level:  # RETEST - Skip same candle entirely
+                                # DO NOT check trigger candle - start from next candle only
+                                pass  # Skip same-candle check for retests
+                            elif goal_level < trigger_level:  # RETRACEMENT - Skip same candle entirely
                                 # DO NOT check trigger candle - start from next candle only
                                 pass  # Skip same-candle check for retracements
                             else:  # CONTINUATION - Can check same candle
@@ -1290,15 +1331,16 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                                     if trigger_candle['High'] >= goal_price:
                                         goal_hit = True
                                         goal_time = above_trigger_time
-                                else:  # Below goal
-                                    if trigger_candle['Low'] <= goal_price:
-                                        goal_hit = True
-                                        goal_time = above_trigger_time
                             
                             # Check subsequent candles if not completed on trigger candle
                             if not goal_hit:
                                 for _, row in day_data.iloc[above_trigger_row + 1:].iterrows():
-                                    if goal_level > trigger_level:  # Above goal
+                                    if goal_level == trigger_level:  # Same level retest (opposite direction)
+                                        if row['Low'] <= goal_price:  # Above trigger needs Low to retest
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    elif goal_level > trigger_level:  # Above goal
                                         if row['High'] >= goal_price:
                                             goal_hit = True
                                             goal_time = row['Time']
