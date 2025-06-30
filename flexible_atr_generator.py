@@ -1249,7 +1249,11 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
             debug_info.append("⚠️ No intraday data provided - analysis cannot proceed")
             return pd.DataFrame(), debug_info
         
-        intraday = load_intraday_data(intraday_files)
+       if len(intraday_files) == 1:
+            intraday = load_intraday_data(intraday_files[0])  # Pass the first file
+        else:
+    # Handle multiple files case later
+            intraday = load_intraday_data_enhanced(intraday_files)
         
         if intraday is None:
             debug_info.append("❌ Failed to load intraday data")
