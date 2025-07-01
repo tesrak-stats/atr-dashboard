@@ -290,19 +290,47 @@ else:
     font_size_multiplier = 1.0
     use_container_width = False
 
-# Create time_order - ensure TOTAL and REMAINING are always included for focused view
-if show_expanded_view:
-    # Full time_order with spacers for expanded view
-    time_order = ["OPEN", "0830"]
-    for hour in ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]:
-        time_order.append(hour)
-        time_order.append(f"{str(int(hour[:2])+1).zfill(2)}30")
-    time_order.extend(["SPACER", "TOTAL", "SPACER2", "REMAINING"])
-else:
-    # Focused view - make sure time_order includes everything in display_columns
-    time_order = display_columns
+# Create time_order to match display_columns exactly
+time_order = display_columns.copy()
 
-# --- Filter and simple lookup ---
+# --- Debug trigger level data ---
+if st.checkbox("🔍 Debug Mode - Show Data Structure"):
+    st.write("**Filtered Data for Current Selection:**")
+    st.dataframe(filtered.head(10))
+    
+    st.write("**Available Goal Levels in Data:**")
+    available_goals = sorted(filtered['GoalLevel'].unique())
+    st.write(available_goals)
+    
+    st.write("**Trigger Level Being Searched:**")
+    st.write(f"Trigger Level: {trigger_level} (type: {type(trigger_level)})")
+    
+    st.write("**Data Lookup Keys (first 10):**")
+    lookup_keys = list(data_lookup.keys())[:10]
+    for key in lookup_keys:
+        st.write(f"Key: {key}, Data: {data_lookup[key]}")
+    
+    st.write("**Goal Totals:**")
+    st.write(goal_totals)
+    
+    # Check for trigger level specifically
+    trigger_data_found = []
+    for key, data in data_lookup.items():
+        goal_level, time_slot = key
+        if goal_level == trigger_level:
+            trigger_data_found.append({
+                'GoalLevel': goal_level,
+                'TimeSlot': time_slot,
+                'Hits': data['hits'],
+                'Triggers': data['triggers'],
+                'Pct': data['pct']
+            })
+    
+    if trigger_data_found:
+        st.write("**Trigger Level Data Found:**")
+        st.dataframe(pd.DataFrame(trigger_data_found))
+    else:
+        st.write("**❌ No trigger level data found in lookup**")
 filtered = df[
     (df["Direction"] == price_direction) &
     (df["TriggerLevel"] == trigger_level) &
@@ -349,7 +377,7 @@ if len(filtered) > 0:
     for _, row in goal_summary.iterrows():
         goal_level = row['GoalLevel']
         if goal_level == trigger_level:
-            # Still skip trigger level for totals since it would be meaningless
+            # Skip trigger level for totals since it represents same-level revisits
             continue
         total_hits = row['NumHits']
         total_triggers = row['NumTriggers']
@@ -565,7 +593,10 @@ for level in display_fib_levels:
             else:
                 is_before_trigger = False
             
-            if is_before_trigger:
+            if level == trigger_level:
+                display_text = "—"
+                hover = "Trigger level (same as starting point)"
+            elif is_before_trigger:
                 display_text = ""
                 hover = "Before trigger time"
             else:
@@ -598,7 +629,10 @@ for level in display_fib_levels:
                 else:
                     is_before_trigger = False
                 
-                if is_before_trigger:
+                if level == trigger_level:
+                    display = "—"
+                    hover = "Trigger level (same as starting point)"
+                elif is_before_trigger:
                     display = ""
                     hover = "Before trigger time"
                 else:
@@ -637,7 +671,7 @@ fig.update_layout(
     xaxis=dict(
         title="Projected Completion Time (Eastern Time)",
         categoryorder="array",
-        categoryarray=display_columns if not show_expanded_view else time_order,
+        categoryarray=display_columns,
         tickmode="array",
         tickvals=display_columns,
         ticktext=display_columns,
