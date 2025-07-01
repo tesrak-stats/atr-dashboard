@@ -1841,6 +1841,76 @@ def debug_single_day_analysis(daily, intraday, debug_date, custom_ratios=None):
     total_triggers = sum(len(a["Details"]) for a in candle_analysis)
     st.success(f"📋 **Debug Summary**: {total_triggers} total level triggers detected across {len(day_data)} candles")
     
+def run_debug_analysis(debug_date, ticker=None, asset_type='STOCKS', daily_file=None, 
+                      intraday_file=None, atr_period=14, custom_ratios=None, 
+                      session_filter=None, extended_hours=False):
+    """
+    Dedicated debug function that only processes one day
+    """
+    try:
+        # Create cache key for this configuration
+        cache_key = f"debug_{ticker}_{asset_type}_{atr_period}_{hash(str(custom_ratios))}"
+        if daily_file:
+            cache_key += f"_{daily_file.name if hasattr(daily_file, 'name') else 'uploaded'}"
+        if intraday_file:
+            cache_key += f"_{intraday_file.name if hasattr(intraday_file, 'name') else 'uploaded'}"
+        
+        # Check for cached data
+        if 'debug_cached_data' in st.session_state and st.session_state.get('debug_cache_key') == cache_key:
+            st.info("⚡ **Using Cached Debug Data** - Loading instantly...")
+            daily = st.session_state['debug_cached_data']['daily']
+            intraday = st.session_state['debug_cached_data']['intraday']
+        else:
+            st.info("🔄 **Loading Data for Debug** - This will be cached for future runs...")
+            
+            # Load intraday data
+            intraday = load_intraday_data(intraday_file)
+            if intraday is None:
+                st.error("❌ Failed to load intraday data")
+                return False
+            
+            # Load daily data
+            if daily_file is not None:
+                daily = load_daily_data(daily_file)
+            else:
+                daily = load_daily_data(uploaded_file=None, ticker=ticker, intraday_data=intraday)
+            
+            if daily is None:
+                st.error("❌ Failed to load daily data")
+                return False
+            
+            # Calculate ATR for the full series (needed for accuracy)
+            st.info("🧮 **Calculating ATR** - Using full dataset for accuracy...")
+            daily = calculate_atr(daily, period=atr_period)
+            
+            # Validate ATR
+            valid_atr = daily[daily['ATR'].notna()]
+            if valid_atr.empty:
+                st.error("⚠️ No valid ATR values calculated")
+                return False
+            
+            st.success(f"✅ ATR calculated successfully - Recent values: {valid_atr['ATR'].tail(3).round(2).tolist()}")
+            
+            # Cache the data
+            st.session_state['debug_cached_data'] = {
+                'daily': daily,
+                'intraday': intraday
+            }
+            st.session_state['debug_cache_key'] = cache_key
+            st.success("💾 **Debug Data Cached** - Future runs will be instant!")
+        
+        # Run the single-day debug analysis
+        st.info(f"🐛 **Analyzing Debug Date: {debug_date}**")
+        debug_success = debug_single_day_analysis(daily, intraday, debug_date, custom_ratios)
+        
+        return debug_success
+        
+    except Exception as e:
+        st.error(f"❌ Debug analysis error: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
+        return False
+
     return True
 
 # ==============================================================================================
@@ -2312,13 +2382,14 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
     atr_period = st.number_input("ATR Period", min_value=1, max_value=50, value=14)
     
     # Quick Debug Mode
-    debug_mode = st.checkbox("🐛 Quick Debug Mode", help="Analyze just one specific day with detailed 10-minute breakdown")
+    debug_mode = st.checkbox("🐛 Quick Debug Mode", key="debug_mode", help="Analyze just one specific day with detailed 10-minute breakdown")
     debug_date = None
     if debug_mode:
         col1, col2 = st.columns([2, 1])
         with col1:
             debug_date = st.date_input(
                 "Debug Date (YYYY-MM-DD)",
+                key="debug_date",
                 value=pd.to_datetime("2024-01-03").date(),
                 help="Enter a specific date to analyze in detail"
             )
@@ -2335,9 +2406,43 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
         
         # Show cache status
         if 'cached_data' in st.session_state:
-            st.success("💾 **Cached Data Available** - Subsequent debug runs will be instant!")
+            st.success("💾 **Cached Data Available** - Debug runs will be instant!")
         else:
             st.info("⚡ **First Debug Run** - Will calculate full ATR then cache for speed")
+        
+        # Separate Debug Button
+        if st.button("🐛 Run Debug Analysis", key="debug_button"):
+            if not intraday_file:
+                st.error("❌ Please upload intraday data file for debug mode")
+            elif data_source == "Upload Both Files" and not daily_file:
+                st.error("❌ Please upload daily data file for debug mode")
+            elif data_source == "Yahoo Daily + Upload Intraday" and not ticker:
+                st.error("❌ Please enter ticker symbol for debug mode")
+            else:
+                with st.spinner(f'🐛 Debug Mode: Processing {debug_date}...'):
+                    try:
+                        # Call a dedicated debug function
+                        debug_result = run_debug_analysis(
+                            debug_date=debug_date,
+                            ticker=ticker,
+                            asset_type=asset_type,
+                            daily_file=daily_file,
+                            intraday_file=intraday_file,
+                            atr_period=atr_period,
+                            custom_ratios=custom_ratios,
+                            session_filter=session_filter,
+                            extended_hours=extended_hours
+                        )
+                        
+                        if debug_result:
+                            st.success(f"🎉 Debug analysis complete for {debug_date}!")
+                        else:
+                            st.error("❌ Debug analysis failed")
+                            
+                    except Exception as e:
+                        st.error(f'❌ Debug Error: {e}')
+                        import traceback
+                        st.error(traceback.format_exc())
     
     # Custom ratio input
     use_custom_ratios = st.checkbox("Use Custom Ratios")
