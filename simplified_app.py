@@ -125,16 +125,6 @@ with col_title1:
 with col_title2:
     selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
 
-# Display current market time
-if current_market_slot in ["PREMARKET", "AFTERHOURS"]:
-    time_color = "🔴"
-elif current_market_slot == "CLOSE":
-    time_color = "⚫"
-else:
-    time_color = "🟢"
-
-st.info(f"{time_color} **Current ET:** {current_et_time.strftime('%I:%M %p')} | **Market Slot:** {current_market_slot}")
-
 # --- Load data based on selected ticker ---
 try:
     df = pd.read_csv(ticker_config[selected_ticker]["summary_file"])
@@ -508,8 +498,8 @@ for level in display_fib_levels:
                 triggers = total_data["triggers"]
                 
                 line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
-                if level in [1.0, -1.0]:
-                    font_size = font_size - 1
+                # Use consistent font size for all levels
+                font_size = 12 * font_size_multiplier
                 
                 warn = " ⚠️" if triggers < 30 else ""
                 display_text = f"{pct:.1f}%"
@@ -540,8 +530,8 @@ for level in display_fib_levels:
                 current_slot = remaining_data["current_slot"]
                 
                 line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
-                if level in [1.0, -1.0]:
-                    font_size = font_size - 1
+                # Use consistent font size for all levels
+                font_size = 12 * font_size_multiplier
                 
                 if current_slot == "N/A":
                     display_text = "N/A"
@@ -602,8 +592,8 @@ for level in display_fib_levels:
                 hover = f"{pct:.1f}% ({hits}/{total}){warn}"
             
             line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
-            if level in [1.0, -1.0]:
-                font_size = font_size - 1
+            # Use consistent font size for all levels
+            font_size = 12 * font_size_multiplier
             
             fig.add_trace(go.Scatter(
                 x=[t], y=[level + text_offset],
@@ -615,8 +605,8 @@ for level in display_fib_levels:
         else:
             if t not in ["OPEN", "TOTAL", "REMAINING"]:
                 line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
-                if level in [1.0, -1.0]:
-                    font_size = font_size - 1
+                # Use consistent font size for all levels
+                font_size = 12 * font_size_multiplier
                 
                 # Check if times are before trigger time (handle OPEN special case)
                 if trigger_time == "OPEN":
@@ -700,6 +690,16 @@ with col1:
         data_age = atr_data.get('data_age_days', 0)
         age_warning = f" (⚠️ {data_age} days old)" if data_age > 0 else ""
         st.caption(f"📊 ATR levels from {atr_data.get('reference_date', 'unknown')} | Close: {atr_data.get('reference_close', 'N/A')} | ATR: {atr_data.get('reference_atr', 'N/A')}{age_warning}")
+
+# Display current market time at bottom
+if current_market_slot in ["PREMARKET", "AFTERHOURS"]:
+    time_color = "🔴"
+elif current_market_slot == "CLOSE":
+    time_color = "⚫"
+else:
+    time_color = "🟢"
+
+st.info(f"{time_color} **Current ET:** {current_et_time.strftime('%I:%M %p')} | **Market Slot:** {current_market_slot}")
 
 # --- Legend/Key ---
 st.caption("📋 **Chart Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | **Remaining Colors:** 🟢 >15% | 🟠 5-15% | 🔴 <5% | Percentages show probability of reaching target level by specified time")
