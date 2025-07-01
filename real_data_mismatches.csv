@@ -1,0 +1,27 @@
+Scenario,Trigger,Goal,Time,AllLevels_Triggered,AllLevels_Completed,Report_Triggered,Report_Completed,Difference_Type,Notes
+-1ATR|0.5|OPEN,-1ATR,0.5,OPEN,60,76,61,76,Trigger Count Off,Trigger count off by 1
+-1ATR|0.618|OPEN,-1ATR,0.618,OPEN,66,78,65,78,Trigger Count Off,Trigger count off by 1
+-1ATR|0.786|OPEN,-1ATR,0.786,OPEN,46,76,46,75,Completion Count Off,Completion count off by 1
+-.786|0.5|OPEN,-0.786,0.5,OPEN,60,74,61,74,Trigger Count Off,Trigger count off by 1
+-.786|0.618|OPEN,-0.786,0.618,OPEN,66,77,65,77,Trigger Count Off,Trigger count off by 1
+-.786|0.786|OPEN,-0.786,0.786,OPEN,46,75,46,74,Completion Count Off,Completion count off by 1
+-0.618|-0.5|1300,-0.618,-0.5,1300,0,0,1,0,Trigger Count Off,Report shows 1 trigger vs 0
+-0.618|0.5|OPEN,-0.618,0.5,OPEN,59,73,60,73,Trigger Count Off,Trigger count off by 1
+-0.618|0.618|OPEN,-0.618,0.618,OPEN,66,76,65,76,Trigger Count Off,Trigger count off by 1
+-0.618|0.786|OPEN,-0.618,0.786,OPEN,46,75,46,74,Completion Count Off,Completion count off by 1
+-0.382|0.382|0900,-0.382,0.382,900,0,2,0,5,Completion Count Off,Completion count difference of 3
+-0.382|0.382|1000,-0.382,0.382,1000,2,1,1,1,Trigger Count Off,Trigger count off by 1
+-0.382|0.382|1100,-0.382,0.382,1100,0,0,1,1,Both Off,"Report shows 1,1 vs All Levels 0,0"
+-0.382|0.5|OPEN,-0.382,0.5,OPEN,59,73,60,73,Trigger Count Off,Trigger count off by 1
+-0.382|0.618|OPEN,-0.382,0.618,OPEN,66,76,65,76,Trigger Count Off,Trigger count off by 1
+-0.382|0.786|OPEN,-0.382,0.786,OPEN,46,75,46,74,Completion Count Off,Completion count off by 1
+-0.236|0.5|OPEN,-0.236,0.5,OPEN,56,69,57,69,Trigger Count Off,Trigger count off by 1
+-0.236|0.618|1000,-0.236,0.618,1000,1,0,0,0,Trigger Count Off,All Levels shows 1 trigger vs 0
+-0.236|0.786|OPEN,-0.236,0.786,OPEN,46,73,46,72,Completion Count Off,Completion count off by 1
+0.236|0.5|1000,0.236,0.5,1000,10,16,11,16,Trigger Count Off,Trigger count off by 1
+0.236|0.618|1100,0.236,0.618,1100,6,9,5,9,Trigger Count Off,Trigger count off by 1
+0.236|0.786|0900,0.236,0.786,900,23,36,23,35,Completion Count Off,Completion count off by 1
+0.382|0.5|1300,0.382,0.5,1300,9,8,10,8,Trigger Count Off,Trigger count off by 1
+0.382|0.618|1300,0.382,0.618,1300,10,8,9,8,Trigger Count Off,Trigger count off by 1
+0.382|0.786|1000,0.382,0.786,1000,6,17,6,16,Completion Count Off,Completion count off by 1
+0.618|0.786|1200,0.618,0.786,1200,4,6,4,5,Completion Count Off,Completion count off by 1
