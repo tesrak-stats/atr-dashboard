@@ -1852,148 +1852,191 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
                  session_filter=None, extended_hours=False, intraday_data=None, debug_mode=False, debug_date=None):
     """
     Main function for flexible ATR analysis with file inputs
-    NOW USING THE SYSTEMATIC TRIGGER AND GOAL DETECTION FROM run_generate.py
+    NOW WITH SESSION STATE CACHING FOR FAST DEBUG MODE
     """
     debug_info = []
     
     try:
-        # Get asset configuration
-        asset_config = AssetConfig.get_config(asset_type, extended_hours)
-        debug_info.append(f"📊 Asset Type: {asset_config['description']}")
-        debug_info.append(f"Market Hours: {asset_config['market_open']} - {asset_config['market_close']}")
-        debug_info.append(f"Special OPEN handling: {asset_config['has_open_special']}")
-        debug_info.append(f"Extended Hours: {extended_hours}")
+        # Create a unique cache key based on input parameters
+        cache_key = f"{ticker}_{asset_type}_{atr_period}_{hash(str(custom_ratios))}"
+        if daily_file:
+            cache_key += f"_{daily_file.name if hasattr(daily_file, 'name') else 'uploaded'}"
+        if intraday_file:
+            cache_key += f"_{intraday_file.name if hasattr(intraday_file, 'name') else 'uploaded'}"
         
-        # Load intraday data FIRST (needed for smart daily data fetching)
-        if intraday_data is None:
-            if not intraday_file:
-                debug_info.append("⚠️ No intraday data provided - analysis cannot proceed")
+        # Check if we have cached data and it matches current parameters
+        use_cache = (
+            debug_mode and 
+            'cached_data' in st.session_state and 
+            st.session_state.get('cache_key') == cache_key
+        )
+        
+        if use_cache:
+            st.info("⚡ **Using Cached Data** - ATR already calculated, running debug analysis only")
+            daily = st.session_state['cached_data']['daily']
+            intraday = st.session_state['cached_data']['intraday']
+            debug_info = st.session_state['cached_data']['debug_info'].copy()
+            debug_info.append("✅ Loaded cached ATR data from session state")
+        else:
+            # Full data loading and processing
+            if use_cache:  # Only show this message when we're actually doing full processing
+                st.info("🔄 **Full Processing** - Calculating ATR for entire dataset...")
+            
+            # Get asset configuration
+            asset_config = AssetConfig.get_config(asset_type, extended_hours)
+            debug_info.append(f"📊 Asset Type: {asset_config['description']}")
+            debug_info.append(f"Market Hours: {asset_config['market_open']} - {asset_config['market_close']}")
+            debug_info.append(f"Special OPEN handling: {asset_config['has_open_special']}")
+            debug_info.append(f"Extended Hours: {extended_hours}")
+            
+            # Load intraday data FIRST (needed for smart daily data fetching)
+            if intraday_data is None:
+                if not intraday_file:
+                    debug_info.append("⚠️ No intraday data provided - analysis cannot proceed")
+                    return pd.DataFrame(), debug_info
+                
+                # Debug information
+                debug_info.append(f"🔧 DEBUG: intraday_file type: {type(intraday_file)}")
+                if hasattr(intraday_file, 'name'):
+                    debug_info.append(f"🔧 DEBUG: intraday_file.name: {intraday_file.name}")
+                
+                # Handle single file from Streamlit uploader (not a list)
+                intraday = load_intraday_data(intraday_file)
+            else:
+                intraday = intraday_data
+            
+            if intraday is None:
+                debug_info.append("❌ Failed to load intraday data")
                 return pd.DataFrame(), debug_info
             
-            # Debug information
-            debug_info.append(f"🔧 DEBUG: intraday_file type: {type(intraday_file)}")
-            if hasattr(intraday_file, 'name'):
-                debug_info.append(f"🔧 DEBUG: intraday_file.name: {intraday_file.name}")
+            debug_info.append(f"Intraday data loaded: {intraday.shape}")
+            debug_info.append(f"Intraday date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
             
-            # Handle single file from Streamlit uploader (not a list)
-            intraday = load_intraday_data(intraday_file)
-        else:
-            intraday = intraday_data
-        
-        if intraday is None:
-            debug_info.append("❌ Failed to load intraday data")
-            return pd.DataFrame(), debug_info
-        
-        debug_info.append(f"Intraday data loaded: {intraday.shape}")
-        debug_info.append(f"Intraday date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
-        
-        # Load daily data (now can use intraday data for smart Yahoo fetching)
-        if daily_file is not None:
-            # Upload Both Files scenario
-            daily = load_daily_data(daily_file)
-        else:
-            # Yahoo Daily + Upload Intraday scenario - use smart auto-detection
-            daily = load_daily_data(uploaded_file=None, ticker=ticker, intraday_data=intraday)
-        
-        if daily is None:
-            debug_info.append("❌ Failed to load daily data")
-            return pd.DataFrame(), debug_info
-        
-        debug_info.append(f"Daily data loaded: {daily.shape}")
-        
-        # Validate data alignment
-        st.subheader("🔍 Data Alignment Validation")
-        is_valid, warnings, recommendations = validate_data_alignment(daily, intraday, atr_period)
-        
-        if warnings:
-            for warning in warnings:
-                st.warning(warning)
-        
-        if recommendations:
-            with st.expander("💡 Recommendations"):
-                for rec in recommendations:
-                    st.info(f"• {rec}")
-        
-        if not is_valid:
-            st.error("❌ Data alignment issues detected. Please address the warnings above before proceeding.")
-            user_choice = st.radio(
-                "How would you like to proceed?",
-                ["Fix data alignment first", "Continue anyway (may produce unreliable results)"],
-                index=0
-            )
-            if user_choice == "Fix data alignment first":
-                return pd.DataFrame(), debug_info + warnings
-        else:
-            st.success("✅ Data alignment validation passed!")
-        
-        # Calculate ATR using TRUE Wilder's method
-        debug_info.append(f"🧮 Calculating ATR with TRUE Wilder's method, period {atr_period}...")
-        daily = calculate_atr(daily, period=atr_period)
-        
-        # Validate ATR
-        valid_atr = daily[daily['ATR'].notna()]
-        if not valid_atr.empty:
-            recent_atr = valid_atr['ATR'].tail(3).round(2).tolist()
-            debug_info.append(f"ATR calculated successfully using TRUE Wilder's method. Recent values: {recent_atr}")
-        else:
-            debug_info.append("⚠️ No valid ATR values calculated")
-            return pd.DataFrame(), debug_info
-        
-        # Check for session column
-        if 'Session' in intraday.columns:
-            unique_sessions = intraday['Session'].unique()
-            debug_info.append(f"Session types found: {list(unique_sessions)}")
+            # Load daily data (now can use intraday data for smart Yahoo fetching)
+            if daily_file is not None:
+                # Upload Both Files scenario
+                daily = load_daily_data(daily_file)
+            else:
+                # Yahoo Daily + Upload Intraday scenario - use smart auto-detection
+                daily = load_daily_data(uploaded_file=None, ticker=ticker, intraday_data=intraday)
+            
+            if daily is None:
+                debug_info.append("❌ Failed to load daily data")
+                return pd.DataFrame(), debug_info
+            
+            debug_info.append(f"Daily data loaded: {daily.shape}")
+            
+            # Validate data alignment
+            if not debug_mode:  # Skip alignment validation in debug mode for speed
+                st.subheader("🔍 Data Alignment Validation")
+                is_valid, warnings, recommendations = validate_data_alignment(daily, intraday, atr_period)
+                
+                if warnings:
+                    for warning in warnings:
+                        st.warning(warning)
+                
+                if recommendations:
+                    with st.expander("💡 Recommendations"):
+                        for rec in recommendations:
+                            st.info(f"• {rec}")
+                
+                if not is_valid:
+                    st.error("❌ Data alignment issues detected. Please address the warnings above before proceeding.")
+                    user_choice = st.radio(
+                        "How would you like to proceed?",
+                        ["Fix data alignment first", "Continue anyway (may produce unreliable results)"],
+                        index=0
+                    )
+                    if user_choice == "Fix data alignment first":
+                        return pd.DataFrame(), debug_info + warnings
+                else:
+                    st.success("✅ Data alignment validation passed!")
+            
+            # Calculate ATR using TRUE Wilder's method
+            debug_info.append(f"🧮 Calculating ATR with TRUE Wilder's method, period {atr_period}...")
+            daily = calculate_atr(daily, period=atr_period)
+            
+            # Validate ATR
+            valid_atr = daily[daily['ATR'].notna()]
+            if not valid_atr.empty:
+                recent_atr = valid_atr['ATR'].tail(3).round(2).tolist()
+                debug_info.append(f"ATR calculated successfully using TRUE Wilder's method. Recent values: {recent_atr}")
+            else:
+                debug_info.append("⚠️ No valid ATR values calculated")
+                return pd.DataFrame(), debug_info
+            
+            # Check for session column
+            if 'Session' in intraday.columns:
+                unique_sessions = intraday['Session'].unique()
+                debug_info.append(f"Session types found: {list(unique_sessions)}")
+            
+            # Cache the processed data for future debug runs
+            if debug_mode:
+                st.session_state['cached_data'] = {
+                    'daily': daily,
+                    'intraday': intraday,
+                    'debug_info': debug_info.copy()
+                }
+                st.session_state['cache_key'] = cache_key
+                st.success("💾 **Data Cached** - Future debug runs will be much faster!")
         
         # Quick Debug Mode
         if debug_mode and debug_date:
             st.info(f"🐛 **Debug Mode Active** - Analyzing single day: {debug_date}")
-            st.info("⚡ **Fast Mode**: Full ATR calculated, but trigger/goal detection only for debug day")
+            if not use_cache:
+                st.info("⚡ **Fast Mode**: Full ATR calculated, trigger/goal detection ONLY for debug day")
             debug_success = debug_single_day_analysis(daily, intraday, debug_date, custom_ratios)
             if debug_success:
                 return pd.DataFrame(), debug_info + [f"Debug analysis completed for {debug_date}"]
             else:
                 return pd.DataFrame(), debug_info + [f"Debug analysis failed for {debug_date}"]
         
-        # Run analysis using the SYSTEMATIC logic from run_generate.py
-        debug_info.append("🎯 Running SYSTEMATIC trigger and goal detection (from run_generate.py)...")
-        df = detect_triggers_and_goals_systematic(daily, intraday, custom_ratios)
-        debug_info.append(f"✅ Detection complete: {len(df)} trigger-goal combinations found")
-        
-        # Additional statistics
-        if not df.empty:
-            above_triggers = len(df[df['Direction'] == 'Above'])
-            below_triggers = len(df[df['Direction'] == 'Below'])
-            debug_info.append(f"✅ Above triggers: {above_triggers}, Below triggers: {below_triggers}")
+        # Only run full systematic detection if NOT in debug mode
+        if not debug_mode:
+            # Run analysis using the SYSTEMATIC logic from run_generate.py
+            debug_info.append("🎯 Running SYSTEMATIC trigger and goal detection (from run_generate.py)...")
+            df = detect_triggers_and_goals_systematic(daily, intraday, custom_ratios)
+            debug_info.append(f"✅ Detection complete: {len(df)} trigger-goal combinations found")
             
-            goals_hit = len(df[df['GoalHit'] == 'Yes'])
-            hit_rate = goals_hit / len(df) * 100 if len(df) > 0 else 0
-            debug_info.append(f"✅ Goals hit: {goals_hit}/{len(df)} ({hit_rate:.1f}%)")
+            # Additional statistics
+            if not df.empty:
+                above_triggers = len(df[df['Direction'] == 'Above'])
+                below_triggers = len(df[df['Direction'] == 'Below'])
+                debug_info.append(f"✅ Above triggers: {above_triggers}, Below triggers: {below_triggers}")
+                
+                goals_hit = len(df[df['GoalHit'] == 'Yes'])
+                hit_rate = goals_hit / len(df) * 100 if len(df) > 0 else 0
+                debug_info.append(f"✅ Goals hit: {goals_hit}/{len(df)} ({hit_rate:.1f}%)")
+                
+                # Session analysis if available
+                if session_filter:
+                    debug_info.append(f"✅ Session filter applied: {session_filter}")
+                
+                # Validation from run_generate.py
+                same_time_count = len(df[df['SameTime'] == True])
+                debug_info.append(f"✅ Same-time scenarios found: {same_time_count}")
+                
+                same_time_hits = len(df[(df['SameTime'] == True) & (df['GoalHit'] == 'Yes')])
+                debug_info.append(f"✅ Same-time hits: {same_time_hits}")
+                
+                open_goals = len(df[df['GoalTime'] == 'OPEN'])
+                debug_info.append(f"✅ Records with GoalTime=OPEN: {open_goals}")
+                
+                # Check cross-zero scenarios (corrected logic)
+                cross_zero_below_to_above = len(df[(df['Direction'] == 'Below') & (df['GoalLevel'] > df['TriggerLevel'])])
+                cross_zero_above_to_below = len(df[(df['Direction'] == 'Above') & (df['GoalLevel'] < df['TriggerLevel'])])
+                debug_info.append(f"✅ Cross-zero scenarios - Below triggers to above goals: {cross_zero_below_to_above}")
+                debug_info.append(f"✅ Cross-zero scenarios - Above triggers to below goals: {cross_zero_above_to_below}")
+                
+                open_triggers = len(df[df['TriggerTime'] == 'OPEN'])
+                intraday_triggers = len(df[df['TriggerTime'] != 'OPEN'])
+                debug_info.append(f"✅ OPEN triggers: {open_triggers}, Intraday triggers: {intraday_triggers}")
             
-            # Session analysis if available
-            if session_filter:
-                debug_info.append(f"✅ Session filter applied: {session_filter}")
-            
-            # Validation from run_generate.py
-            same_time_count = len(df[df['SameTime'] == True])
-            debug_info.append(f"✅ Same-time scenarios found: {same_time_count}")
-            
-            same_time_hits = len(df[(df['SameTime'] == True) & (df['GoalHit'] == 'Yes')])
-            debug_info.append(f"✅ Same-time hits: {same_time_hits}")
-            
-            open_goals = len(df[df['GoalTime'] == 'OPEN'])
-            debug_info.append(f"✅ Records with GoalTime=OPEN: {open_goals}")
-            
-            # Check cross-zero scenarios (corrected logic)
-            cross_zero_below_to_above = len(df[(df['Direction'] == 'Below') & (df['GoalLevel'] > df['TriggerLevel'])])
-            cross_zero_above_to_below = len(df[(df['Direction'] == 'Above') & (df['GoalLevel'] < df['TriggerLevel'])])
-            debug_info.append(f"✅ Cross-zero scenarios - Below triggers to above goals: {cross_zero_below_to_above}")
-            debug_info.append(f"✅ Cross-zero scenarios - Above triggers to below goals: {cross_zero_above_to_below}")
-            
-            open_triggers = len(df[df['TriggerTime'] == 'OPEN'])
-            intraday_triggers = len(df[df['TriggerTime'] != 'OPEN'])
-            debug_info.append(f"✅ OPEN triggers: {open_triggers}, Intraday triggers: {intraday_triggers}")
-        
-        return df, debug_info
+            return df, debug_info
+        else:
+            # Debug mode but no debug_date selected
+            debug_info.append("🐛 Debug mode enabled but no debug date selected")
+            return pd.DataFrame(), debug_info
         
     except Exception as e:
         debug_info.append(f"❌ Error: {str(e)}")
@@ -2245,12 +2288,29 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
     debug_mode = st.checkbox("🐛 Quick Debug Mode", help="Analyze just one specific day with detailed 10-minute breakdown")
     debug_date = None
     if debug_mode:
-        debug_date = st.date_input(
-            "Debug Date (YYYY-MM-DD)",
-            value=pd.to_datetime("2024-01-03").date(),
-            help="Enter a specific date to analyze in detail"
-        )
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            debug_date = st.date_input(
+                "Debug Date (YYYY-MM-DD)",
+                value=pd.to_datetime("2024-01-03").date(),
+                help="Enter a specific date to analyze in detail"
+            )
+        with col2:
+            if st.button("🗑️ Clear Cache", help="Clear cached data to force full recalculation"):
+                if 'cached_data' in st.session_state:
+                    del st.session_state['cached_data']
+                    del st.session_state['cache_key']
+                    st.success("Cache cleared!")
+                else:
+                    st.info("No cache to clear")
+        
         st.info("📋 Debug mode will show detailed trigger/goal analysis for each 10-minute candle")
+        
+        # Show cache status
+        if 'cached_data' in st.session_state:
+            st.success("💾 **Cached Data Available** - Subsequent debug runs will be instant!")
+        else:
+            st.info("⚡ **First Debug Run** - Will calculate full ATR then cache for speed")
     
     # Custom ratio input
     use_custom_ratios = st.checkbox("Use Custom Ratios")
