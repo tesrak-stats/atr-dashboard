@@ -1857,6 +1857,15 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
     debug_info = []
     
     try:
+        # Early debug mode check with clear messaging
+        if debug_mode and debug_date:
+            st.success(f"🐛 **DEBUG MODE CONFIRMED** - Will process ONLY {debug_date}")
+            st.success("⚡ **SKIPPING FULL SYSTEMATIC DETECTION** - Only single day analysis")
+        elif debug_mode and not debug_date:
+            st.warning("🐛 Debug mode enabled but no date selected - will run normal processing")
+        else:
+            st.info("📊 **FULL MODE** - Will process all days")
+        
         # Create a unique cache key based on input parameters
         cache_key = f"{ticker}_{asset_type}_{atr_period}_{hash(str(custom_ratios))}"
         if daily_file:
@@ -1877,6 +1886,15 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
             intraday = st.session_state['cached_data']['intraday']
             debug_info = st.session_state['cached_data']['debug_info'].copy()
             debug_info.append("✅ Loaded cached ATR data from session state")
+            
+            # IMMEDIATE debug mode execution with cached data
+            if debug_mode and debug_date:
+                st.info(f"🐛 **CACHED DEBUG MODE** - Analyzing {debug_date} with cached data")
+                debug_success = debug_single_day_analysis(daily, intraday, debug_date, custom_ratios)
+                if debug_success:
+                    return pd.DataFrame(), debug_info + [f"Cached debug analysis completed for {debug_date}"]
+                else:
+                    return pd.DataFrame(), debug_info + [f"Cached debug analysis failed for {debug_date}"]
         else:
             # Full data loading and processing
             if use_cache:  # Only show this message when we're actually doing full processing
@@ -1979,6 +1997,15 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
                 }
                 st.session_state['cache_key'] = cache_key
                 st.success("💾 **Data Cached** - Future debug runs will be much faster!")
+                
+                # IMMEDIATE debug execution after caching
+                if debug_date:
+                    st.info(f"🐛 **IMMEDIATE DEBUG MODE** - Analyzing {debug_date} after caching")
+                    debug_success = debug_single_day_analysis(daily, intraday, debug_date, custom_ratios)
+                    if debug_success:
+                        return pd.DataFrame(), debug_info + [f"First-time debug analysis completed for {debug_date}"]
+                    else:
+                        return pd.DataFrame(), debug_info + [f"First-time debug analysis failed for {debug_date}"]
         
         # Quick Debug Mode
         if debug_mode and debug_date:
