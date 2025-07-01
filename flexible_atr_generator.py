@@ -2421,8 +2421,14 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
             else:
                 with st.spinner(f'🐛 Debug Mode: Processing {debug_date}...'):
                     try:
-                        # Get custom_ratios from the sidebar
-                        debug_custom_ratios = custom_ratios if use_custom_ratios else None
+                        # Get custom ratios setting - check if checkbox is enabled and ratios are valid
+                        try:
+                            if 'use_custom_ratios' in locals() and use_custom_ratios and 'custom_ratios' in locals():
+                                debug_custom_ratios = custom_ratios
+                            else:
+                                debug_custom_ratios = None
+                        except:
+                            debug_custom_ratios = None
                         
                         # Call a dedicated debug function
                         debug_result = run_debug_analysis(
