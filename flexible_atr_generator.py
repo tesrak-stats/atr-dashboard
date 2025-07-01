@@ -2421,6 +2421,9 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
             else:
                 with st.spinner(f'🐛 Debug Mode: Processing {debug_date}...'):
                     try:
+                        # Get custom_ratios from the sidebar
+                        debug_custom_ratios = custom_ratios if use_custom_ratios else None
+                        
                         # Call a dedicated debug function
                         debug_result = run_debug_analysis(
                             debug_date=debug_date,
@@ -2429,7 +2432,7 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
                             daily_file=daily_file,
                             intraday_file=intraday_file,
                             atr_period=atr_period,
-                            custom_ratios=custom_ratios,
+                            custom_ratios=debug_custom_ratios,
                             session_filter=session_filter,
                             extended_hours=extended_hours
                         )
