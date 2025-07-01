@@ -1903,6 +1903,11 @@ def run_debug_analysis(debug_date, ticker=None, asset_type='STOCKS', daily_file=
         st.info(f"🐛 **Analyzing Debug Date: {debug_date}**")
         debug_success = debug_single_day_analysis(daily, intraday, debug_date, custom_ratios)
         
+        if debug_success:
+            st.success("🎉 **Debug analysis completed successfully!**")
+        else:
+            st.error("❌ **Debug analysis encountered an error**")
+        
         return debug_success
         
     except Exception as e:
