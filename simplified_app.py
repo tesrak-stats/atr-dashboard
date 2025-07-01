@@ -649,6 +649,34 @@ for level in display_fib_levels:
             line=dict(color=color, width=width), layer="below"
         )
 
+# --- Add trigger level highlighting ---
+if trigger_level in display_fib_levels:
+    trigger_index = display_fib_levels.index(trigger_level)
+    
+    # Green shading above trigger level (to next level up)
+    if trigger_index > 0:  # Not the top level
+        next_level_up = display_fib_levels[trigger_index - 1]
+        fig.add_shape(
+            type="rect",
+            x0=0, x1=1, xref="paper",
+            y0=trigger_level, y1=next_level_up, yref="y",
+            fillcolor="rgba(0, 255, 0, 0.1)",  # Very light green
+            line=dict(width=0),
+            layer="below"
+        )
+    
+    # Yellow shading below trigger level (to next level down)
+    if trigger_index < len(display_fib_levels) - 1:  # Not the bottom level
+        next_level_down = display_fib_levels[trigger_index + 1]
+        fig.add_shape(
+            type="rect",
+            x0=0, x1=1, xref="paper",
+            y0=next_level_down, y1=trigger_level, yref="y",
+            fillcolor="rgba(255, 255, 0, 0.1)",  # Very light yellow
+            line=dict(width=0),
+            layer="below"
+        )
+
 # --- Chart layout ---
 fig.update_layout(
     title=f"{price_direction} | Trigger {trigger_level} at {trigger_time}",
