@@ -377,8 +377,8 @@ if len(filtered) > 0:
     for _, row in goal_summary.iterrows():
         goal_level = row['GoalLevel']
         if goal_level == trigger_level:
-            # Skip trigger level for totals since it represents same-level revisits
-            continue
+            # Include trigger level for totals - we want same-level retest data
+            pass
         total_hits = row['NumHits']
         total_triggers = row['NumTriggers']
         total_pct = (total_hits / total_triggers * 100) if total_triggers > 0 else 0
@@ -593,10 +593,7 @@ for level in display_fib_levels:
             else:
                 is_before_trigger = False
             
-            if level == trigger_level:
-                display_text = "—"
-                hover = "Trigger level (same as starting point)"
-            elif is_before_trigger:
+            if is_before_trigger:
                 display_text = ""
                 hover = "Before trigger time"
             else:
@@ -629,10 +626,7 @@ for level in display_fib_levels:
                 else:
                     is_before_trigger = False
                 
-                if level == trigger_level:
-                    display = "—"
-                    hover = "Trigger level (same as starting point)"
-                elif is_before_trigger:
+                if is_before_trigger:
                     display = ""
                     hover = "Before trigger time"
                 else:
