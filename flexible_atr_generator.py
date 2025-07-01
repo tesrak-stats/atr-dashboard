@@ -1696,13 +1696,160 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
 
     return df_results
 
+def debug_single_day_analysis(daily, intraday, debug_date, custom_ratios=None):
+    """
+    Quick debug mode: Analyze a single day with detailed 10-minute breakdown
+    """
+    if custom_ratios is None:
+        fib_levels = [0.236, 0.382, 0.500, 0.618, 0.786, 1.000, 
+                     -0.236, -0.382, -0.500, -0.618, -0.786, -1.000, 0.000]
+    else:
+        fib_levels = custom_ratios
+    
+    st.subheader(f"🐛 Debug Analysis for {debug_date}")
+    
+    # Find the debug date in daily data
+    daily_debug = daily[daily['Date'].dt.date == debug_date]
+    if daily_debug.empty:
+        st.error(f"❌ Date {debug_date} not found in daily data")
+        return
+    
+    # Get previous day for ATR calculation
+    debug_index = daily_debug.index[0]
+    if debug_index == 0:
+        st.error(f"❌ Cannot debug first day - need previous day for ATR calculation")
+        return
+    
+    previous_row = daily.iloc[debug_index - 1]
+    current_row = daily.iloc[debug_index]
+    
+    previous_close = previous_row['Close']
+    previous_atr = previous_row['ATR']
+    
+    if pd.isna(previous_atr):
+        st.error(f"❌ No valid ATR for previous day")
+        return
+    
+    # Generate ATR levels
+    level_map = generate_atr_levels(previous_close, previous_atr, custom_ratios)
+    
+    # Get intraday data for debug date
+    day_data = intraday[intraday['Date'] == debug_date].copy()
+    if day_data.empty:
+        st.error(f"❌ No intraday data found for {debug_date}")
+        return
+    
+    day_data['Time'] = day_data['Datetime'].dt.strftime('%H%M')
+    day_data.reset_index(drop=True, inplace=True)
+    
+    # Display setup info
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Previous Close", f"{previous_close:.2f}")
+    with col2:
+        st.metric("Previous ATR", f"{previous_atr:.2f}")
+    with col3:
+        st.metric("Intraday Candles", len(day_data))
+    
+    # Show ATR levels
+    st.subheader("📊 ATR Levels for Debug Date")
+    levels_df = pd.DataFrame([
+        {"Level": level, "Price": f"{price:.2f}"} 
+        for level, price in sorted(level_map.items(), key=lambda x: x[1], reverse=True)
+    ])
+    st.dataframe(levels_df, use_container_width=True)
+    
+    # Detailed 10-minute analysis
+    st.subheader("🕒 10-Minute Candle Analysis")
+    
+    open_price = day_data.iloc[0]['Open']
+    st.info(f"🎯 Opening Price: {open_price:.2f}")
+    
+    # Analyze each candle
+    candle_analysis = []
+    
+    for idx, candle in day_data.iterrows():
+        time_str = candle['Time']
+        open_val = candle['Open']
+        high_val = candle['High']
+        low_val = candle['Low']
+        close_val = candle['Close']
+        
+        # Check what levels this candle interacts with
+        triggered_levels = []
+        
+        for level, price in level_map.items():
+            level_triggered = False
+            trigger_type = None
+            
+            # Check if this candle triggers the level
+            if idx == 0:  # First candle (0930)
+                # Check OPEN trigger first
+                if (level >= 0 and open_val >= price) or (level < 0 and open_val <= price):
+                    level_triggered = True
+                    trigger_type = "OPEN"
+                # Check High/Low trigger if OPEN didn't trigger
+                elif (level >= 0 and high_val >= price) or (level < 0 and low_val <= price):
+                    level_triggered = True
+                    trigger_type = "0930"
+            else:
+                # Regular intraday candle
+                if (level >= 0 and high_val >= price) or (level < 0 and low_val <= price):
+                    level_triggered = True
+                    trigger_type = time_str
+            
+            if level_triggered:
+                direction = "Above" if level >= 0 else "Below"
+                triggered_levels.append({
+                    "Level": level,
+                    "Price": price,
+                    "Direction": direction,
+                    "Type": trigger_type
+                })
+        
+        candle_analysis.append({
+            "Time": time_str,
+            "Open": f"{open_val:.2f}",
+            "High": f"{high_val:.2f}",
+            "Low": f"{low_val:.2f}",
+            "Close": f"{close_val:.2f}",
+            "Triggered_Levels": len(triggered_levels),
+            "Details": triggered_levels
+        })
+    
+    # Display candle analysis
+    for analysis in candle_analysis:
+        if analysis["Triggered_Levels"] > 0:
+            with st.expander(f"🎯 {analysis['Time']} - {analysis['Triggered_Levels']} triggers"):
+                col1, col2 = st.columns([1, 2])
+                
+                with col1:
+                    st.write("**OHLC:**")
+                    st.write(f"Open: {analysis['Open']}")
+                    st.write(f"High: {analysis['High']}")
+                    st.write(f"Low: {analysis['Low']}")
+                    st.write(f"Close: {analysis['Close']}")
+                
+                with col2:
+                    st.write("**Triggered Levels:**")
+                    for detail in analysis["Details"]:
+                        st.write(f"• **{detail['Level']}** ({detail['Direction']}) @ {detail['Price']:.2f} - Type: {detail['Type']}")
+        else:
+            st.write(f"⚪ **{analysis['Time']}**: O:{analysis['Open']} H:{analysis['High']} L:{analysis['Low']} C:{analysis['Close']} - No triggers")
+    
+    # Summary
+    total_triggers = sum(len(a["Details"]) for a in candle_analysis)
+    st.success(f"📋 **Debug Summary**: {total_triggers} total level triggers detected across {len(day_data)} candles")
+    
+    return True
+
 # ==============================================================================================
 # END OF CRITICAL SECTION
 # ==============================================================================================
 
 def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_file=None, 
                  start_date=None, end_date=None, atr_period=14, custom_ratios=None, 
-                 session_filter=None, extended_hours=False, intraday_data=None):
+                 session_filter=None, extended_hours=False, intraday_data=None, debug_mode=False, debug_date=None):
     """
     Main function for flexible ATR analysis with file inputs
     NOW USING THE SYSTEMATIC TRIGGER AND GOAL DETECTION FROM run_generate.py
@@ -1796,6 +1943,16 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
         if 'Session' in intraday.columns:
             unique_sessions = intraday['Session'].unique()
             debug_info.append(f"Session types found: {list(unique_sessions)}")
+        
+        # Quick Debug Mode
+        if debug_mode and debug_date:
+            st.info(f"🐛 **Debug Mode Active** - Analyzing single day: {debug_date}")
+            st.info("⚡ **Fast Mode**: Full ATR calculated, but trigger/goal detection only for debug day")
+            debug_success = debug_single_day_analysis(daily, intraday, debug_date, custom_ratios)
+            if debug_success:
+                return pd.DataFrame(), debug_info + [f"Debug analysis completed for {debug_date}"]
+            else:
+                return pd.DataFrame(), debug_info + [f"Debug analysis failed for {debug_date}"]
         
         # Run analysis using the SYSTEMATIC logic from run_generate.py
         debug_info.append("🎯 Running SYSTEMATIC trigger and goal detection (from run_generate.py)...")
@@ -2080,9 +2237,20 @@ st.sidebar.info("""
 - **Optional**: Volume, Session (PM/R/AH)
 """)
 
-# Advanced settings
+# Add this to Advanced Settings section
 with st.sidebar.expander("⚙️ Advanced Settings"):
     atr_period = st.number_input("ATR Period", min_value=1, max_value=50, value=14)
+    
+    # Quick Debug Mode
+    debug_mode = st.checkbox("🐛 Quick Debug Mode", help="Analyze just one specific day with detailed 10-minute breakdown")
+    debug_date = None
+    if debug_mode:
+        debug_date = st.date_input(
+            "Debug Date (YYYY-MM-DD)",
+            value=pd.to_datetime("2024-01-03").date(),
+            help="Enter a specific date to analyze in detail"
+        )
+        st.info("📋 Debug mode will show detailed trigger/goal analysis for each 10-minute candle")
     
     # Custom ratio input
     use_custom_ratios = st.checkbox("Use Custom Ratios")
