@@ -458,8 +458,8 @@ class TickerMapper:
     """Handle ticker symbol mappings for different data sources"""
     
     @staticmethod
-    def get_yahoo_ticker(input_ticker):
-        """Convert common ticker variations to Yahoo Finance format"""
+    def get_public_ticker(input_ticker):
+        """Convert common ticker variations to public data source format"""
         
         # Common ticker mappings
         ticker_mappings = {
@@ -708,9 +708,9 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
     
     return is_valid, warnings, recommendations
 
-def download_yahoo_data_chunked(ticker, start_date, end_date, chunk_years=3, max_retries=3):
+def download_public_data_chunked(ticker, start_date, end_date, chunk_years=3, max_retries=3):
     """
-    Download Yahoo Finance data in chunks with retry logic
+    Download public financial data in chunks with retry logic
     """
     import time
     
@@ -993,11 +993,9 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
                     return None
             
             # Standardize column names (after ensuring Date exists)
-            debug_info.append(f"🔧 DEBUG: Columns before standardize: {list(daily_data.columns)}")
             daily_data = standardize_columns(daily_data)
-            debug_info.append(f"🔧 DEBUG: Columns after standardize: {list(daily_data.columns)}")
             
-            st.success(f"✅ Auto-fetched daily data from Yahoo: {len(daily_data)} records")
+            st.success(f"✅ Auto-fetched daily data from public source: {len(daily_data)} records")
             
             # Safe date range display
             try:
@@ -2279,14 +2277,14 @@ st.write('**Intraday data must always be uploaded. Choose Yahoo Finance or file 
 st.sidebar.header("📁 Data Input")
 data_source = st.sidebar.radio(
     "Daily Data Source",
-    options=["Upload Both Files", "Yahoo Daily + Upload Intraday"],
+    options=["Upload Both Files", "Public Source + Upload Intraday"],
     index=0,
     help="Choose how to provide daily data. Intraday data must always be uploaded."
 )
 
 # Intraday data upload (ALWAYS REQUIRED)
 st.sidebar.subheader("📊 Intraday Data (Required)")
-st.sidebar.info("⚠️ **Intraday data must always be uploaded as CSV/Excel - Yahoo Finance doesn't provide sufficient intraday history**")
+st.sidebar.info("⚠️ **Intraday data must always be uploaded as CSV/Excel - public sources don't provide sufficient intraday history**")
 
 intraday_file = st.sidebar.file_uploader(
     "Intraday OHLC Data",
@@ -2320,19 +2318,19 @@ if data_source == "Upload Both Files":
     start_date = None
     end_date = None
 
-else:  # Yahoo Daily + Upload Intraday
-    st.sidebar.subheader("📈 Daily Data from Yahoo Finance")
+else:  # Public Source + Upload Intraday
+    st.sidebar.subheader("📈 Daily Data from Public Source")
     st.sidebar.info("📅 **Smart Auto-Detection**: Daily data will be automatically fetched based on your intraday file's date range + 6-month buffer")
     
     ticker = st.sidebar.text_input(
         "Ticker Symbol",
         value="SPX",
-        help="Enter ticker symbol - system will auto-map to Yahoo Finance format (e.g., SPX → ^GSPC)"
+        help="Enter ticker symbol - system will auto-map to public data format (e.g., SPX → ^GSPC)"
     ).upper()
     
     # Show ticker mapping preview
     if ticker:
-        mapped_ticker = TickerMapper.get_yahoo_ticker(ticker)
+        mapped_ticker = TickerMapper.get_public_ticker(ticker)
         if mapped_ticker != ticker:
             st.sidebar.success(f"✅ Will map: {ticker} → {mapped_ticker}")
         else:
@@ -2503,9 +2501,9 @@ if st.button('🚀 Generate Enhanced ATR Analysis with SYSTEMATIC Logic'):
                     import traceback
                     st.error(traceback.format_exc())
     
-    elif data_source == "Yahoo Daily + Upload Intraday":
+    elif data_source == "Public Source + Upload Intraday":
         if not ticker:
-            st.error("❌ Please enter a ticker symbol for Yahoo Finance daily data")
+            st.error("❌ Please enter a ticker symbol for public data source daily data")
         else:
             with st.spinner(f'Auto-detecting date range and processing with SYSTEMATIC logic...'):
                 try:
