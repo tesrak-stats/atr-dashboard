@@ -10,15 +10,26 @@ try:
 except ImportError:
     import pytz  # Fallback for older Python versions
     USE_ZONEINFO = False
-from daily_atr_updater import calculate_atr_levels
+from daily_atr_updater import calculate_atr_levels, TICKER_CONFIG
 
-# --- Ticker Configuration (expandable for future tickers) ---
+# --- Updated Ticker Configuration (now matches the ATR calculator) ---
 ticker_config = {
     "SPX": {
         "summary_file": "atr_dashboard_summary_ENHANCED.csv",
         "display_name": "S&P 500 (SPX)",
         "ticker_symbol": "^GSPC"
+    },
+    "QQQ": {
+        "summary_file": "atr_dashboard_summary_QQQ.csv",  # You'll need to create this
+        "display_name": "Nasdaq 100 (QQQ)",
+        "ticker_symbol": "QQQ"
+    },
+    "IWM": {
+        "summary_file": "atr_dashboard_summary_IWM.csv",  # You'll need to create this
+        "display_name": "Russell 2000 (IWM)",
+        "ticker_symbol": "IWM"
     }
+    # Add more tickers as needed - make sure they match TICKER_CONFIG in daily_atr_updater.py
 }
 
 def get_current_market_time():
@@ -86,32 +97,72 @@ def calculate_remaining_probability(total_pct, completed_hourly_pcts, current_ti
     remaining_pct = max(0, total_pct - completed_probability)
     return remaining_pct, current_time_slot
 
-def get_atr_levels_for_ticker(ticker_symbol="^GSPC"):
+def get_atr_levels_for_ticker(ticker_key):
     """
-    Get ATR levels using the daily_atr_updater function
+    Get ATR levels for specific ticker from multi-ticker JSON file
     Returns the levels data or empty dict if error
     """
     try:
-        # Try to load from saved JSON file first (if exists and recent)
         json_file = "atr_levels.json"
+        
+        # Try to load from saved JSON file first (if exists and recent)
         if os.path.exists(json_file):
             with open(json_file, 'r') as f:
                 saved_data = json.load(f)
-                if saved_data.get("status") == "success":
+                
+                # Check if we have multi-ticker format
+                if "tickers" in saved_data and ticker_key in saved_data["tickers"]:
+                    ticker_data = saved_data["tickers"][ticker_key]
+                    if ticker_data.get("status") == "success":
+                        return ticker_data
+                # Legacy single-ticker format fallback
+                elif ticker_key == "SPX" and saved_data.get("status") == "success":
                     return saved_data
         
-        # If no saved file or error, calculate fresh
+        # If no saved file or error, calculate fresh for this ticker
+        ticker_symbol = ticker_config[ticker_key]["ticker_symbol"]
         levels_data = calculate_atr_levels(ticker=ticker_symbol)
         
-        # Save the calculated data for future use
         if levels_data.get("status") == "success":
-            with open(json_file, 'w') as f:
-                json.dump(levels_data, f, indent=2)
+            # If we have an existing multi-ticker file, update it
+            if os.path.exists(json_file):
+                try:
+                    with open(json_file, 'r') as f:
+                        existing_data = json.load(f)
+                    
+                    if "tickers" not in existing_data:
+                        existing_data = {
+                            "last_updated": datetime.now().isoformat(),
+                            "tickers": {}
+                        }
+                    
+                    existing_data["tickers"][ticker_key] = levels_data
+                    existing_data["last_updated"] = datetime.now().isoformat()
+                    
+                    with open(json_file, 'w') as f:
+                        json.dump(existing_data, f, indent=2)
+                        
+                except Exception:
+                    # If updating fails, create new multi-ticker file
+                    new_data = {
+                        "last_updated": datetime.now().isoformat(),
+                        "tickers": {ticker_key: levels_data}
+                    }
+                    with open(json_file, 'w') as f:
+                        json.dump(new_data, f, indent=2)
+            else:
+                # Create new multi-ticker file
+                new_data = {
+                    "last_updated": datetime.now().isoformat(),
+                    "tickers": {ticker_key: levels_data}
+                }
+                with open(json_file, 'w') as f:
+                    json.dump(new_data, f, indent=2)
         
         return levels_data
         
     except Exception as e:
-        st.error(f"Error getting ATR levels: {str(e)}")
+        st.error(f"Error getting ATR levels for {ticker_key}: {str(e)}")
         return {"status": "error", "error": str(e)}
 
 # --- Get Current Market Time ---
@@ -121,23 +172,36 @@ current_et_time, current_market_slot = get_current_market_time()
 col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
-    st.caption("🔧 App Version: v2.4.0 - Added Remaining Probability") # VERSION BUMP
+    st.caption("🔧 App Version: v2.5.0 - Multi-Ticker Support") # VERSION BUMP
 with col_title2:
-    selected_ticker = st.selectbox("Ticker", list(ticker_config.keys()), index=0)
+    # Only show tickers that have summary files available
+    available_tickers = []
+    for ticker_key, config in ticker_config.items():
+        if os.path.exists(config["summary_file"]):
+            available_tickers.append(ticker_key)
+        else:
+            st.warning(f"⚠️ {config['summary_file']} not found for {ticker_key}")
+    
+    if not available_tickers:
+        st.error("❌ No ticker data files found!")
+        st.stop()
+    
+    selected_ticker = st.selectbox("Ticker", available_tickers, index=0)
 
 # --- Load data based on selected ticker ---
 try:
     df = pd.read_csv(ticker_config[selected_ticker]["summary_file"])
+    st.success(f"✅ Loaded data for {ticker_config[selected_ticker]['display_name']}")
 except FileNotFoundError:
-    st.error(f"❌ Data file not found for {selected_ticker}")
+    st.error(f"❌ Data file not found for {selected_ticker}: {ticker_config[selected_ticker]['summary_file']}")
+    st.info("💡 You need to create summary CSV files for each ticker you want to support")
     st.stop()
 except Exception as e:
     st.error(f"❌ Error loading data for {selected_ticker}: {str(e)}")
     st.stop()
 
 # --- Load current ATR-based price levels ---
-ticker_symbol = ticker_config[selected_ticker]["ticker_symbol"]
-atr_data = get_atr_levels_for_ticker(ticker_symbol)
+atr_data = get_atr_levels_for_ticker(selected_ticker)
 
 if atr_data.get("status") == "success":
     atr_price_levels = atr_data
@@ -145,7 +209,7 @@ if atr_data.get("status") == "success":
 else:
     atr_price_levels = {}
     price_levels_dict = {}
-    st.error(f"❌ Could not load ATR levels: {atr_data.get('error', 'Unknown error')}")
+    st.error(f"❌ Could not load ATR levels for {selected_ticker}: {atr_data.get('error', 'Unknown error')}")
 
 # --- What's This? Section ---
 with st.expander("❓ What's This? - How to Use This Chart"):
@@ -163,11 +227,12 @@ with st.expander("❓ What's This? - How to Use This Chart"):
     - **Remaining:** Shows probability left for the day based on current market time
     
     🎯 **How to Use:**
-    1. **Select Price Location:** Above or Below Trigger Level
-    2. **Pick Trigger Level:** The level that has been traded at for the first time today
-    3. **Choose Trigger Time:** When the trigger level was hit
-    4. **Read Results:** See probability of reaching other levels throughout the day
-    5. **Check Remaining:** See how much probability is left based on current time
+    1. **Select Ticker:** Choose which instrument to analyze
+    2. **Select Price Location:** Above or Below Trigger Level
+    3. **Pick Trigger Level:** The level that has been traded at for the first time today
+    4. **Choose Trigger Time:** When the trigger level was hit
+    5. **Read Results:** See probability of reaching other levels throughout the day
+    6. **Check Remaining:** See how much probability is left based on current time
     
     💡 **Example:** If price goes Above 0.0 at OPEN, there's a X% chance it reaches +0.618 by 1000 hours, with Y% remaining probability after current time.
     """)
@@ -176,8 +241,8 @@ with st.expander("❓ What's This? - How to Use This Chart"):
 unique_days = 2720
 day_text = f"{unique_days:,} trading days"
 
-st.subheader(f"📈 Probability of Reaching Price Levels (%) - Based on {day_text}")
-st.caption("Historical success rates based on S&P 500 data")
+st.subheader(f"📈 Probability of Reaching Price Levels (%) - {ticker_config[selected_ticker]['display_name']}")
+st.caption(f"Historical success rates based on {day_text} of data")
 
 # --- Define fib_levels and styling early ---
 fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
@@ -285,6 +350,17 @@ time_order = display_columns.copy()
 
 # --- Debug trigger level data ---
 if st.checkbox("🔍 Debug Mode - Show Data Structure"):
+    st.write("**Selected Ticker Configuration:**")
+    st.json(ticker_config[selected_ticker])
+    
+    st.write("**ATR Data Status:**")
+    st.json({
+        "status": atr_data.get("status"),
+        "ticker": atr_data.get("ticker"),
+        "reference_date": atr_data.get("reference_date"),
+        "data_age_days": atr_data.get("data_age_days")
+    })
+    
     st.write("**Filtered Data for Current Selection:**")
     st.dataframe(filtered.head(10))
     
@@ -294,33 +370,7 @@ if st.checkbox("🔍 Debug Mode - Show Data Structure"):
     
     st.write("**Trigger Level Being Searched:**")
     st.write(f"Trigger Level: {trigger_level} (type: {type(trigger_level)})")
-    
-    st.write("**Data Lookup Keys (first 10):**")
-    lookup_keys = list(data_lookup.keys())[:10]
-    for key in lookup_keys:
-        st.write(f"Key: {key}, Data: {data_lookup[key]}")
-    
-    st.write("**Goal Totals:**")
-    st.write(goal_totals)
-    
-    # Check for trigger level specifically
-    trigger_data_found = []
-    for key, data in data_lookup.items():
-        goal_level, time_slot = key
-        if goal_level == trigger_level:
-            trigger_data_found.append({
-                'GoalLevel': goal_level,
-                'TimeSlot': time_slot,
-                'Hits': data['hits'],
-                'Triggers': data['triggers'],
-                'Pct': data['pct']
-            })
-    
-    if trigger_data_found:
-        st.write("**Trigger Level Data Found:**")
-        st.dataframe(pd.DataFrame(trigger_data_found))
-    else:
-        st.write("**❌ No trigger level data found in lookup**")
+
 filtered = df[
     (df["Direction"] == price_direction) &
     (df["TriggerLevel"] == trigger_level) &
@@ -679,7 +729,7 @@ if trigger_level in display_fib_levels:
 
 # --- Chart layout ---
 fig.update_layout(
-    title=f"{price_direction} | Trigger {trigger_level} at {trigger_time}",
+    title=f"{ticker_config[selected_ticker]['display_name']} | {price_direction} | Trigger {trigger_level} at {trigger_time}",
     xaxis=dict(
         title="Projected Completion Time (Eastern Time)",
         categoryorder="array",
@@ -731,3 +781,33 @@ st.info(f"{time_color} **Current ET:** {current_et_time.strftime('%I:%M %p')} | 
 
 # --- Legend/Key ---
 st.caption("📋 **Chart Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | **Remaining Colors:** 🟢 >15% | 🟠 5-15% | 🔴 <5% | Percentages show probability of reaching target level by specified time")
+
+# --- Multi-ticker status info ---
+if st.checkbox("📊 Show Multi-Ticker Status"):
+    try:
+        with open("atr_levels.json", 'r') as f:
+            all_data = json.load(f)
+            
+        if "tickers" in all_data:
+            st.subheader("📈 All Ticker Status")
+            
+            status_data = []
+            for ticker_key, ticker_data in all_data["tickers"].items():
+                status_data.append({
+                    "Ticker": ticker_key,
+                    "Status": "✅" if ticker_data.get("status") == "success" else "❌",
+                    "Close": f"${ticker_data.get('reference_close', 'N/A'):.2f}" if ticker_data.get('reference_close') else "N/A",
+                    "ATR": f"${ticker_data.get('reference_atr', 'N/A'):.2f}" if ticker_data.get('reference_atr') else "N/A",
+                    "Date": ticker_data.get('reference_date', 'N/A'),
+                    "Age (days)": ticker_data.get('data_age_days', 'N/A')
+                })
+            
+            status_df = pd.DataFrame(status_data)
+            st.dataframe(status_df, use_container_width=True)
+            
+            st.caption(f"Last updated: {all_data.get('last_updated', 'Unknown')}")
+        else:
+            st.info("Legacy single-ticker format detected")
+            
+    except Exception as e:
+        st.error(f"Could not load ticker status: {str(e)}")
