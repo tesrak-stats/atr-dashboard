@@ -389,10 +389,12 @@ class CSVProcessor:
                     # Custom candle creation
                     df_processed = CSVProcessor.create_custom_candles(
                         df,
-                        processing_config['custom_periods']
+                        processing_config['custom_periods'],
+                        processing_config.get('rth_filter', True)
                     )
                     periods_count = len(processing_config['custom_periods'])
-                    rows_description = f"{len(df)} → {len(df_processed)} custom candles ({periods_count} periods/day)"
+                    rth_status = " (RTH filtered)" if processing_config.get('rth_filter', True) else " (all hours)"
+                    rows_description = f"{len(df)} → {len(df_processed)} custom candles ({periods_count} periods/day{rth_status})"
                 
                 # Add source info
                 df_processed['Source_File'] = uploaded_file.name
@@ -517,7 +519,7 @@ if mode == "📁 Multi-CSV Processor":
                 )
         
         with col2:
-            st.markdown("**⏰ Processing Method**")
+            st.markdown("**Processing Method**")
             
             processing_method = st.radio(
                 "How to process the data?",
@@ -527,35 +529,49 @@ if mode == "📁 Multi-CSV Processor":
             )
             
             if processing_method == "Standard Resampling":
-                # Original time filtering approach
-                use_custom_time = st.checkbox(
-                    "Apply Time Filter",
-                    help="Filter all data to specific hours",
-                    key="use_custom_time_multi"
+                # RTH Only filter - checked by default for ATR compatibility
+                rth_only = st.checkbox(
+                    "Regular Trading Hours Only (9:30 AM - 4:00 PM)",
+                    value=True,
+                    help="Filter to regular trading hours only - recommended for ATR analysis compatibility",
+                    key="rth_only_standard"
                 )
                 
-                if use_custom_time:
-                    custom_start = st.time_input(
-                        "Start Time",
-                        value=time(9, 30),
-                        help="Include data from this time onward",
-                        key="custom_start_multi"
-                    )
-                    
-                    custom_end = st.time_input(
-                        "End Time", 
-                        value=time(16, 0),
-                        help="Include data up to this time",
-                        key="custom_end_multi"
-                    )
-                    
-                    custom_start_str = custom_start.strftime("%H:%M")
-                    custom_end_str = custom_end.strftime("%H:%M")
-                    
-                    st.info(f"📅 Time filter: **{custom_start_str} - {custom_end_str}**")
+                if rth_only:
+                    custom_start_str = "09:30"
+                    custom_end_str = "16:00"
+                    st.info("📅 **RTH Filter Active**: 09:30 AM - 4:00 PM (compatible with ATR generator)")
                 else:
-                    custom_start_str = None
-                    custom_end_str = None
+                    # Manual time filtering if RTH is unchecked
+                    use_custom_time = st.checkbox(
+                        "Apply Custom Time Filter",
+                        help="Set your own time range",
+                        key="use_custom_time_standard"
+                    )
+                    
+                    if use_custom_time:
+                        custom_start = st.time_input(
+                            "Start Time",
+                            value=time(9, 30),
+                            help="Include data from this time onward",
+                            key="custom_start_standard"
+                        )
+                        
+                        custom_end = st.time_input(
+                            "End Time", 
+                            value=time(16, 0),
+                            help="Include data up to this time",
+                            key="custom_end_standard"
+                        )
+                        
+                        custom_start_str = custom_start.strftime("%H:%M")
+                        custom_end_str = custom_end.strftime("%H:%M")
+                        
+                        st.info(f"📅 Custom time filter: **{custom_start_str} - {custom_end_str}**")
+                    else:
+                        custom_start_str = None
+                        custom_end_str = None
+                        st.warning("⚠️ **No time filtering** - extended hours data may cause issues with ATR generator")
                 
                 # Set processing config
                 processing_config = {
@@ -569,6 +585,14 @@ if mode == "📁 Multi-CSV Processor":
                 # Custom candle periods
                 st.info("💡 **Create custom candles from time periods**")
                 st.write("Each time period becomes one OHLC candle per day")
+                
+                # RTH Only filter for custom candles too
+                rth_only_custom = st.checkbox(
+                    "Apply RTH Filter to Custom Candles",
+                    value=True,
+                    help="Only use data from regular trading hours (9:30-16:00) for custom candle creation",
+                    key="rth_only_custom"
+                )
                 
                 # Number of periods per day
                 num_periods = st.number_input(
@@ -594,18 +618,29 @@ if mode == "📁 Multi-CSV Processor":
                         )
                     
                     with col_b:
+                        # Default times within RTH
+                        default_start_hour = 9 + i * 3 if 9 + i * 3 < 16 else 9 + (i % 2) * 3
                         period_start = st.time_input(
                             "Start",
-                            value=time(9 + i * 3, 0),  # Default: 9:00, 12:00, 15:00, etc.
+                            value=time(default_start_hour, 30 if i == 0 else 0),  # First period starts at 9:30
                             key=f"period_start_{i}"
                         )
                     
                     with col_c:
+                        default_end_hour = 12 + i * 3 if 12 + i * 3 <= 16 else 12 + (i % 2) * 3
                         period_end = st.time_input(
                             "End",
-                            value=time(12 + i * 3, 0),  # Default: 12:00, 15:00, 18:00, etc.
+                            value=time(default_end_hour, 0),
                             key=f"period_end_{i}"
                         )
+                    
+                    # Validate period is within RTH if RTH filter is enabled
+                    if rth_only_custom:
+                        start_time = period_start.strftime("%H:%M")
+                        end_time = period_end.strftime("%H:%M")
+                        
+                        if start_time < "09:30" or end_time > "16:00":
+                            st.warning(f"⚠️ Period {i+1} extends outside RTH (9:30-16:00)")
                     
                     custom_periods.append({
                         'name': period_name,
@@ -618,13 +653,20 @@ if mode == "📁 Multi-CSV Processor":
                 for period in custom_periods:
                     st.write(f"   • **{period['name']}**: {period['start']} - {period['end']}")
                 
+                # Show RTH filter status
+                if rth_only_custom:
+                    st.info("✅ **RTH Filter**: Only data from 9:30-16:00 will be used for candle creation")
+                else:
+                    st.warning("⚠️ **No RTH Filter**: Extended hours data will be included (may cause ATR generator issues)")
+                
                 # Example output description
                 st.info("📊 **Example Output**: Day 1 → 2 candles, Day 2 → 2 candles, etc.")
                 
                 # Set processing config
                 processing_config = {
                     'processing_type': 'custom_candles',
-                    'custom_periods': custom_periods
+                    'custom_periods': custom_periods,
+                    'rth_filter': rth_only_custom
                 }⏰ Custom Time Filtering**")
             
             use_custom_time = st.checkbox(
