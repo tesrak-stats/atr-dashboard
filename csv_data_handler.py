@@ -441,6 +441,27 @@ class CSVProcessor:
         # Combine all dataframes
         if all_dataframes:
             combined_df = pd.concat(all_dataframes, ignore_index=True)
+            
+            # CRITICAL: Handle overlapping data
+            st.info("🔍 Checking for overlapping data...")
+            
+            # Count records before deduplication
+            records_before = len(combined_df)
+            
+            # Remove duplicates based on Datetime (keep first occurrence)
+            combined_df = combined_df.drop_duplicates(subset=['Datetime'], keep='first')
+            
+            # Count records after deduplication
+            records_after = len(combined_df)
+            duplicates_removed = records_before - records_after
+            
+            if duplicates_removed > 0:
+                st.warning(f"⚠️ **Overlapping Data Detected**: Removed {duplicates_removed:,} duplicate records")
+                st.info("📋 **Resolution**: Kept first occurrence of each datetime (earliest file processed)")
+            else:
+                st.success("✅ **No Overlapping Data**: All records are unique")
+            
+            # Sort by datetime after deduplication
             combined_df = combined_df.sort_values(['Date', 'Datetime']).reset_index(drop=True)
             
             # Remove source columns from final output (keep for debugging)
@@ -667,7 +688,7 @@ if mode == "📁 Multi-CSV Processor":
                     'processing_type': 'custom_candles',
                     'custom_periods': custom_periods,
                     'rth_filter': rth_only_custom
-                } 
+                }⏰ Custom Time Filtering**")
             
             use_custom_time = st.checkbox(
                 "Apply Custom Time Filter",
