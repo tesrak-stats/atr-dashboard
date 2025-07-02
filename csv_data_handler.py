@@ -667,7 +667,7 @@ if mode == "📁 Multi-CSV Processor":
                     'processing_type': 'custom_candles',
                     'custom_periods': custom_periods,
                     'rth_filter': rth_only_custom
-                } Custom Time Filtering**")
+                } 
             
             use_custom_time = st.checkbox(
                 "Apply Custom Time Filter",
