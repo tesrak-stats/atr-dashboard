@@ -1,4 +1,4 @@
-name: Daily ATR Calculator
+name: Daily ATR Calculator - Multi Ticker
 
 # Run at midnight Eastern Time on weekdays (actually early morning of trading day)
 on:
@@ -29,11 +29,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install yfinance pandas pytz
     
-    - name: Run ATR Calculator
+    - name: Run Multi-Ticker ATR Calculator
       run: |
-        echo "🔄 Starting daily ATR calculation..."
+        echo "🔄 Starting daily multi-ticker ATR calculation..."
         python daily_atr_updater.py
-        echo "✅ ATR calculation completed"
+        echo "✅ Multi-ticker ATR calculation completed"
     
     - name: Check if JSON was created
       run: |
@@ -41,7 +41,52 @@ jobs:
           echo "✅ ATR levels JSON file created successfully"
           echo "📊 File size: $(du -h atr_levels.json | cut -f1)"
           echo "📋 Contents preview:"
-          head -20 atr_levels.json
+          head -30 atr_levels.json
+          
+          # Show multi-ticker status summary
+          echo ""
+          echo "📈 Multi-ticker status summary:"
+          python -c "
+import json
+try:
+    with open('atr_levels.json', 'r') as f:
+        data = json.load(f)
+    
+    if 'tickers' in data:
+        tickers = data['tickers']
+        success_count = sum(1 for t in tickers.values() if t.get('status') == 'success')
+        error_count = len(tickers) - success_count
+        print(f'📊 Total tickers: {len(tickers)}')
+        print(f'✅ Successful: {success_count}')
+        print(f'❌ Errors: {error_count}')
+        print('')
+        
+        # Show details for each ticker
+        for ticker_key, ticker_data in tickers.items():
+            if ticker_data.get('status') == 'success':
+                close = ticker_data.get('reference_close', 'N/A')
+                atr = ticker_data.get('reference_atr', 'N/A')
+                date = ticker_data.get('reference_date', 'N/A')
+                age = ticker_data.get('data_age_days', 0)
+                age_warn = f' (⚠️ {age}d old)' if age > 1 else ''
+                print(f'✅ {ticker_key}: \${close} (ATR: \${atr}) [{date}]{age_warn}')
+            else:
+                error = ticker_data.get('error', 'Unknown error')
+                print(f'❌ {ticker_key}: {error}')
+    else:
+        # Legacy single ticker format
+        print('📊 Legacy single-ticker format detected')
+        if data.get('status') == 'success':
+            close = data.get('reference_close', 'N/A')
+            atr = data.get('reference_atr', 'N/A')
+            print(f'✅ Single ticker: \${close} (ATR: \${atr})')
+        else:
+            print(f'❌ Single ticker failed: {data.get(\"error\", \"Unknown error\")}')
+        
+except Exception as e:
+    print(f'❌ Error reading JSON: {e}')
+    exit(1)
+"
         else
           echo "❌ ATR levels JSON file not found!"
           exit 1
@@ -55,7 +100,7 @@ jobs:
         if git diff --staged --quiet; then
           echo "No changes to commit"
         else
-          git commit -m "🤖 Daily ATR levels update - $(date '+%Y-%m-%d %H:%M UTC')"
+          git commit -m "🤖 Daily multi-ticker ATR levels update - $(date '+%Y-%m-%d %H:%M UTC')"
           git push
         fi
     
@@ -63,6 +108,6 @@ jobs:
     - name: Notify on failure
       if: failure()
       run: |
-        echo "❌ ATR calculation failed!"
+        echo "❌ Multi-ticker ATR calculation failed!"
         echo "Check the logs above for details."
         # Add email/Slack notification here if desired
