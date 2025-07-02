@@ -639,26 +639,54 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
     if daily_data is None or intraday_data is None:
         return False, ["Missing data files"], ["Please provide both daily and intraday data"]
     
-    # Convert date columns for comparison - handle different formats safely
-    if 'Date' in daily_data.columns:
-        daily_dates = pd.to_datetime(daily_data['Date'])
-        if hasattr(daily_dates.iloc[0], 'date'):
-            daily_dates = daily_dates.dt.date
-    else:
-        st.error("Daily data missing Date column")
-        return False, ["Daily data missing Date column"], []
+    # Debug: Show available columns
+    st.info(f"🔧 DEBUG: Daily data columns: {list(daily_data.columns)}")
+    st.info(f"🔧 DEBUG: Intraday data columns: {list(intraday_data.columns)}")
     
-    if 'Date' in intraday_data.columns:
-        intraday_dates = pd.to_datetime(intraday_data['Date'])
-        if hasattr(intraday_dates.iloc[0], 'date'):
-            intraday_dates = intraday_dates.dt.date
-    elif 'Datetime' in intraday_data.columns:
-        intraday_dates = pd.to_datetime(intraday_data['Datetime'])
-        if hasattr(intraday_dates.iloc[0], 'date'):
-            intraday_dates = intraday_dates.dt.date
-    else:
-        st.error("Intraday data missing Date/Datetime column")
-        return False, ["Intraday data missing Date/Datetime column"], []
+    # Convert date columns for comparison - handle different formats safely
+    try:
+        if 'Date' in daily_data.columns:
+            daily_dates = pd.to_datetime(daily_data['Date'], errors='coerce')
+            if hasattr(daily_dates.iloc[0], 'date'):
+                daily_dates = daily_dates.dt.date
+        else:
+            # Check for alternative date column names
+            date_cols = [col for col in daily_data.columns if 'date' in col.lower()]
+            if date_cols:
+                st.info(f"🔧 Using alternative date column: {date_cols[0]}")
+                daily_dates = pd.to_datetime(daily_data[date_cols[0]], errors='coerce')
+                if hasattr(daily_dates.iloc[0], 'date'):
+                    daily_dates = daily_dates.dt.date
+            else:
+                warnings.append("Daily data missing Date column")
+                return False, warnings, ["Ensure daily data has a 'Date' column"]
+    except Exception as e:
+        warnings.append(f"Error processing daily data dates: {str(e)}")
+        return False, warnings, ["Check daily data date format"]
+    
+    try:
+        if 'Date' in intraday_data.columns:
+            intraday_dates = pd.to_datetime(intraday_data['Date'], errors='coerce')
+            if hasattr(intraday_dates.iloc[0], 'date'):
+                intraday_dates = intraday_dates.dt.date
+        elif 'Datetime' in intraday_data.columns:
+            intraday_dates = pd.to_datetime(intraday_data['Datetime'], errors='coerce')
+            if hasattr(intraday_dates.iloc[0], 'date'):
+                intraday_dates = intraday_dates.dt.date
+        else:
+            # Check for alternative date/datetime columns
+            date_cols = [col for col in intraday_data.columns if 'date' in col.lower() or 'time' in col.lower()]
+            if date_cols:
+                st.info(f"🔧 Using alternative datetime column: {date_cols[0]}")
+                intraday_dates = pd.to_datetime(intraday_data[date_cols[0]], errors='coerce')
+                if hasattr(intraday_dates.iloc[0], 'date'):
+                    intraday_dates = intraday_dates.dt.date
+            else:
+                warnings.append("Intraday data missing Date/Datetime column")
+                return False, warnings, ["Ensure intraday data has a 'Date' or 'Datetime' column"]
+    except Exception as e:
+        warnings.append(f"Error processing intraday data dates: {str(e)}")
+        return False, warnings, ["Check intraday data date format"]
     
     daily_start = daily_dates.min()
     daily_end = daily_dates.max()
@@ -999,16 +1027,24 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
             
             # Safe date range display
             try:
-                date_min = daily_data['Date'].min()
-                date_max = daily_data['Date'].max()
-                if hasattr(date_min, 'date'):
-                    date_min = date_min.date()
-                if hasattr(date_max, 'date'):
-                    date_max = date_max.date()
-                st.success(f"📅 Daily data range: {date_min} to {date_max}")
+                if 'Date' in daily_data.columns:
+                    date_min = daily_data['Date'].min()
+                    date_max = daily_data['Date'].max()
+                    
+                    # Handle different date formats safely
+                    if pd.api.types.is_datetime64_any_dtype(daily_data['Date']):
+                        if hasattr(date_min, 'date'):
+                            date_min = date_min.date()
+                        if hasattr(date_max, 'date'):
+                            date_max = date_max.date()
+                    
+                    st.success(f"📅 Daily data range: {date_min} to {date_max}")
+                else:
+                    st.success(f"📅 Daily data ready: {len(daily_data)} records")
             except Exception as e:
-                st.warning(f"⚠️ Date range display error: {e}")
-                st.success(f"📅 Daily data ready: {len(daily_data)} records")
+                st.info(f"📅 Daily data ready: {len(daily_data)} records (date display unavailable)")
+                # Don't show the error to user, just log it
+                print(f"Debug: Date range display error: {e}")
             
             return daily_data
             
