@@ -722,17 +722,42 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
             warnings.append("⚠️ Very small overlap period between daily and intraday data")
             recommendations.append("Increase overlap period for more reliable analysis")
     
-    # Data quality checks
-    daily_missing = daily_data[['Open', 'High', 'Low', 'Close']].isnull().sum().sum()
-    intraday_missing = intraday_data[['Open', 'High', 'Low', 'Close']].isnull().sum().sum()
+    # Data quality checks - with better error handling
+    try:
+        # Check if OHLC columns exist in daily data
+        required_daily_cols = ['Open', 'High', 'Low', 'Close']
+        missing_daily_cols = [col for col in required_daily_cols if col not in daily_data.columns]
+        
+        if missing_daily_cols:
+            warnings.append(f"⚠️ Daily data missing OHLC columns: {missing_daily_cols}")
+            recommendations.append("Ensure daily data has Open, High, Low, Close columns")
+        else:
+            # Only check for missing values if columns exist
+            daily_missing = daily_data[required_daily_cols].isnull().sum().sum()
+            if daily_missing > 0:
+                warnings.append(f"⚠️ {daily_missing} missing values in daily OHLC data")
+                recommendations.append("Clean daily data to remove or fill missing values")
+    except Exception as e:
+        warnings.append(f"⚠️ Error checking daily data quality: {str(e)}")
+        recommendations.append("Check daily data format and column names")
     
-    if daily_missing > 0:
-        warnings.append(f"⚠️ {daily_missing} missing values in daily OHLC data")
-        recommendations.append("Clean daily data to remove or fill missing values")
-    
-    if intraday_missing > 0:
-        warnings.append(f"⚠️ {intraday_missing} missing values in intraday OHLC data")
-        recommendations.append("Clean intraday data to remove or fill missing values")
+    try:
+        # Check if OHLC columns exist in intraday data
+        required_intraday_cols = ['Open', 'High', 'Low', 'Close']
+        missing_intraday_cols = [col for col in required_intraday_cols if col not in intraday_data.columns]
+        
+        if missing_intraday_cols:
+            warnings.append(f"⚠️ Intraday data missing OHLC columns: {missing_intraday_cols}")
+            recommendations.append("Ensure intraday data has Open, High, Low, Close columns")
+        else:
+            # Only check for missing values if columns exist
+            intraday_missing = intraday_data[required_intraday_cols].isnull().sum().sum()
+            if intraday_missing > 0:
+                warnings.append(f"⚠️ {intraday_missing} missing values in intraday OHLC data")
+                recommendations.append("Clean intraday data to remove or fill missing values")
+    except Exception as e:
+        warnings.append(f"⚠️ Error checking intraday data quality: {str(e)}")
+        recommendations.append("Check intraday data format and column names")
     
     return is_valid, warnings, recommendations
 
@@ -1011,17 +1036,36 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
             
             # Ensure Date column exists and is properly formatted
             if 'Date' not in daily_data.columns:
-                # Public data usually has the date as index, now as first column after reset_index
-                if daily_data.index.name == 'Date' or 'Date' in str(daily_data.columns[0]).lower():
-                    # First column should be the date after reset_index
+                # Check for alternative column names after reset_index
+                potential_date_cols = [col for col in daily_data.columns if 'date' in str(col).lower()]
+                if potential_date_cols:
+                    # Rename the first date-like column to 'Date'
+                    daily_data.rename(columns={potential_date_cols[0]: 'Date'}, inplace=True)
+                    st.info(f"✅ Renamed '{potential_date_cols[0]}' column to 'Date'")
+                elif len(daily_data.columns) > 0:
+                    # First column after reset_index is usually the date
                     daily_data.rename(columns={daily_data.columns[0]: 'Date'}, inplace=True)
+                    st.info(f"✅ Renamed '{daily_data.columns[0]}' (first column) to 'Date'")
                 else:
-                    st.error("❌ Could not find Date column in public data")
+                    st.error("❌ Could not find any suitable date column in public data")
                     st.info(f"Available columns: {list(daily_data.columns)}")
                     return None
             
             # Standardize column names (after ensuring Date exists)
             daily_data = standardize_columns(daily_data)
+            
+            # Debug: Show columns after standardization
+            st.info(f"🔧 DEBUG: Daily data columns after standardization: {list(daily_data.columns)}")
+            st.info(f"🔧 DEBUG: Daily data shape: {daily_data.shape}")
+            
+            # Validate that we have the required OHLC columns
+            required_cols = ['Open', 'High', 'Low', 'Close']
+            missing_cols = [col for col in required_cols if col not in daily_data.columns]
+            
+            if missing_cols:
+                st.error(f"❌ Missing required columns in daily data after standardization: {missing_cols}")
+                st.info("Available columns: " + ", ".join(daily_data.columns))
+                return None
             
             st.success(f"✅ Auto-fetched daily data from public source: {len(daily_data)} records")
             
@@ -1092,12 +1136,18 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
             
             # Ensure Date column exists and is properly formatted
             if 'Date' not in daily_data.columns:
-                # Public data usually has the date as index, now as first column after reset_index
-                if daily_data.index.name == 'Date' or 'Date' in str(daily_data.columns[0]).lower():
-                    # First column should be the date after reset_index
+                # Check for alternative column names after reset_index
+                potential_date_cols = [col for col in daily_data.columns if 'date' in str(col).lower()]
+                if potential_date_cols:
+                    # Rename the first date-like column to 'Date'
+                    daily_data.rename(columns={potential_date_cols[0]: 'Date'}, inplace=True)
+                    st.info(f"✅ Renamed '{potential_date_cols[0]}' column to 'Date'")
+                elif len(daily_data.columns) > 0:
+                    # First column after reset_index is usually the date
                     daily_data.rename(columns={daily_data.columns[0]: 'Date'}, inplace=True)
+                    st.info(f"✅ Renamed first column to 'Date'")
                 else:
-                    st.error("❌ Could not find Date column in public data")
+                    st.error("❌ Could not find any suitable date column in public data")
                     st.info(f"Available columns: {list(daily_data.columns)}")
                     return None
             
@@ -1209,19 +1259,23 @@ def standardize_columns(df):
         
         df.columns = clean_columns
         
+        # Debug: Show original columns
+        st.info(f"🔧 DEBUG: Original columns: {list(df.columns)}")
+        
         # Common column mappings
         column_mappings = {
             # Date columns
             'date': 'Date',
             'timestamp': 'Date', 
             'datetime': 'Datetime',
-            # OHLC columns
+            # OHLC columns - be more flexible with case and variations
             'open': 'Open',
             'high': 'High', 
             'low': 'Low',
             'close': 'Close',
             'last': 'Close',  # Common in some data providers
             'adj close': 'Close',
+            'adj_close': 'Close',
             'adjusted_close': 'Close',
             'settle': 'Close',  # Common in futures data
             # Volume
@@ -1232,11 +1286,25 @@ def standardize_columns(df):
         }
         
         # Apply mappings (case insensitive)
-        for old_name, new_name in column_mappings.items():
-            for col in df.columns:
-                if isinstance(col, str) and col.lower() == old_name:
-                    df.rename(columns={col: new_name}, inplace=True)
-                    break
+        columns_mapped = []
+        for col in df.columns:
+            mapped = False
+            if isinstance(col, str):
+                col_lower = col.lower().strip()
+                for old_name, new_name in column_mappings.items():
+                    if col_lower == old_name:
+                        df.rename(columns={col: new_name}, inplace=True)
+                        columns_mapped.append(f"{col} → {new_name}")
+                        mapped = True
+                        break
+            
+            # If no mapping found, keep original
+            if not mapped:
+                columns_mapped.append(f"{col} (unchanged)")
+        
+        # Debug: Show mapping results
+        st.info(f"🔧 DEBUG: Column mappings: {columns_mapped}")
+        st.info(f"🔧 DEBUG: Final columns: {list(df.columns)}")
         
         return df
         
