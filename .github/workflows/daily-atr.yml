@@ -43,50 +43,10 @@ jobs:
           echo "📋 Contents preview:"
           head -30 atr_levels.json
           
-          # Show multi-ticker status summary
+          # Show multi-ticker status summary (simplified to avoid YAML issues)
           echo ""
-          echo "📈 Multi-ticker status summary:"
-          python -c "
-import json
-try:
-    with open('atr_levels.json', 'r') as f:
-        data = json.load(f)
-    
-    if 'tickers' in data:
-        tickers = data['tickers']
-        success_count = sum(1 for t in tickers.values() if t.get('status') == 'success')
-        error_count = len(tickers) - success_count
-        print(f'📊 Total tickers: {len(tickers)}')
-        print(f'✅ Successful: {success_count}')
-        print(f'❌ Errors: {error_count}')
-        print('')
-        
-        # Show details for each ticker
-        for ticker_key, ticker_data in tickers.items():
-            if ticker_data.get('status') == 'success':
-                close = ticker_data.get('reference_close', 'N/A')
-                atr = ticker_data.get('reference_atr', 'N/A')
-                date = ticker_data.get('reference_date', 'N/A')
-                age = ticker_data.get('data_age_days', 0)
-                age_warn = f' (⚠️ {age}d old)' if age > 1 else ''
-                print(f'✅ {ticker_key}: \${close} (ATR: \${atr}) [{date}]{age_warn}')
-            else:
-                error = ticker_data.get('error', 'Unknown error')
-                print(f'❌ {ticker_key}: {error}')
-    else:
-        # Legacy single ticker format
-        print('📊 Legacy single-ticker format detected')
-        if data.get('status') == 'success':
-            close = data.get('reference_close', 'N/A')
-            atr = data.get('reference_atr', 'N/A')
-            print(f'✅ Single ticker: \${close} (ATR: \${atr})')
-        else:
-            print(f'❌ Single ticker failed: {data.get(\"error\", \"Unknown error\")}')
-        
-except Exception as e:
-    print(f'❌ Error reading JSON: {e}')
-    exit(1)
-"
+          echo "📈 Checking multi-ticker status..."
+          python -c "import json; data=json.load(open('atr_levels.json')); print(f'Tickers: {len(data.get(\"tickers\", {}))}') if 'tickers' in data else print('Legacy format')"
         else
           echo "❌ ATR levels JSON file not found!"
           exit 1
