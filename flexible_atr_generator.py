@@ -370,13 +370,35 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
     return is_valid, warnings, recommendations
 
 def load_daily_data(uploaded_file):
-    """Load daily data from uploaded CSV file"""
+    """Load daily data from uploaded CSV file with robust encoding handling"""
     try:
         # Handle different file types
         if uploaded_file.name.endswith('.csv'):
-            daily = pd.read_csv(uploaded_file)
+            # Try multiple encodings for CSV files
+            encodings_to_try = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252', 'utf-16']
+            
+            for encoding in encodings_to_try:
+                try:
+                    # Reset file pointer
+                    uploaded_file.seek(0)
+                    daily = pd.read_csv(uploaded_file, encoding=encoding)
+                    st.info(f"Successfully loaded CSV with {encoding} encoding")
+                    break
+                except UnicodeDecodeError:
+                    continue
+                except Exception as e:
+                    # If it's not an encoding error, break and handle it below
+                    if "codec can't decode" not in str(e):
+                        raise e
+                    continue
+            else:
+                # If all encodings failed
+                st.error("Could not read CSV file with any supported encoding")
+                st.info("Try saving your CSV file as UTF-8 encoding")
+                return None
+                
         elif uploaded_file.name.endswith(('.xlsx', '.xls')):
-            # Try to detect header row for Excel files
+            # Excel files don't have encoding issues
             daily = pd.read_excel(uploaded_file, header=0)
             # If that doesn't work, try other common header positions
             if 'Date' not in daily.columns and 'Close' not in daily.columns:
@@ -400,10 +422,22 @@ def load_daily_data(uploaded_file):
         missing_cols = [col for col in required_cols if col not in daily.columns]
         if missing_cols:
             st.error(f"Missing required columns in daily data: {missing_cols}")
+            st.info(f"Available columns: {list(daily.columns)}")
             return None
         
         # Sort by date and ensure proper date format
-        daily['Date'] = pd.to_datetime(daily['Date'])
+        daily['Date'] = pd.to_datetime(daily['Date'], errors='coerce')
+        
+        # Check for invalid dates
+        invalid_dates = daily['Date'].isna().sum()
+        if invalid_dates > 0:
+            st.warning(f"Found {invalid_dates} invalid dates - removing these rows")
+            daily = daily.dropna(subset=['Date'])
+        
+        if daily.empty:
+            st.error("No valid data remaining after date processing")
+            return None
+        
         daily = daily.sort_values('Date').reset_index(drop=True)
         
         st.success(f"Loaded daily data: {len(daily)} records")
@@ -422,10 +456,14 @@ def load_daily_data(uploaded_file):
         
     except Exception as e:
         st.error(f"Error loading daily data: {str(e)}")
+        st.info("Try these solutions:")
+        st.info("1. Save your CSV file with UTF-8 encoding")
+        st.info("2. Open in Excel and re-save as CSV")
+        st.info("3. Use Excel format (.xlsx) instead of CSV")
         return None
 
 def load_intraday_data(uploaded_file):
-    """Load intraday data from uploaded file with progress tracking"""
+    """Load intraday data from uploaded file with robust encoding handling"""
     try:
         # Handle case where uploaded_file might be a list (safety check)
         if isinstance(uploaded_file, list):
@@ -442,7 +480,29 @@ def load_intraday_data(uploaded_file):
         progress_bar.progress(25)
         
         if uploaded_file.name.endswith('.csv'):
-            intraday = pd.read_csv(uploaded_file)
+            # Try multiple encodings for CSV files
+            encodings_to_try = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252', 'utf-16']
+            
+            for encoding in encodings_to_try:
+                try:
+                    # Reset file pointer
+                    uploaded_file.seek(0)
+                    intraday = pd.read_csv(uploaded_file, encoding=encoding)
+                    st.info(f"Successfully loaded CSV with {encoding} encoding")
+                    break
+                except UnicodeDecodeError:
+                    continue
+                except Exception as e:
+                    # If it's not an encoding error, break and handle it below
+                    if "codec can't decode" not in str(e):
+                        raise e
+                    continue
+            else:
+                # If all encodings failed
+                st.error("Could not read CSV file with any supported encoding")
+                st.info("Try saving your CSV file as UTF-8 encoding")
+                return None
+                
         elif uploaded_file.name.endswith(('.xlsx', '.xls')):
             intraday = pd.read_excel(uploaded_file, header=0)
         else:
@@ -460,6 +520,7 @@ def load_intraday_data(uploaded_file):
         missing_cols = [col for col in required_cols if col not in intraday.columns]
         if missing_cols:
             st.error(f"Missing required columns in intraday data: {missing_cols}")
+            st.info(f"Available columns: {list(intraday.columns)}")
             return None
         
         status_text.text("Processing datetime...")
@@ -469,15 +530,25 @@ def load_intraday_data(uploaded_file):
         if 'Datetime' not in intraday.columns:
             # Try to create from Date and Time columns
             if 'Date' in intraday.columns and 'Time' in intraday.columns:
-                intraday['Datetime'] = pd.to_datetime(intraday['Date'].astype(str) + ' ' + intraday['Time'].astype(str))
+                intraday['Datetime'] = pd.to_datetime(intraday['Date'].astype(str) + ' ' + intraday['Time'].astype(str), errors='coerce')
             elif 'Date' in intraday.columns:
                 # Assume Date column contains full datetime
-                intraday['Datetime'] = pd.to_datetime(intraday['Date'])
+                intraday['Datetime'] = pd.to_datetime(intraday['Date'], errors='coerce')
             else:
                 st.error("Could not find datetime information in intraday data")
                 return None
         else:
-            intraday['Datetime'] = pd.to_datetime(intraday['Datetime'])
+            intraday['Datetime'] = pd.to_datetime(intraday['Datetime'], errors='coerce')
+        
+        # Check for invalid datetime entries
+        invalid_datetime = intraday['Datetime'].isna().sum()
+        if invalid_datetime > 0:
+            st.warning(f"Found {invalid_datetime} invalid datetime entries - removing these rows")
+            intraday = intraday.dropna(subset=['Datetime'])
+        
+        if intraday.empty:
+            st.error("No valid data remaining after datetime processing")
+            return None
         
         # Create Date column for matching
         intraday['Date'] = intraday['Datetime'].dt.date
@@ -499,6 +570,10 @@ def load_intraday_data(uploaded_file):
         
     except Exception as e:
         st.error(f"Error loading intraday data: {str(e)}")
+        st.info("Try these solutions:")
+        st.info("1. Save your CSV file with UTF-8 encoding")
+        st.info("2. Open in Excel and re-save as CSV")
+        st.info("3. Use Excel format (.xlsx) instead of CSV")
         return None
 
 def standardize_columns(df):
