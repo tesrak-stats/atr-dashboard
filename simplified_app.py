@@ -29,6 +29,11 @@ ticker_config = {
         "display_name": "Russell 2000 (IWM)",
         "ticker_symbol": "IWM"
     }
+    "NVDA": {
+        "summary_file": "atr_dashboard_summary_NVDA.csv",
+        "display_name": "S&P 500 (NVDA)",
+        "ticker_symbol": "NVDA"
+    },
     # Add more tickers as needed - make sure they match TICKER_CONFIG in daily_atr_updater.py
 }
 
