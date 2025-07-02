@@ -438,6 +438,14 @@ def load_daily_data(uploaded_file):
             st.error("No valid data remaining after date processing")
             return None
         
+        # Check for and handle duplicate dates
+        original_count = len(daily)
+        daily = daily.drop_duplicates(subset=['Date'], keep='first')
+        duplicates_removed = original_count - len(daily)
+        
+        if duplicates_removed > 0:
+            st.warning(f"Found {duplicates_removed} duplicate dates in daily data - keeping first occurrence")
+        
         daily = daily.sort_values('Date').reset_index(drop=True)
         
         st.success(f"Loaded daily data: {len(daily)} records")
