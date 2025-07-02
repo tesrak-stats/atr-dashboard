@@ -375,358 +375,272 @@ class CSVProcessor:
             return output_df, file_info
         else:
             return None, file_info
-    """Handle ticker symbol mappings for different data sources"""
-    
-    @staticmethod
-    def get_public_ticker(input_ticker):
-        """Convert common ticker variations to public data source format"""
-        
-        # Common ticker mappings
-        ticker_mappings = {
-            # S&P 500 variations
-            'SPX': '^GSPC',
-            'SP500': '^GSPC',
-            'S&P500': '^GSPC',
-            'SPY': 'SPY',  # ETF, no change needed
-            
-            # NASDAQ variations  
-            'NDX': '^NDX',
-            'NASDAQ': '^IXIC',
-            'COMP': '^IXIC',
-            'QQQ': 'QQQ',  # ETF, no change needed
-            
-            # Dow Jones variations
-            'DJI': '^DJI',
-            'DJIA': '^DJI',
-            'DOW': '^DJI',
-            'DIA': 'DIA',  # ETF, no change needed
-            
-            # Russell variations
-            'RUT': '^RUT',
-            'RUSSELL': '^RUT',
-            'IWM': 'IWM',  # ETF, no change needed
-            
-            # VIX variations
-            'VIX': '^VIX',
-            'VOLATILITY': '^VIX',
-            
-            # Currency pairs (Forex)
-            'EURUSD': 'EURUSD=X',
-            'GBPUSD': 'GBPUSD=X', 
-            'USDJPY': 'USDJPY=X',
-            'USDCAD': 'USDCAD=X',
-            'AUDUSD': 'AUDUSD=X',
-            'NZDUSD': 'NZDUSD=X',
-            'USDCHF': 'USDCHF=X',
-            
-            # Crypto variations
-            'BITCOIN': 'BTC-USD',
-            'BTC': 'BTC-USD',
-            'ETHEREUM': 'ETH-USD', 
-            'ETH': 'ETH-USD',
-            'LITECOIN': 'LTC-USD',
-            'LTC': 'LTC-USD',
-            
-            # Futures (common contracts)
-            'ES': 'ES=F',
-            'NQ': 'NQ=F',
-            'YM': 'YM=F',
-            'RTY': 'RTY=F',
-            'CL': 'CL=F',  # Crude Oil
-            'GC': 'GC=F',  # Gold
-            'SI': 'SI=F',  # Silver
-            'NG': 'NG=F',  # Natural Gas
-            
-            # Bonds
-            'TNX': '^TNX',  # 10-Year Treasury
-            'TYX': '^TYX',  # 30-Year Treasury
-            'FVX': '^FVX',  # 5-Year Treasury
-            'IRX': '^IRX',  # 3-Month Treasury
-        }
-        
-        # Convert to uppercase for matching
-        input_upper = input_ticker.upper().strip()
-        
-        # Return mapped ticker if found, otherwise return original
-        mapped_ticker = ticker_mappings.get(input_upper, input_ticker)
-        
-        return mapped_ticker
-    
-    @staticmethod
-    def suggest_alternatives(input_ticker):
-        """Suggest alternative ticker formats if the input fails"""
-        
-        suggestions = []
-        input_upper = input_ticker.upper().strip()
-        
-        # Common patterns to try
-        variations = [
-            f"^{input_upper}",  # Add caret for indices
-            f"{input_upper}=X",  # Add =X for forex
-            f"{input_upper}=F",  # Add =F for futures
-            f"{input_upper}-USD",  # Add -USD for crypto
-        ]
-        
-        # Remove duplicates and original
-        variations = [v for v in variations if v != input_ticker]
-        
-        return variations[:3]  # Return top 3 suggestions
-
-def clean_column_names(df):
-    """Clean and standardize column names"""
-    # Handle MultiIndex columns (common with yfinance)
-    if isinstance(df.columns, pd.MultiIndex):
-        st.info("🔧 Detected MultiIndex columns, flattening...")
-        # Flatten MultiIndex columns - keep only the first level (OHLC names)
-        df.columns = df.columns.get_level_values(0)
-    
-    # Ensure Date column exists after reset_index
-    if 'Date' not in df.columns:
-        # Check for alternative column names
-        potential_date_cols = [col for col in df.columns if 'date' in str(col).lower()]
-        if potential_date_cols:
-            df.rename(columns={potential_date_cols[0]: 'Date'}, inplace=True)
-            st.info(f"✅ Renamed '{potential_date_cols[0]}' to 'Date'")
-        elif len(df.columns) > 0:
-            # First column is usually the date after reset_index
-            df.rename(columns={df.columns[0]: 'Date'}, inplace=True)
-            st.info(f"✅ Renamed first column to 'Date'")
-    
-    return df
-
-def download_data_chunked(ticker, start_date, end_date, chunk_years=3, max_retries=3):
-    """Download data in chunks with retry logic"""
-    
-    # Ensure we have date objects
-    if hasattr(start_date, 'date'):
-        start_date = start_date.date()
-    if hasattr(end_date, 'date'):
-        end_date = end_date.date()
-    
-    all_data = []
-    current_start = start_date
-    
-    # Calculate total timespan for progress tracking
-    total_days = (end_date - start_date).days
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    chunk_count = 0
-    
-    while current_start < end_date:
-        chunk_count += 1
-        
-        # Calculate chunk end date
-        chunk_end_date = current_start + timedelta(days=chunk_years * 365)
-        chunk_end = min(chunk_end_date, end_date)
-        
-        # Update progress
-        days_processed = (current_start - start_date).days
-        progress = min(days_processed / total_days, 1.0)
-        progress_bar.progress(progress)
-        status_text.text(f"📊 Downloading chunk {chunk_count}: {current_start} to {chunk_end}")
-        
-        # Try to download this chunk with retries
-        chunk_data = None
-        for attempt in range(max_retries):
-            try:
-                chunk_data = yf.download(
-                    ticker, 
-                    start=current_start, 
-                    end=chunk_end + timedelta(days=1),
-                    interval='1d', 
-                    progress=False
-                )
-                
-                if not chunk_data.empty:
-                    st.success(f"✅ Chunk {chunk_count}: {len(chunk_data)} records")
-                    break
-                else:
-                    st.warning(f"⚠️ Chunk {chunk_count} returned empty data")
-                    
-            except Exception as e:
-                st.warning(f"⚠️ Chunk {chunk_count}, attempt {attempt + 1} failed: {str(e)}")
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 2
-                    time.sleep(wait_time)
-        
-        # Handle failed chunk
-        if chunk_data is None or chunk_data.empty:
-            st.error(f"❌ Failed to download chunk {chunk_count} after {max_retries} attempts")
-            
-            user_choice = st.radio(
-                f"How to handle failed chunk {chunk_count}?",
-                ["Skip this chunk and continue", "Stop download", "Retry with smaller chunks"],
-                key=f"chunk_error_{chunk_count}"
-            )
-            
-            if user_choice == "Skip this chunk and continue":
-                st.warning(f"⏭️ Skipping chunk {chunk_count}")
-                current_start = chunk_end
-                continue
-            elif user_choice == "Stop download":
-                st.warning("🛑 Stopping download")
-                break
-            else:  # Retry with smaller chunks
-                st.info("🔄 Retrying with smaller chunks...")
-                smaller_chunk_years = max(1, chunk_years // 2)
-                return download_data_chunked(ticker, start_date, end_date, smaller_chunk_years, max_retries)
-        else:
-            all_data.append(chunk_data)
-        
-        current_start = chunk_end
-        time.sleep(0.5)  # Be respectful to the API
-    
-    # Clear progress indicators
-    progress_bar.empty()
-    status_text.empty()
-    
-    # Combine all chunks
-    if all_data:
-        st.info("🔗 Combining all chunks...")
-        combined_data = pd.concat(all_data, ignore_index=False)
-        combined_data = combined_data[~combined_data.index.duplicated(keep='first')]
-        combined_data = combined_data.sort_index()
-        
-        # Reset index and clean columns
-        combined_data.reset_index(inplace=True)
-        combined_data = clean_column_names(combined_data)
-        
-        st.success(f"✅ Download complete: {len(combined_data)} total records")
-        return combined_data
-    else:
-        st.error("❌ No data was successfully downloaded")
-        return pd.DataFrame()
-
-def download_single_request(ticker, start_date, end_date):
-    """Download data in a single request"""
-    try:
-        data = yf.download(ticker, start=start_date, end=end_date, interval='1d', progress=False)
-        
-        if data.empty:
-            return pd.DataFrame()
-        
-        # Reset index and clean columns
-        data.reset_index(inplace=True)
-        data = clean_column_names(data)
-        
-        return data
-        
-    except Exception as e:
-        st.error(f"Download failed: {str(e)}")
-        return pd.DataFrame()
-
-def validate_data(df, data_type="data"):
-    """Validate downloaded data"""
-    if df.empty:
-        st.error(f"❌ No {data_type} was downloaded")
-        return False
-    
-    # Check for required columns
-    required_cols = ['Date', 'Open', 'High', 'Low', 'Close']
-    missing_cols = [col for col in required_cols if col not in df.columns]
-    
-    if missing_cols:
-        st.error(f"❌ Missing required columns in {data_type}: {missing_cols}")
-        st.info(f"Available columns: {list(df.columns)}")
-        return False
-    
-    # Check for data quality
-    null_counts = df[required_cols].isnull().sum()
-    if null_counts.sum() > 0:
-        st.warning(f"⚠️ Found missing values in {data_type}:")
-        for col, count in null_counts.items():
-            if count > 0:
-                st.warning(f"  {col}: {count} missing values")
-    
-    return True
-
-def generate_filename(ticker, data_type, start_date, end_date):
-    """Generate a descriptive filename"""
-    ticker_clean = ticker.replace("^", "").replace("=", "_").replace("-", "_")
-    start_str = start_date.strftime("%Y%m%d") if hasattr(start_date, 'strftime') else str(start_date).replace("-", "")
-    end_str = end_date.strftime("%Y%m%d") if hasattr(end_date, 'strftime') else str(end_date).replace("-", "")
-    
-    return f"{ticker_clean}_{data_type}_{start_str}_to_{end_str}.csv"
 
 # Streamlit Interface
-st.title('📊 CSV Data Handler - Public Source to CSV')
-st.write('**Download financial data from public sources and export as clean CSV files**')
-st.write('**Perfect for preparing data for the ATR Analysis tool**')
+st.title('📊 Enhanced CSV Data Handler')
+st.write('**Combine multiple CSV files and resample to any timeframe you need**')
 
-# Sidebar configuration
-st.sidebar.header("🎯 Data Configuration")
+# Mode selection
+mode = st.selectbox(
+    "🎯 Choose Processing Mode",
+    ["📁 Multi-CSV Processor", "📈 Public Data Download", "🔧 Single File Resampler"],
+    help="Select what you want to do"
+)
 
-# Ticker input
-ticker = st.sidebar.text_input(
-    "Ticker Symbol",
-    value="SPX",
-    help="Enter ticker symbol (e.g., SPX, AAPL, BTC)"
-).upper()
-
-# Show ticker mapping
-if ticker:
-    mapped_ticker = TickerMapper.get_public_ticker(ticker)
-    if mapped_ticker != ticker:
-        st.sidebar.success(f"✅ Will map: {ticker} → {mapped_ticker}")
+# ========================================================================================
+# MULTI-CSV PROCESSOR (Main Feature)
+# ========================================================================================
+if mode == "📁 Multi-CSV Processor":
+    st.header("📁 Multi-CSV Processor")
+    st.write("**Upload multiple CSV files and combine them into one unified dataset**")
+    
+    # File upload - Make this prominent
+    st.subheader("📤 File Upload")
+    uploaded_files = st.file_uploader(
+        "Choose Multiple CSV Files",
+        type=['csv', 'xlsx', 'xls'],
+        accept_multiple_files=True,
+        help="Select multiple CSV/Excel files to combine and process",
+        key="multi_csv_uploader"
+    )
+    
+    # Show upload status
+    if uploaded_files:
+        st.success(f"✅ **{len(uploaded_files)} files uploaded successfully!**")
+        
+        # Show file list
+        with st.expander("📋 Uploaded Files", expanded=True):
+            for i, file in enumerate(uploaded_files, 1):
+                st.write(f"{i}. **{file.name}** ({file.size:,} bytes)")
+        
+        st.markdown("---")
+        
+        # Configuration options
+        st.subheader("⚙️ Processing Configuration")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**🎯 Output Configuration**")
+            
+            # Target timeframe
+            timeframe_type = st.radio(
+                "Timeframe Type",
+                ["Minutes/Hours", "Daily Aggregations"],
+                help="Choose between minute-based or daily-based aggregations",
+                key="timeframe_type_multi"
+            )
+            
+            if timeframe_type == "Minutes/Hours":
+                target_timeframe = st.selectbox(
+                    "Target Timeframe",
+                    ["1T", "2T", "5T", "10T", "15T", "30T", "1H", "2H", "4H"],
+                    index=3,  # Default to 10T
+                    help="T = minutes, H = hours"
+                )
+            else:
+                target_timeframe = st.selectbox(
+                    "Target Timeframe", 
+                    ["WEEKLY", "MONTHLY", "QUARTERLY"],
+                    help="Aggregate daily data into longer periods"
+                )
+        
+        with col2:
+            st.markdown("**⏰ Custom Time Filtering**")
+            
+            use_custom_time = st.checkbox(
+                "Apply Custom Time Filter",
+                help="Filter data to specific hours (e.g., market hours only)",
+                key="use_custom_time_multi"
+            )
+            
+            if use_custom_time:
+                custom_start = st.time_input(
+                    "Start Time",
+                    value=time(9, 30),
+                    help="Include data from this time onward",
+                    key="custom_start_multi"
+                )
+                
+                custom_end = st.time_input(
+                    "End Time", 
+                    value=time(16, 0),
+                    help="Include data up to this time",
+                    key="custom_end_multi"
+                )
+                
+                custom_start_str = custom_start.strftime("%H:%M")
+                custom_end_str = custom_end.strftime("%H:%M")
+                
+                st.info(f"📅 Will filter data to **{custom_start_str} - {custom_end_str}**")
+            else:
+                custom_start_str = None
+                custom_end_str = None
+        
+        st.markdown("---")
+        
+        # Process button - Make this prominent
+        if st.button("🚀 **Process Multiple CSVs**", type="primary", use_container_width=True):
+            with st.spinner("Processing multiple CSV files..."):
+                combined_data, file_info = CSVProcessor.process_multiple_csvs(
+                    uploaded_files, 
+                    target_timeframe,
+                    custom_start_str,
+                    custom_end_str
+                )
+                
+                if combined_data is not None:
+                    st.balloons()  # Celebration animation
+                    st.success(f"🎉 **Successfully combined {len(uploaded_files)} files!**")
+                    
+                    # Show file processing summary
+                    st.subheader("📋 Processing Summary")
+                    summary_df = pd.DataFrame(file_info)
+                    st.dataframe(summary_df, use_container_width=True)
+                    
+                    # Show combined data preview
+                    st.subheader("📊 Combined Data Preview")
+                    st.dataframe(combined_data.head(10), use_container_width=True)
+                    
+                    # Show summary metrics
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Total Records", f"{len(combined_data):,}")
+                    with col2:
+                        st.metric("Date Range", f"{combined_data['Date'].min()} to {combined_data['Date'].max()}")
+                    with col3:
+                        st.metric("Timeframe", target_timeframe)
+                    with col4:
+                        if use_custom_time:
+                            st.metric("Time Filter", f"{custom_start_str}-{custom_end_str}")
+                        else:
+                            st.metric("Time Filter", "None")
+                    
+                    # Download combined file - Make this prominent
+                    st.markdown("---")
+                    st.subheader("📥 Download Results")
+                    
+                    combined_filename = f"Combined_{target_timeframe}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                    
+                    st.download_button(
+                        "📥 **Download Combined CSV**",
+                        data=combined_data.to_csv(index=False),
+                        file_name=combined_filename,
+                        mime="text/csv",
+                        key="download_combined",
+                        use_container_width=True,
+                        type="primary"
+                    )
+                    
+                    st.success(f"✅ Ready to download: **{combined_filename}**")
+                    
+                else:
+                    st.error("❌ Failed to process CSV files. Please check the file processing summary above.")
+    
     else:
-        st.sidebar.info(f"📈 Will fetch: {ticker}")
+        # Show helpful instructions when no files are uploaded
+        st.info("👆 **Please upload multiple CSV files to get started**")
+        
+        # Show example of what files should look like
+        with st.expander("📋 Expected File Format", expanded=False):
+            st.markdown("""
+            **Your CSV files should contain these columns:**
+            - **Date** (or Datetime, Time)
+            - **Open**
+            - **High** 
+            - **Low**
+            - **Close**
+            - **Volume** (optional)
+            
+            **Example filenames that work well:**
+            - `SPX_20240101.csv`
+            - `AAPL_1min_data.csv`
+            - `ES_intraday.csv`
+            - `data_2024_01_01.csv`
+            
+            **The system will:**
+            - ✅ Auto-detect ticker symbols from filenames
+            - ✅ Warn if mixed tickers are found
+            - ✅ Standardize column names automatically
+            - ✅ Handle various date/time formats
+            """)
+        
+        # Show sample workflow
+        with st.expander("🔧 Sample Workflow", expanded=False):
+            st.markdown("""
+            **Example: Combine 25 daily 1-minute files into 10-minute bars**
+            
+            1. Upload 25 CSV files (e.g., from broker exports)
+            2. Set timeframe to **10T** (10 minutes)
+            3. Apply time filter **9:30 - 16:00** (market hours)
+            4. Click **Process Multiple CSVs**
+            5. Download single combined file ready for ATR analysis
+            
+            **Result:** 25 files → 1 clean file with 10-minute bars
+            """)
 
-# Date range
-st.sidebar.subheader("📅 Date Range")
-
-date_mode = st.sidebar.radio(
-    "Date Selection Mode",
-    ["Smart ATR Range", "Custom Range"],
-    help="Smart mode adds buffer for ATR calculation"
-)
-
-if date_mode == "Smart ATR Range":
-    # Simple date range with automatic buffer
-    intraday_start = st.sidebar.date_input(
-        "Intraday Analysis Start Date",
-        value=date(2024, 1, 1),
-        help="When you want your intraday analysis to begin"
-    )
+# ========================================================================================
+# PUBLIC DATA DOWNLOAD
+# ========================================================================================
+elif mode == "📈 Public Data Download":
+    st.header("📈 Public Data Download")
+    st.write("Download financial data from public sources and export as CSV")
     
-    intraday_end = st.sidebar.date_input(
-        "Intraday Analysis End Date", 
-        value=date.today(),
-        help="When you want your intraday analysis to end"
-    )
+    # Configuration in sidebar
+    with st.sidebar:
+        st.header("🎯 Download Configuration")
+        
+        # Ticker input
+        ticker = st.text_input(
+            "Ticker Symbol",
+            value="SPX",
+            help="Enter ticker symbol (e.g., SPX, AAPL, BTC)"
+        ).upper()
+        
+        # Show ticker mapping
+        if ticker:
+            mapped_ticker = TickerMapper.get_public_ticker(ticker)
+            if mapped_ticker != ticker:
+                st.success(f"✅ Will map: {ticker} → {mapped_ticker}")
+            else:
+                st.info(f"📈 Will fetch: {ticker}")
+        
+        # Date range
+        st.subheader("📅 Date Range")
+        
+        date_mode = st.radio(
+            "Date Selection Mode",
+            ["Smart ATR Range", "Custom Range"],
+            help="Smart mode adds buffer for ATR calculation"
+        )
+        
+        if date_mode == "Smart ATR Range":
+            # Simple date range with automatic buffer
+            intraday_start = st.date_input(
+                "Intraday Analysis Start Date",
+                value=date(2024, 1, 1),
+                help="When you want your intraday analysis to begin"
+            )
+            
+            intraday_end = st.date_input(
+                "Intraday Analysis End Date", 
+                value=date.today(),
+                help="When you want your intraday analysis to end"
+            )
+            
+            # Auto-calculate buffer
+            buffer_months = st.slider("Buffer Months for Daily Data", 3, 12, 6)
+            daily_start = intraday_start - timedelta(days=buffer_months * 30)
+            daily_end = intraday_end + timedelta(days=5)
+            
+            st.info(f"📊 Daily data will span: {daily_start} to {daily_end}")
+            st.info(f"📈 Buffer: {buffer_months} months before intraday start")
+        
+        else:
+            # Manual date range
+            daily_start = st.date_input("Daily Data Start Date", value=date(2023, 1, 1))
+            daily_end = st.date_input("Daily Data End Date", value=date.today())
     
-    # Auto-calculate buffer
-    buffer_months = st.sidebar.slider("Buffer Months for Daily Data", 3, 12, 6)
-    daily_start = intraday_start - timedelta(days=buffer_months * 30)
-    daily_end = intraday_end + timedelta(days=5)
-    
-    st.sidebar.info(f"📊 Daily data will span: {daily_start} to {daily_end}")
-    st.sidebar.info(f"📈 Buffer: {buffer_months} months before intraday start")
-
-else:
-    # Manual date range
-    daily_start = st.sidebar.date_input("Daily Data Start Date", value=date(2023, 1, 1))
-    daily_end = st.sidebar.date_input("Daily Data End Date", value=date.today())
-    intraday_start = daily_start
-    intraday_end = daily_end
-
-# Download options
-st.sidebar.subheader("⚙️ Download Options")
-
-download_mode = st.sidebar.radio(
-    "Download Method",
-    ["Single Request", "Chunked Download"],
-    help="Use chunked for large date ranges (>5 years)"
-)
-
-if download_mode == "Chunked Download":
-    chunk_size = st.sidebar.slider("Chunk Size (Years)", 1, 5, 3)
-
-# Main interface
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("📈 Daily Data Download")
+    st.info("⚠️ **Note:** Public sources have limitations. For extensive historical intraday data, use the Multi-CSV Processor with broker files.")
     
     if st.button("🚀 Download Daily Data", type="primary"):
         if not ticker:
@@ -735,155 +649,191 @@ with col1:
             mapped_ticker = TickerMapper.get_public_ticker(ticker)
             
             with st.spinner(f'Downloading daily data for {mapped_ticker}...'):
-                # Calculate date span
-                date_span_years = (daily_end - daily_start).days / 365.25
-                
-                if download_mode == "Chunked Download" or date_span_years > 5:
-                    daily_data = download_data_chunked(mapped_ticker, daily_start, daily_end, chunk_size)
-                else:
-                    daily_data = download_single_request(mapped_ticker, daily_start, daily_end)
-                
-                if validate_data(daily_data, "daily data"):
-                    st.success(f"✅ Downloaded {len(daily_data)} daily records")
+                try:
+                    daily_data = yf.download(mapped_ticker, start=daily_start, end=daily_end, interval='1d', progress=False)
                     
-                    # Show preview
-                    st.subheader("📋 Data Preview")
-                    st.dataframe(daily_data.head(), use_container_width=True)
-                    
-                    # Show summary
-                    col1a, col2a, col3a = st.columns(3)
-                    with col1a:
-                        st.metric("Records", len(daily_data))
-                    with col2a:
-                        st.metric("Date Range", f"{daily_data['Date'].min().date()} to {daily_data['Date'].max().date()}")
-                    with col3a:
-                        st.metric("Columns", len(daily_data.columns))
-                    
-                    # Download button
-                    filename = generate_filename(ticker, "daily", daily_start, daily_end)
-                    st.download_button(
-                        "📥 Download Daily CSV",
-                        data=daily_data.to_csv(index=False),
-                        file_name=filename,
-                        mime="text/csv"
-                    )
-                else:
-                    # Suggest alternatives
-                    alternatives = TickerMapper.suggest_alternatives(ticker)
-                    if alternatives:
-                        st.info("💡 Try these alternative formats:")
-                        for alt in alternatives:
-                            st.info(f"   • {alt}")
+                    if not daily_data.empty:
+                        # Reset index and clean columns
+                        daily_data.reset_index(inplace=True)
+                        
+                        # Handle MultiIndex columns
+                        if isinstance(daily_data.columns, pd.MultiIndex):
+                            daily_data.columns = daily_data.columns.get_level_values(0)
+                        
+                        # Ensure Date column
+                        if 'Date' not in daily_data.columns and len(daily_data.columns) > 0:
+                            daily_data.rename(columns={daily_data.columns[0]: 'Date'}, inplace=True)
+                        
+                        st.success(f"✅ Downloaded {len(daily_data)} daily records")
+                        
+                        # Show preview
+                        st.subheader("📋 Data Preview")
+                        st.dataframe(daily_data.head(), use_container_width=True)
+                        
+                        # Download button
+                        filename = f"{ticker}_daily_{daily_start.strftime('%Y%m%d')}_to_{daily_end.strftime('%Y%m%d')}.csv"
+                        st.download_button(
+                            "📥 Download Daily CSV",
+                            data=daily_data.to_csv(index=False),
+                            file_name=filename,
+                            mime="text/csv"
+                        )
+                    else:
+                        st.error("❌ No data available for this ticker/range")
+                        
+                        # Suggest alternatives
+                        alternatives = TickerMapper.suggest_alternatives(ticker)
+                        if alternatives:
+                            st.info("💡 Try these alternative formats:")
+                            for alt in alternatives:
+                                st.info(f"   • {alt}")
+                                
+                except Exception as e:
+                    st.error(f"❌ Download failed: {str(e)}")
 
-with col2:
-    st.subheader("📊 Intraday Data Download")
-    st.info("⚠️ **Note:** Most public sources don't provide sufficient intraday history. This is mainly for short-term data or testing.")
+# ========================================================================================
+# SINGLE FILE RESAMPLER
+# ========================================================================================
+elif mode == "🔧 Single File Resampler":
+    st.header("🔧 Single File Resampler")
+    st.write("**Upload a single CSV and resample it to different timeframes**")
     
-    intraday_interval = st.selectbox(
-        "Intraday Interval",
-        ["1m", "2m", "5m", "15m", "30m", "60m", "90m"],
-        index=4,  # Default to 30m
-        help="Shorter intervals have more limited history"
+    # Single file upload
+    single_file = st.file_uploader(
+        "Upload Single CSV File",
+        type=['csv', 'xlsx', 'xls'], 
+        help="Upload one CSV/Excel file to resample"
     )
     
-    if st.button("🚀 Download Intraday Data"):
-        if not ticker:
-            st.error("❌ Please enter a ticker symbol")
-        else:
-            mapped_ticker = TickerMapper.get_public_ticker(ticker)
-            
-            # Limit intraday range (most sources only give ~60 days of intraday)
-            max_intraday_days = 60
-            if (intraday_end - intraday_start).days > max_intraday_days:
-                st.warning(f"⚠️ Intraday range limited to {max_intraday_days} days due to data source restrictions")
-                intraday_start_limited = intraday_end - timedelta(days=max_intraday_days)
+    if single_file:
+        st.success(f"✅ File uploaded: {single_file.name}")
+        
+        # Load and preview the file
+        try:
+            if single_file.name.endswith('.csv'):
+                df = pd.read_csv(single_file)
             else:
-                intraday_start_limited = intraday_start
+                df = pd.read_excel(single_file)
             
-            with st.spinner(f'Downloading intraday data for {mapped_ticker}...'):
-                try:
-                    intraday_data = yf.download(
-                        mapped_ticker, 
-                        start=intraday_start_limited, 
-                        end=intraday_end,
-                        interval=intraday_interval,
-                        progress=False
+            df = CSVProcessor.standardize_columns(df)
+            
+            st.subheader("📋 Original Data Preview")
+            st.dataframe(df.head(), use_container_width=True)
+            st.info(f"Original data: {len(df)} records")
+            
+            # Detected ticker
+            detected_ticker = CSVProcessor.detect_ticker_from_content(df) or CSVProcessor.detect_ticker_from_filename(single_file.name)
+            if detected_ticker:
+                st.info(f"🏷️ Detected ticker: **{detected_ticker}**")
+            
+            # Resampling options
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("🎯 Resampling Options")
+                
+                # Standard timeframes
+                timeframe_category = st.selectbox(
+                    "Timeframe Category",
+                    ["Minutes", "Hours", "Daily Aggregations"]
+                )
+                
+                if timeframe_category == "Minutes":
+                    resample_timeframe = st.selectbox(
+                        "Target Timeframe",
+                        ["1T", "2T", "5T", "10T", "15T", "30T"],
+                        index=3
                     )
+                elif timeframe_category == "Hours":
+                    resample_timeframe = st.selectbox(
+                        "Target Timeframe",
+                        ["1H", "2H", "3H", "4H", "6H", "8H", "12H"]
+                    )
+                else:  # Daily Aggregations
+                    resample_timeframe = st.selectbox(
+                        "Target Timeframe",
+                        ["WEEKLY", "MONTHLY", "QUARTERLY"]
+                    )
+            
+            with col2:
+                st.subheader("⚙️ Time Filtering")
+                
+                # Time filtering
+                apply_time_filter = st.checkbox("Apply Time Filter")
+                
+                if apply_time_filter:
+                    filter_start = st.time_input("Filter Start Time", value=time(9, 30))
+                    filter_end = st.time_input("Filter End Time", value=time(16, 0))
                     
-                    if not intraday_data.empty:
-                        # Reset index and clean columns
-                        intraday_data.reset_index(inplace=True)
-                        intraday_data = clean_column_names(intraday_data)
+                    filter_start_str = filter_start.strftime("%H:%M")
+                    filter_end_str = filter_end.strftime("%H:%M")
+                    
+                    st.info(f"📅 Time filter: {filter_start_str} - {filter_end_str}")
+                else:
+                    filter_start_str = None
+                    filter_end_str = None
+            
+            # Process button
+            if st.button("🔄 Resample Data", type="primary"):
+                try:
+                    with st.spinner("Resampling data..."):
+                        resampled_data = CSVProcessor.resample_ohlc_data(
+                            df, resample_timeframe, filter_start_str, filter_end_str
+                        )
                         
-                        # Create Datetime column for intraday data
-                        if 'Datetime' not in intraday_data.columns and 'Date' in intraday_data.columns:
-                            intraday_data['Datetime'] = intraday_data['Date']
+                        st.success(f"✅ Resampled: {len(df)} → {len(resampled_data)} records")
                         
-                        if validate_data(intraday_data, "intraday data"):
-                            st.success(f"✅ Downloaded {len(intraday_data)} intraday records")
-                            
-                            # Show preview
-                            st.subheader("📋 Data Preview")
-                            st.dataframe(intraday_data.head(), use_container_width=True)
-                            
-                            # Show summary
-                            col1b, col2b = st.columns(2)
-                            with col1b:
-                                st.metric("Records", len(intraday_data))
-                            with col2b:
-                                st.metric("Interval", intraday_interval)
-                            
-                            # Download button
-                            filename = generate_filename(ticker, f"intraday_{intraday_interval}", intraday_start_limited, intraday_end)
-                            st.download_button(
-                                "📥 Download Intraday CSV",
-                                data=intraday_data.to_csv(index=False),
-                                file_name=filename,
-                                mime="text/csv"
-                            )
-                    else:
-                        st.error("❌ No intraday data available for this ticker/range")
+                        # Show resampled preview
+                        st.subheader("📊 Resampled Data Preview")
+                        st.dataframe(resampled_data.head(), use_container_width=True)
+                        
+                        # Summary metrics
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Original Records", len(df))
+                        with col2:
+                            st.metric("Resampled Records", len(resampled_data))
+                        with col3:
+                            compression_ratio = (1 - len(resampled_data) / len(df)) * 100
+                            st.metric("Compression", f"{compression_ratio:.1f}%")
+                        
+                        # Download resampled file
+                        base_name = single_file.name.split('.')[0]
+                        resampled_filename = f"{base_name}_resampled_{resample_timeframe}.csv"
+                        
+                        st.download_button(
+                            "📥 Download Resampled CSV",
+                            data=resampled_data.to_csv(index=False),
+                            file_name=resampled_filename,
+                            mime="text/csv"
+                        )
                         
                 except Exception as e:
-                    st.error(f"❌ Intraday download failed: {str(e)}")
+                    st.error(f"❌ Resampling failed: {str(e)}")
+            
+        except Exception as e:
+            st.error(f"❌ Error loading file: {str(e)}")
 
 # Help section
 st.markdown("---")
 st.subheader("📚 Usage Guide")
 
-col1, col2 = st.columns(2)
+st.markdown("""
+**🎯 Multi-CSV Processor** (Recommended)
+- Perfect for combining broker data files
+- Upload 25+ 1-minute CSV files → Get 1 combined 10-minute file
+- Smart ticker detection and validation
+- Custom time filtering for market hours
 
-with col1:
-    st.markdown("""
-    **🎯 For ATR Analysis:**
-    1. Set your desired intraday analysis period
-    2. Use "Smart ATR Range" with 6+ month buffer
-    3. Download daily data first
-    4. Download intraday data (if available)
-    5. Use both CSVs in the ATR Analysis tool
-    
-    **📊 Recommended Settings:**
-    - Buffer: 6-12 months for ATR calculation
-    - Download mode: Chunked for large ranges
-    - Daily data: Always available
-    - Intraday: Limited to ~60 days from most sources
-    """)
+**📈 Public Data Download**
+- Download from public sources (limited intraday history)
+- Good for daily data with ATR buffers
+- Auto-maps common tickers (SPX → ^GSPC)
 
-with col2:
-    st.markdown("""
-    **💡 Tips:**
-    - **SPX** maps to **^GSPC** automatically
-    - **Large date ranges** use chunked download
-    - **Intraday data** is limited by public sources
-    - **For extensive intraday data**, use broker exports
-    - **CSV files** are ready for ATR Analysis tool
-    
-    **🔧 Supported Assets:**
-    - Stocks (AAPL, GOOGL, SPY)
-    - Indices (SPX, NDX, DJI) 
-    - Crypto (BTC, ETH)
-    - Forex (EURUSD, GBPUSD)
-    - Futures (ES, NQ, CL)
-    """)
+**🔧 Single File Resampler**
+- Transform one file to different timeframes
+- Convert 1-minute → 10-minute, daily → weekly, etc.
+- Apply custom time filters
 
-st.info("💾 **Next Step:** Use the downloaded CSV files in the ATR Analysis tool for systematic trigger/goal detection!")
+💾 **Next Step:** Use processed files in the ATR Analysis tool!
+""")
