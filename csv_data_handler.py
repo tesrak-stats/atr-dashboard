@@ -828,14 +828,14 @@ if mode == "📁 Multi-CSV Processor":
             4. Apply time filter **9:30 - 16:00** (market hours)
             5. Get single combined file with 10-minute bars
             
-            **⏰ Custom Candle Periods Workflow:**
+            **Custom Candle Periods Workflow:**
             1. Upload multiple CSV files with intraday data
             2. Choose "Custom Candle Periods"
             3. Define periods: **Morning (9:00-12:00)**, **Afternoon (12:00-16:00)**
             4. Each day creates 2 custom OHLC candles
             5. Perfect for session-based analysis
             
-            **📊 Custom Candle Output Example:**
+            **Custom Candle Output Example:**
             ```
             Date        Period_Name  Period_Start  Period_End  Open   High   Low    Close
             2024-01-01  Morning      09:00        12:00       4100   4150   4090   4140
