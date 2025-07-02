@@ -1,7 +1,7 @@
-# Daily ATR Levels Updater - Windows Compatible
+# Daily ATR Levels Updater - Multi-Ticker Windows Compatible
 """
-Daily ATR Levels Updater
-Runs at 5:16 PM Eastern to calculate next day's ATR levels
+Daily ATR Levels Updater - Multi-Ticker Support
+Runs at 5:16 PM Eastern to calculate next day's ATR levels for multiple tickers
 Saves results to JSON file for dashboard consumption
 """
 
@@ -12,6 +12,27 @@ from datetime import datetime
 import pytz
 import sys
 import os
+
+# Configuration for multiple tickers
+TICKER_CONFIG = {
+    "SPX": {
+        "symbol": "^GSPC",
+        "display_name": "S&P 500 (SPX)"
+    },
+    "QQQ": {
+        "symbol": "QQQ",
+        "display_name": "Nasdaq 100 (QQQ)"
+    },
+     "NVDA": {
+        "symbol": "NVDA",
+        "display_name": "NVidia Corporation (NVDA)"
+    },
+    "IWM": {
+        "symbol": "IWM", 
+        "display_name": "Russell 2000 (IWM)"
+    },
+    # Add more tickers as needed
+}
 
 def calculate_true_range(row):
     """Calculate True Range for a given row"""
@@ -57,7 +78,7 @@ def calculate_atr_levels(ticker="^GSPC", atr_window=14):
         # Fetch data - GET 6 MONTHS using period parameter
         # Yahoo Finance sometimes limits start/end date ranges, so use period instead
         
-        print(f"🔍 DEBUG: Requesting 6 months of data using period='6mo'")
+        print(f"🔍 DEBUG: Requesting 6 months of data for {ticker} using period='6mo'")
         
         spx = yf.Ticker(ticker)
         df = spx.history(period="6mo")  # Use period instead of start/end dates
@@ -65,7 +86,7 @@ def calculate_atr_levels(ticker="^GSPC", atr_window=14):
         if len(df) < atr_window + 1:
             raise ValueError(f"Not enough data. Got {len(df)} days, need {atr_window + 1}")
         
-        print(f"📊 Downloaded {len(df)} days of data for proper ATR baseline")
+        print(f"📊 Downloaded {len(df)} days of data for {ticker} for proper ATR baseline")
         print(f"📅 Date range: {df.index[0].strftime('%Y-%m-%d')} to {df.index[-1].strftime('%Y-%m-%d')}")
         print(f"🔄 Using 6 months of historical data for ATR convergence")
         
@@ -82,7 +103,7 @@ def calculate_atr_levels(ticker="^GSPC", atr_window=14):
         valid_atr_rows = df[df["ATR"].notna()]
         
         # DEBUG: Check what's happening with valid ATR rows
-        print(f"🔍 DEBUG INFO:")
+        print(f"🔍 DEBUG INFO for {ticker}:")
         print(f"   Total downloaded rows: {len(df)}")
         print(f"   Valid ATR rows: {len(valid_atr_rows)}")
         if not valid_atr_rows.empty:
@@ -104,7 +125,7 @@ def calculate_atr_levels(ticker="^GSPC", atr_window=14):
         days_old = (today - latest_date).days
         
         if days_old > 1:
-            print(f"⚠️  Warning: Latest data is {days_old} days old ({latest_date})")
+            print(f"⚠️  Warning: Latest data for {ticker} is {days_old} days old ({latest_date})")
         
         # Generate Fibonacci levels (same as run_generate)
         fib_ratios = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
@@ -139,9 +160,34 @@ def calculate_atr_levels(ticker="^GSPC", atr_window=14):
         return {
             "generated_at": now.strftime("%Y-%m-%d %H:%M:%S %Z"),
             "generated_timestamp": now.timestamp(),
+            "ticker": ticker,
             "error": str(e),
             "status": "error"
         }
+
+def calculate_all_tickers():
+    """Calculate ATR levels for all configured tickers"""
+    results = {}
+    
+    for ticker_key, config in TICKER_CONFIG.items():
+        print(f"\n{'='*50}")
+        print(f"🔄 Processing {ticker_key}: {config['display_name']} ({config['symbol']})")
+        print(f"{'='*50}")
+        
+        ticker_data = calculate_atr_levels(config['symbol'])
+        
+        # Add additional metadata
+        ticker_data['ticker_key'] = ticker_key
+        ticker_data['display_name'] = config['display_name']
+        
+        results[ticker_key] = ticker_data
+        
+        if ticker_data['status'] == 'success':
+            print(f"✅ {ticker_key}: Close=${ticker_data['reference_close']:.2f}, ATR=${ticker_data['reference_atr']:.2f}")
+        else:
+            print(f"❌ {ticker_key}: ERROR - {ticker_data['error']}")
+    
+    return results
 
 def save_levels_to_json(levels_data, filename="atr_levels.json"):
     """Save levels data to JSON file"""
@@ -156,25 +202,60 @@ def save_levels_to_json(levels_data, filename="atr_levels.json"):
 
 def main():
     """Main execution function"""
-    print("🔄 Calculating daily ATR levels...")
+    print("🔄 Calculating daily ATR levels for all tickers...")
     
-    # Calculate levels
-    levels_data = calculate_atr_levels()
+    eastern = pytz.timezone('US/Eastern')
+    start_time = datetime.now(eastern)
+    print(f"🕐 Started at: {start_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     
-    if levels_data["status"] == "success":
-        print(f"✅ Levels calculated successfully")
-        print(f"📊 Reference: {levels_data['reference_date']} Close={levels_data['reference_close']}, ATR={levels_data['reference_atr']}")
-        print(f"🎯 Generated at: {levels_data['generated_at']}")
+    # Calculate levels for all tickers
+    all_ticker_data = calculate_all_tickers()
+    
+    # Create final data structure
+    final_data = {
+        "last_updated": start_time.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "last_updated_timestamp": start_time.timestamp(),
+        "tickers": all_ticker_data
+    }
+    
+    # Count successes and failures
+    success_count = sum(1 for data in all_ticker_data.values() if data['status'] == 'success')
+    error_count = len(all_ticker_data) - success_count
+    
+    print(f"\n{'='*60}")
+    print(f"📊 SUMMARY")
+    print(f"{'='*60}")
+    print(f"✅ Successful: {success_count}/{len(all_ticker_data)} tickers")
+    print(f"❌ Errors: {error_count}/{len(all_ticker_data)} tickers")
+    
+    if success_count > 0:
+        print(f"\n🎯 Successful Calculations:")
+        for ticker_key, data in all_ticker_data.items():
+            if data['status'] == 'success':
+                print(f"   {ticker_key}: ${data['reference_close']:.2f} (ATR: ${data['reference_atr']:.2f}) [{data['reference_date']}]")
+    
+    if error_count > 0:
+        print(f"\n❌ Failed Calculations:")
+        for ticker_key, data in all_ticker_data.items():
+            if data['status'] == 'error':
+                print(f"   {ticker_key}: {data['error']}")
+    
+    # Save to JSON
+    if save_levels_to_json(final_data):
+        print(f"\n🎉 Daily multi-ticker ATR levels update complete!")
         
-        # Save to JSON
-        if save_levels_to_json(levels_data):
-            print("🎉 Daily ATR levels update complete!")
-            return 0
+        end_time = datetime.now(eastern)
+        duration = (end_time - start_time).total_seconds()
+        print(f"⏱️  Total execution time: {duration:.1f} seconds")
+        
+        if error_count == 0:
+            return 0  # All tickers successful
+        elif success_count > 0:
+            return 0  # At least some tickers successful (partial success)
         else:
-            print("❌ Failed to save levels")
-            return 1
+            return 1  # All tickers failed
     else:
-        print(f"❌ Error calculating levels: {levels_data['error']}")
+        print("❌ Failed to save levels")
         return 1
 
 if __name__ == "__main__":
