@@ -12,6 +12,57 @@ class TickerMapper:
     """Handle ticker symbol mappings for different data sources"""
     
     @staticmethod
+    def create_custom_candles(df, custom_periods):
+        """Create custom candles based on defined time periods"""
+        df = df.copy()
+        
+        # Ensure we have a Datetime column
+        df = CSVProcessor.create_datetime_column(df)
+        
+        # Group by date
+        df['Date_only'] = df['Datetime'].dt.date
+        daily_groups = df.groupby('Date_only')
+        
+        custom_candles = []
+        
+        for date, day_data in daily_groups:
+            for period_idx, period in enumerate(custom_periods):
+                period_name = period['name']
+                start_time = pd.to_datetime(period['start'], format='%H:%M').time()
+                end_time = pd.to_datetime(period['end'], format='%H:%M').time()
+                
+                # Filter data for this time period
+                day_data['Time_obj'] = day_data['Datetime'].dt.time
+                period_mask = (day_data['Time_obj'] >= start_time) & (day_data['Time_obj'] <= end_time)
+                period_data = day_data[period_mask]
+                
+                if not period_data.empty:
+                    # Create OHLC candle for this period
+                    candle = {
+                        'Date': date,
+                        'Datetime': pd.Timestamp.combine(date, start_time),
+                        'Period_Name': period_name,
+                        'Period_Start': period['start'],
+                        'Period_End': period['end'],
+                        'Open': period_data['Open'].iloc[0],
+                        'High': period_data['High'].max(),
+                        'Low': period_data['Low'].min(),
+                        'Close': period_data['Close'].iloc[-1],
+                    }
+                    
+                    # Add volume if present
+                    if 'Volume' in period_data.columns:
+                        candle['Volume'] = period_data['Volume'].sum()
+                    
+                    custom_candles.append(candle)
+        
+        if custom_candles:
+            result_df = pd.DataFrame(custom_candles)
+            return result_df.sort_values(['Date', 'Period_Start']).reset_index(drop=True)
+        else:
+            return pd.DataFrame()
+    
+    @staticmethod
     def get_public_ticker(input_ticker):
         """Convert common ticker variations to public data source format"""
         
@@ -166,19 +217,24 @@ class CSVProcessor:
             'timestamp': 'Datetime',
             'date_time': 'Datetime',
             
-            # OHLC columns
+            # OHLC columns - including single letter variations
             'open': 'Open',
+            'o': 'Open',          # Single letter
             'high': 'High',
+            'h': 'High',          # Single letter
             'low': 'Low',
+            'l': 'Low',           # Single letter
             'close': 'Close',
+            'c': 'Close',         # Single letter
             'last': 'Close',
             'settle': 'Close',
             'adj_close': 'Close',
             'adjusted_close': 'Close',
             
-            # Volume
+            # Volume variations
             'volume': 'Volume',
             'vol': 'Volume',
+            'v': 'Volume',        # Single letter
             'size': 'Volume',
             
             # Other
@@ -279,7 +335,7 @@ class CSVProcessor:
         return resampled
     
     @staticmethod
-    def process_multiple_csvs(uploaded_files, target_timeframe, custom_start_time=None, custom_end_time=None):
+    def process_multiple_csvs(uploaded_files, processing_config):
         """Process multiple CSV files and combine them"""
         all_dataframes = []
         detected_tickers = set()
@@ -318,26 +374,42 @@ class CSVProcessor:
                     st.error(f"❌ {uploaded_file.name} missing columns: {missing_cols}")
                     continue
                 
-                # Resample data
-                df_resampled = CSVProcessor.resample_ohlc_data(
-                    df, target_timeframe, custom_start_time, custom_end_time
-                )
+                # Process based on configuration
+                if processing_config['processing_type'] == 'standard_resample':
+                    # Standard resampling
+                    df_processed = CSVProcessor.resample_ohlc_data(
+                        df, 
+                        processing_config['target_timeframe'],
+                        processing_config.get('filter_start'),
+                        processing_config.get('filter_end')
+                    )
+                    rows_description = f"{len(df)} → {len(df_processed)} rows ({processing_config['target_timeframe']})"
+                    
+                elif processing_config['processing_type'] == 'custom_candles':
+                    # Custom candle creation
+                    df_processed = CSVProcessor.create_custom_candles(
+                        df,
+                        processing_config['custom_periods']
+                    )
+                    periods_count = len(processing_config['custom_periods'])
+                    rows_description = f"{len(df)} → {len(df_processed)} custom candles ({periods_count} periods/day)"
                 
                 # Add source info
-                df_resampled['Source_File'] = uploaded_file.name
-                df_resampled['Detected_Ticker'] = detected_ticker
+                df_processed['Source_File'] = uploaded_file.name
+                df_processed['Detected_Ticker'] = detected_ticker
                 
-                all_dataframes.append(df_resampled)
+                all_dataframes.append(df_processed)
                 
                 file_info.append({
                     'filename': uploaded_file.name,
                     'original_rows': len(df),
-                    'resampled_rows': len(df_resampled),
+                    'processed_rows': len(df_processed),
                     'detected_ticker': detected_ticker,
-                    'date_range': f"{df_resampled['Date'].min()} to {df_resampled['Date'].max()}"
+                    'processing_type': processing_config['processing_type'],
+                    'date_range': f"{df_processed['Date'].min()} to {df_processed['Date'].max()}" if not df_processed.empty else "No data"
                 })
                 
-                st.success(f"✅ {uploaded_file.name}: {len(df)} → {len(df_resampled)} rows ({detected_ticker})")
+                st.success(f"✅ {uploaded_file.name}: {rows_description} ({detected_ticker})")
                 
             except Exception as e:
                 st.error(f"❌ Error processing {uploaded_file.name}: {str(e)}")
@@ -367,7 +439,7 @@ class CSVProcessor:
         # Combine all dataframes
         if all_dataframes:
             combined_df = pd.concat(all_dataframes, ignore_index=True)
-            combined_df = combined_df.sort_values('Datetime').reset_index(drop=True)
+            combined_df = combined_df.sort_values(['Date', 'Datetime']).reset_index(drop=True)
             
             # Remove source columns from final output (keep for debugging)
             output_df = combined_df.drop(['Source_File', 'Detected_Ticker'], axis=1, errors='ignore')
@@ -445,7 +517,115 @@ if mode == "📁 Multi-CSV Processor":
                 )
         
         with col2:
-            st.markdown("**⏰ Custom Time Filtering**")
+            st.markdown("**⏰ Processing Method**")
+            
+            processing_method = st.radio(
+                "How to process the data?",
+                ["Standard Resampling", "Custom Candle Periods"],
+                help="Choose between standard timeframe resampling or custom time-based candles",
+                key="processing_method_multi"
+            )
+            
+            if processing_method == "Standard Resampling":
+                # Original time filtering approach
+                use_custom_time = st.checkbox(
+                    "Apply Time Filter",
+                    help="Filter all data to specific hours",
+                    key="use_custom_time_multi"
+                )
+                
+                if use_custom_time:
+                    custom_start = st.time_input(
+                        "Start Time",
+                        value=time(9, 30),
+                        help="Include data from this time onward",
+                        key="custom_start_multi"
+                    )
+                    
+                    custom_end = st.time_input(
+                        "End Time", 
+                        value=time(16, 0),
+                        help="Include data up to this time",
+                        key="custom_end_multi"
+                    )
+                    
+                    custom_start_str = custom_start.strftime("%H:%M")
+                    custom_end_str = custom_end.strftime("%H:%M")
+                    
+                    st.info(f"📅 Time filter: **{custom_start_str} - {custom_end_str}**")
+                else:
+                    custom_start_str = None
+                    custom_end_str = None
+                
+                # Set processing config
+                processing_config = {
+                    'processing_type': 'standard_resample',
+                    'target_timeframe': target_timeframe,
+                    'filter_start': custom_start_str,
+                    'filter_end': custom_end_str
+                }
+            
+            else:
+                # Custom candle periods
+                st.info("💡 **Create custom candles from time periods**")
+                st.write("Each time period becomes one OHLC candle per day")
+                
+                # Number of periods per day
+                num_periods = st.number_input(
+                    "Periods per Day",
+                    min_value=1,
+                    max_value=8,
+                    value=2,
+                    help="How many custom candles per trading day"
+                )
+                
+                custom_periods = []
+                for i in range(num_periods):
+                    st.markdown(f"**Period {i+1}:**")
+                    
+                    col_a, col_b, col_c = st.columns([1, 1, 1])
+                    
+                    with col_a:
+                        period_name = st.text_input(
+                            "Name",
+                            value=f"Period_{i+1}",
+                            key=f"period_name_{i}",
+                            help="Name for this time period"
+                        )
+                    
+                    with col_b:
+                        period_start = st.time_input(
+                            "Start",
+                            value=time(9 + i * 3, 0),  # Default: 9:00, 12:00, 15:00, etc.
+                            key=f"period_start_{i}"
+                        )
+                    
+                    with col_c:
+                        period_end = st.time_input(
+                            "End",
+                            value=time(12 + i * 3, 0),  # Default: 12:00, 15:00, 18:00, etc.
+                            key=f"period_end_{i}"
+                        )
+                    
+                    custom_periods.append({
+                        'name': period_name,
+                        'start': period_start.strftime("%H:%M"),
+                        'end': period_end.strftime("%H:%M")
+                    })
+                
+                # Show period summary
+                st.markdown("**📋 Configured Periods:**")
+                for period in custom_periods:
+                    st.write(f"   • **{period['name']}**: {period['start']} - {period['end']}")
+                
+                # Example output description
+                st.info("📊 **Example Output**: Day 1 → 2 candles, Day 2 → 2 candles, etc.")
+                
+                # Set processing config
+                processing_config = {
+                    'processing_type': 'custom_candles',
+                    'custom_periods': custom_periods
+                }⏰ Custom Time Filtering**")
             
             use_custom_time = st.checkbox(
                 "Apply Custom Time Filter",
@@ -483,14 +663,12 @@ if mode == "📁 Multi-CSV Processor":
             with st.spinner("Processing multiple CSV files..."):
                 combined_data, file_info = CSVProcessor.process_multiple_csvs(
                     uploaded_files, 
-                    target_timeframe,
-                    custom_start_str,
-                    custom_end_str
+                    processing_config
                 )
                 
                 if combined_data is not None:
                     st.balloons()  # Celebration animation
-                    st.success(f"🎉 **Successfully combined {len(uploaded_files)} files!**")
+                    st.success(f"🎉 **Successfully processed {len(uploaded_files)} files!**")
                     
                     # Show file processing summary
                     st.subheader("📋 Processing Summary")
@@ -508,18 +686,28 @@ if mode == "📁 Multi-CSV Processor":
                     with col2:
                         st.metric("Date Range", f"{combined_data['Date'].min()} to {combined_data['Date'].max()}")
                     with col3:
-                        st.metric("Timeframe", target_timeframe)
-                    with col4:
-                        if use_custom_time:
-                            st.metric("Time Filter", f"{custom_start_str}-{custom_end_str}")
+                        if processing_config['processing_type'] == 'standard_resample':
+                            st.metric("Timeframe", processing_config['target_timeframe'])
                         else:
-                            st.metric("Time Filter", "None")
+                            st.metric("Periods/Day", len(processing_config['custom_periods']))
+                    with col4:
+                        if processing_config['processing_type'] == 'standard_resample' and processing_config.get('filter_start'):
+                            st.metric("Time Filter", f"{processing_config['filter_start']}-{processing_config['filter_end']}")
+                        elif processing_config['processing_type'] == 'custom_candles':
+                            st.metric("Candle Type", "Custom Periods")
+                        else:
+                            st.metric("Processing", "All Data")
                     
                     # Download combined file - Make this prominent
                     st.markdown("---")
                     st.subheader("📥 Download Results")
                     
-                    combined_filename = f"Combined_{target_timeframe}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                    if processing_config['processing_type'] == 'standard_resample':
+                        filename_suffix = f"{processing_config['target_timeframe']}"
+                    else:
+                        filename_suffix = f"CustomCandles_{len(processing_config['custom_periods'])}periods"
+                    
+                    combined_filename = f"Combined_{filename_suffix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
                     
                     st.download_button(
                         "📥 **Download Combined CSV**",
@@ -533,6 +721,19 @@ if mode == "📁 Multi-CSV Processor":
                     
                     st.success(f"✅ Ready to download: **{combined_filename}**")
                     
+                    # Show sample of custom candle output if applicable
+                    if processing_config['processing_type'] == 'custom_candles':
+                        st.markdown("---")
+                        st.subheader("🔍 Custom Candle Details")
+                        
+                        # Show how many candles per day
+                        if 'Period_Name' in combined_data.columns:
+                            sample_date = combined_data['Date'].iloc[0]
+                            day_sample = combined_data[combined_data['Date'] == sample_date]
+                            
+                            st.info(f"📊 **Example for {sample_date}**: {len(day_sample)} custom candles created")
+                            st.dataframe(day_sample[['Period_Name', 'Period_Start', 'Period_End', 'Open', 'High', 'Low', 'Close']], use_container_width=True)
+                    
                 else:
                     st.error("❌ Failed to process CSV files. Please check the file processing summary above.")
     
@@ -543,13 +744,22 @@ if mode == "📁 Multi-CSV Processor":
         # Show example of what files should look like
         with st.expander("📋 Expected File Format", expanded=False):
             st.markdown("""
-            **Your CSV files should contain these columns:**
+            **Your CSV files should contain these columns (any format):**
+            
+            **Standard Format:**
             - **Date** (or Datetime, Time)
-            - **Open**
-            - **High** 
-            - **Low**
-            - **Close**
+            - **Open**, **High**, **Low**, **Close**
             - **Volume** (optional)
+            
+            **Short Format (also supported):**
+            - **Date** (or Datetime, Time)  
+            - **o**, **h**, **l**, **c** (lowercase single letters)
+            - **v** (volume - optional)
+            
+            **Mixed Format Examples:**
+            - `Date, o, h, l, c, v`
+            - `datetime, Open, High, Low, Close, Volume`
+            - `date, time, O, H, L, C`
             
             **Example filenames that work well:**
             - `SPX_20240101.csv`
@@ -559,24 +769,40 @@ if mode == "📁 Multi-CSV Processor":
             
             **The system will:**
             - ✅ Auto-detect ticker symbols from filenames
+            - ✅ Handle both long (Open, High, Low, Close) and short (o, h, l, c) formats
             - ✅ Warn if mixed tickers are found
-            - ✅ Standardize column names automatically
+            - ✅ Standardize all column names automatically
             - ✅ Handle various date/time formats
             """)
+
         
         # Show sample workflow
-        with st.expander("🔧 Sample Workflow", expanded=False):
+        with st.expander("🔧 Sample Workflows", expanded=False):
             st.markdown("""
-            **Example: Combine 25 daily 1-minute files into 10-minute bars**
+            **🎯 Standard Resampling Workflow:**
+            1. Upload 25 daily 1-minute CSV files
+            2. Choose "Standard Resampling" 
+            3. Set timeframe to **10T** (10 minutes)
+            4. Apply time filter **9:30 - 16:00** (market hours)
+            5. Get single combined file with 10-minute bars
             
-            1. Upload 25 CSV files (e.g., from broker exports)
-            2. Set timeframe to **10T** (10 minutes)
-            3. Apply time filter **9:30 - 16:00** (market hours)
-            4. Click **Process Multiple CSVs**
-            5. Download single combined file ready for ATR analysis
+            **⏰ Custom Candle Periods Workflow:**
+            1. Upload multiple CSV files with intraday data
+            2. Choose "Custom Candle Periods"
+            3. Define periods: **Morning (9:00-12:00)**, **Afternoon (12:00-16:00)**
+            4. Each day creates 2 custom OHLC candles
+            5. Perfect for session-based analysis
             
-            **Result:** 25 files → 1 clean file with 10-minute bars
+            **📊 Custom Candle Output Example:**
+            ```
+            Date        Period_Name  Period_Start  Period_End  Open   High   Low    Close
+            2024-01-01  Morning      09:00        12:00       4100   4150   4090   4140
+            2024-01-01  Afternoon    12:00        16:00       4140   4180   4130   4175
+            2024-01-02  Morning      09:00        12:00       4175   4200   4160   4190
+            2024-01-02  Afternoon    12:00        16:00       4190   4210   4180   4205
+            ```
             """)
+
 
 # ========================================================================================
 # PUBLIC DATA DOWNLOAD
