@@ -1,15 +1,11 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import yfinance as yf
 from datetime import datetime, timedelta, date
 import os
 import json
-import os
 import tempfile
 import shutil
-from datetime import datetime
-import gzip
 
 class DataProcessingCheckpoint:
     """Handle checkpoint/resume functionality for multi-file processing"""
@@ -114,293 +110,9 @@ class DataProcessingCheckpoint:
         """Get list of failed filenames"""
         return [f['filename'] for f in self.state['failed_files']]
 
-class EnhancedDataLoader:
-    """Enhanced data loader with multi-file and resampling support"""
-    
-    def __init__(self):
-        self.checkpoint = DataProcessingCheckpoint()
-    
-    def resample_ohlc_data(self, df, timeframe='10T'):
-        """Resample OHLC data to specified timeframe"""
-        df = df.copy()
-        
-        # Ensure we have datetime column
-        if 'Datetime' not in df.columns:
-            if 'Date' in df.columns and 'Time' in df.columns:
-                df['Datetime'] = pd.to_datetime(df['Date'].astype(str) + ' ' + df['Time'].astype(str))
-            elif 'Date' in df.columns:
-                df['Datetime'] = pd.to_datetime(df['Date'])
-            else:
-                raise ValueError("Could not find datetime information")
-        else:
-            df['Datetime'] = pd.to_datetime(df['Datetime'])
-        
-        # Set datetime as index for resampling
-        df.set_index('Datetime', inplace=True)
-        
-        # Define aggregation rules
-        agg_rules = {
-            'Open': 'first',
-            'High': 'max',
-            'Low': 'min', 
-            'Close': 'last'
-        }
-        
-        # Add volume if present
-        if 'Volume' in df.columns:
-            agg_rules['Volume'] = 'sum'
-        
-        # Add session if present
-        if 'Session' in df.columns:
-            agg_rules['Session'] = 'first'
-        
-        # Resample
-        resampled = df.resample(timeframe, closed='left', label='left').agg(agg_rules)
-        
-        # Remove rows with no data (NaN in OHLC)
-        resampled = resampled.dropna(subset=['Open', 'High', 'Low', 'Close'])
-        
-        # Reset index to get Datetime back as column
-        resampled = resampled.reset_index()
-        
-        # Create Date column for compatibility
-        resampled['Date'] = resampled['Datetime'].dt.date
-        
-        return resampled
-    
-    def load_single_file_with_resampling(self, uploaded_file, target_timeframe='10T'):
-        """Load and resample a single file"""
-        try:
-            # Determine file type and load
-            if uploaded_file.name.endswith('.csv'):
-                df = pd.read_csv(uploaded_file)
-            elif uploaded_file.name.endswith(('.xlsx', '.xls')):
-                df = pd.read_excel(uploaded_file, header=0)
-            else:
-                raise ValueError(f"Unsupported file format: {uploaded_file.name}")
-            
-            # Standardize columns
-            df = standardize_columns(df)
-            
-            # Validate required columns
-            required_cols = ['Open', 'High', 'Low', 'Close']
-            missing_cols = [col for col in required_cols if col not in df.columns]
-            if missing_cols:
-                raise ValueError(f"Missing required columns: {missing_cols}")
-            
-            # Resample if needed
-            if target_timeframe != '1T':  # Don't resample if target is 1 minute
-                df_resampled = self.resample_ohlc_data(df, target_timeframe)
-            else:
-                # Still need to ensure proper datetime handling
-                if 'Datetime' not in df.columns:
-                    if 'Date' in df.columns and 'Time' in df.columns:
-                        df['Datetime'] = pd.to_datetime(df['Date'].astype(str) + ' ' + df['Time'].astype(str))
-                    elif 'Date' in df.columns:
-                        df['Datetime'] = pd.to_datetime(df['Date'])
-                    else:
-                        raise ValueError("Could not find datetime information")
-                
-                df['Date'] = pd.to_datetime(df['Datetime']).dt.date
-                df_resampled = df
-            
-            return df_resampled
-            
-        except Exception as e:
-            raise Exception(f"Error processing {uploaded_file.name}: {str(e)}")
-    
-    def load_multiple_files_with_checkpoints(self, uploaded_files, target_timeframe='10T'):
-        """Load multiple files with checkpoint support"""
-        
-        # Check for existing checkpoint
-        if self.checkpoint.state['processed_files'] or self.checkpoint.state['failed_files']:
-            st.warning("🔄 **Previous Processing Session Found**")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if self.checkpoint.state['processed_files']:
-                    st.success(f"✅ Previously processed: {len(self.checkpoint.state['processed_files'])} files")
-                    total_rows = sum(f.get('row_count', 0) for f in self.checkpoint.state['processed_files'])
-                    st.info(f"📊 Total processed rows: {total_rows:,}")
-            
-            with col2:
-                if self.checkpoint.state['failed_files']:
-                    st.error(f"❌ Previous failures: {len(self.checkpoint.state['failed_files'])} files")
-                    with st.expander("Show Failed Files"):
-                        for failed in self.checkpoint.state['failed_files']:
-                            st.error(f"• **{failed['filename']}**")
-                            st.write(f"  Error: {failed['error']}")
-            
-            # Recovery options
-            recovery_choice = st.radio(
-                "How would you like to proceed?",
-                [
-                    "Continue from checkpoint (recommended)",
-                    "Start fresh (clear all progress)", 
-                    "Skip failed files and continue"
-                ],
-                key="recovery_choice"
-            )
-            
-            if recovery_choice == "Start fresh (clear all progress)":
-                self.checkpoint.clear_checkpoint()
-                st.success("✅ Checkpoint cleared. Please re-run to start fresh.")
-                return None
-            elif recovery_choice == "Skip failed files and continue":
-                failed_names = self.checkpoint.get_failed_filenames()
-                uploaded_files = [f for f in uploaded_files if f.name not in failed_names]
-                st.info(f"📋 Skipping {len(failed_names)} failed files")
-        
-        # Initialize or update checkpoint
-        self.checkpoint.state['total_files'] = len(uploaded_files)
-        self.checkpoint.state['target_timeframe'] = target_timeframe
-        if not self.checkpoint.state['start_time']:
-            self.checkpoint.state['start_time'] = datetime.now().isoformat()
-        self.checkpoint.save_checkpoint()
-        
-        # Progress tracking
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        detail_text = st.empty()
-        
-        processed_dataframes = []
-        processed_filenames = self.checkpoint.get_processed_filenames()
-        
-        # Process files
-        for i, uploaded_file in enumerate(uploaded_files):
-            
-            # Skip already processed files
-            if uploaded_file.name in processed_filenames:
-                status_text.text(f"✅ Skipping {uploaded_file.name} (already processed)")
-                
-                # Load from temp file
-                temp_filename = os.path.join(self.checkpoint.temp_dir, f"{uploaded_file.name}_{target_timeframe}.parquet")
-                if os.path.exists(temp_filename):
-                    try:
-                        df_temp = pd.read_parquet(temp_filename)
-                        processed_dataframes.append(df_temp)
-                        detail_text.text(f"📂 Loaded {len(df_temp):,} rows from cache")
-                    except Exception as e:
-                        st.warning(f"⚠️ Could not load cached data for {uploaded_file.name}: {e}")
-                
-                progress_bar.progress((i + 1) / len(uploaded_files))
-                continue
-            
-            try:
-                # Update status
-                status_text.text(f"🔄 Processing {uploaded_file.name} ({i+1}/{len(uploaded_files)})...")
-                detail_text.text(f"📁 Loading and resampling to {target_timeframe}...")
-                
-                # Process the file
-                df_processed = self.load_single_file_with_resampling(uploaded_file, target_timeframe)
-                
-                detail_text.text(f"📊 Processed {len(df_processed):,} rows")
-                
-                # Save to temp file
-                temp_filename = os.path.join(self.checkpoint.temp_dir, f"{uploaded_file.name}_{target_timeframe}.parquet")
-                os.makedirs(self.checkpoint.temp_dir, exist_ok=True)
-                df_processed.to_parquet(temp_filename)
-                
-                # Add to collection
-                processed_dataframes.append(df_processed)
-                
-                # Update checkpoint
-                self.checkpoint.mark_file_processed(
-                    uploaded_file.name, 
-                    temp_filename, 
-                    len(df_processed)
-                )
-                
-                # Show success
-                st.success(f"✅ {uploaded_file.name}: {len(df_processed):,} bars ({target_timeframe})")
-                
-            except Exception as e:
-                # Handle error
-                error_msg = str(e)
-                st.error(f"❌ **Error with {uploaded_file.name}**")
-                st.error(f"Details: {error_msg}")
-                
-                self.checkpoint.mark_file_failed(uploaded_file.name, error_msg)
-                
-                # Give user choice
-                error_choice = st.radio(
-                    f"How to handle error with {uploaded_file.name}?",
-                    ["Skip this file and continue", "Stop processing here"],
-                    key=f"error_choice_{i}_{uploaded_file.name}"
-                )
-                
-                if error_choice == "Stop processing here":
-                    st.error("🛑 **Processing Stopped**")
-                    st.info("💾 Progress has been saved. You can resume by re-running this section.")
-                    return None
-                else:
-                    st.info(f"⏭️ Skipping {uploaded_file.name} and continuing...")
-            
-            # Update progress
-            progress_bar.progress((i + 1) / len(uploaded_files))
-        
-        # Combine all processed data
-        if processed_dataframes:
-            status_text.text("🔗 Combining all processed files...")
-            detail_text.text("📊 Sorting by datetime...")
-            
-            # Concatenate and sort
-            combined_df = pd.concat(processed_dataframes, ignore_index=True)
-            combined_df = combined_df.sort_values('Datetime').reset_index(drop=True)
-            
-            # Success summary
-            total_rows = len(combined_df)
-            date_range = f"{combined_df['Date'].min()} to {combined_df['Date'].max()}"
-            
-            st.success("🎉 **Multi-File Processing Complete!**")
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("📁 Files Processed", len(processed_dataframes))
-            with col2:
-                st.metric("📊 Total Bars", f"{total_rows:,}")
-            with col3:
-                st.metric("📅 Date Range", date_range)
-            
-            # Mark processing as complete and cleanup
-            self.checkpoint.state['processing_complete'] = True
-            self.checkpoint.save_checkpoint()
-            
-            # Clear progress indicators
-            progress_bar.empty()
-            status_text.empty()
-            detail_text.empty()
-            
-            return combined_df
-        
-        else:
-            st.warning("⚠️ No files were successfully processed")
-            return None
-
-# Modified load_intraday_data function to support both single and multiple files
-def load_intraday_data_enhanced(uploaded_files, target_timeframe='10T'):
-    """
-    Enhanced intraday data loading that supports both single and multiple files
-    """
-    if not uploaded_files:
-        return None
-    
-    # Handle single file upload (backward compatibility)
-    if not isinstance(uploaded_files, list):
-        uploaded_files = [uploaded_files]
-    
-    # Single file - use existing logic
-    if len(uploaded_files) == 1:
-        return load_intraday_data(uploaded_files[0])
-    
-    # Multiple files - use enhanced loader
-    else:
-        enhanced_loader = EnhancedDataLoader()
-        return enhanced_loader.load_multiple_files_with_checkpoints(uploaded_files, target_timeframe)
-
 def calculate_atr(df, period=14):
     """
-    Calculate TRUE Wilder's ATR - ACTUALLY VALIDATED THIS TIME!
+    Calculate TRUE Wilder's ATR - VALIDATED IMPLEMENTATION
     Matches Excel formula exactly:
     1. Wait for 14 periods before starting ATR
     2. First ATR = simple average of first 14 TR values
@@ -454,104 +166,6 @@ def generate_atr_levels(close_price, atr_value, custom_ratios=None):
     
     return levels
 
-class TickerMapper:
-    """Handle ticker symbol mappings for different data sources"""
-    
-    @staticmethod
-    def get_public_ticker(input_ticker):
-        """Convert common ticker variations to public data source format"""
-        
-        # Common ticker mappings
-        ticker_mappings = {
-            # S&P 500 variations
-            'SPX': '^GSPC',
-            'SP500': '^GSPC',
-            'S&P500': '^GSPC',
-            'SPY': 'SPY',  # ETF, no change needed
-            
-            # NASDAQ variations  
-            'NDX': '^NDX',
-            'NASDAQ': '^IXIC',
-            'COMP': '^IXIC',
-            'QQQ': 'QQQ',  # ETF, no change needed
-            
-            # Dow Jones variations
-            'DJI': '^DJI',
-            'DJIA': '^DJI',
-            'DOW': '^DJI',
-            'DIA': 'DIA',  # ETF, no change needed
-            
-            # Russell variations
-            'RUT': '^RUT',
-            'RUSSELL': '^RUT',
-            'IWM': 'IWM',  # ETF, no change needed
-            
-            # VIX variations
-            'VIX': '^VIX',
-            'VOLATILITY': '^VIX',
-            
-            # Currency pairs (Forex)
-            'EURUSD': 'EURUSD=X',
-            'GBPUSD': 'GBPUSD=X', 
-            'USDJPY': 'USDJPY=X',
-            'USDCAD': 'USDCAD=X',
-            'AUDUSD': 'AUDUSD=X',
-            'NZDUSD': 'NZDUSD=X',
-            'USDCHF': 'USDCHF=X',
-            
-            # Crypto variations
-            'BITCOIN': 'BTC-USD',
-            'BTC': 'BTC-USD',
-            'ETHEREUM': 'ETH-USD', 
-            'ETH': 'ETH-USD',
-            'LITECOIN': 'LTC-USD',
-            'LTC': 'LTC-USD',
-            
-            # Futures (common contracts)
-            'ES': 'ES=F',
-            'NQ': 'NQ=F',
-            'YM': 'YM=F',
-            'RTY': 'RTY=F',
-            'CL': 'CL=F',  # Crude Oil
-            'GC': 'GC=F',  # Gold
-            'SI': 'SI=F',  # Silver
-            'NG': 'NG=F',  # Natural Gas
-            
-            # Bonds
-            'TNX': '^TNX',  # 10-Year Treasury
-            'TYX': '^TYX',  # 30-Year Treasury
-            'FVX': '^FVX',  # 5-Year Treasury
-            'IRX': '^IRX',  # 3-Month Treasury
-        }
-        
-        # Convert to uppercase for matching
-        input_upper = input_ticker.upper().strip()
-        
-        # Return mapped ticker if found, otherwise return original
-        mapped_ticker = ticker_mappings.get(input_upper, input_ticker)
-        
-        return mapped_ticker
-    
-    @staticmethod
-    def suggest_alternatives(input_ticker):
-        """Suggest alternative ticker formats if the input fails"""
-        
-        suggestions = []
-        input_upper = input_ticker.upper().strip()
-        
-        # Common patterns to try
-        variations = [
-            f"^{input_upper}",  # Add caret for indices
-            f"{input_upper}=X",  # Add =X for forex
-            f"{input_upper}=F",  # Add =F for futures
-            f"{input_upper}-USD",  # Add -USD for crypto
-        ]
-        
-        # Remove duplicates and original
-        variations = [v for v in variations if v != input_ticker]
-        
-        return variations[:3]  # Return top 3 suggestions
-
 class AssetConfig:
     """Configuration for different asset classes"""
     
@@ -566,7 +180,6 @@ class AssetConfig:
                 'session_types': ['PM', 'R', 'AH'] if extended_hours else ['R'],
                 'default_session': ['PM', 'R', 'AH'] if extended_hours else ['R'],
                 'description': f'US Stocks ({"Extended Hours 4AM-8PM" if extended_hours else "Regular Hours 9:30AM-4PM"})',
-                'example_tickers': ['AAPL', 'GOOGL', 'SPY', '^GSPC'],
                 'extended_hours': extended_hours
             },
             'STOCKS_24H': {
@@ -576,8 +189,7 @@ class AssetConfig:
                 'weekends_closed': False,
                 'session_types': ['24H'],
                 'default_session': ['24H'],
-                'description': 'US Stocks (24-Hour Data - if available)',
-                'example_tickers': ['AAPL', 'GOOGL', 'SPY'],
+                'description': 'US Stocks (24-Hour Data)',
                 'extended_hours': True
             },
             'CRYPTO': {
@@ -588,7 +200,6 @@ class AssetConfig:
                 'session_types': ['24H'],
                 'default_session': ['24H'],
                 'description': 'Cryptocurrency (24/7 trading)',
-                'example_tickers': ['BTC-USD', 'ETH-USD', 'ADA-USD'],
                 'extended_hours': True
             },
             'FOREX': {
@@ -599,7 +210,6 @@ class AssetConfig:
                 'session_types': ['ASIA', 'EUROPE', 'US', '24H'],
                 'default_session': ['24H'],
                 'description': 'Foreign Exchange (Sun 5PM - Fri 5PM EST)',
-                'example_tickers': ['EURUSD=X', 'GBPUSD=X', 'USDJPY=X'],
                 'extended_hours': True
             },
             'FUTURES': {
@@ -610,7 +220,6 @@ class AssetConfig:
                 'session_types': ['GLOBEX', 'RTH'],
                 'default_session': ['GLOBEX', 'RTH'],
                 'description': 'Futures (nearly 24/5 trading)',
-                'example_tickers': ['ES=F', 'NQ=F', 'YM=F', 'CL=F'],
                 'extended_hours': True
             },
             'COMMODITIES': {
@@ -621,7 +230,6 @@ class AssetConfig:
                 'session_types': ['R', 'AH'],
                 'default_session': ['R'],
                 'description': 'Commodities (varies by commodity)',
-                'example_tickers': ['GC=F', 'SI=F', 'CL=F'],
                 'extended_hours': extended_hours
             }
         }
@@ -640,8 +248,8 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
         return False, ["Missing data files"], ["Please provide both daily and intraday data"]
     
     # Debug: Show available columns
-    st.info(f"🔧 DEBUG: Daily data columns: {list(daily_data.columns)}")
-    st.info(f"🔧 DEBUG: Intraday data columns: {list(intraday_data.columns)}")
+    st.info(f"Daily data columns: {list(daily_data.columns)}")
+    st.info(f"Intraday data columns: {list(intraday_data.columns)}")
     
     # Convert date columns for comparison - handle different formats safely
     try:
@@ -653,7 +261,7 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
             # Check for alternative date column names
             date_cols = [col for col in daily_data.columns if 'date' in col.lower()]
             if date_cols:
-                st.info(f"🔧 Using alternative date column: {date_cols[0]}")
+                st.info(f"Using alternative date column: {date_cols[0]}")
                 daily_dates = pd.to_datetime(daily_data[date_cols[0]], errors='coerce')
                 if hasattr(daily_dates.iloc[0], 'date'):
                     daily_dates = daily_dates.dt.date
@@ -677,7 +285,7 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
             # Check for alternative date/datetime columns
             date_cols = [col for col in intraday_data.columns if 'date' in col.lower() or 'time' in col.lower()]
             if date_cols:
-                st.info(f"🔧 Using alternative datetime column: {date_cols[0]}")
+                st.info(f"Using alternative datetime column: {date_cols[0]}")
                 intraday_dates = pd.to_datetime(intraday_data[date_cols[0]], errors='coerce')
                 if hasattr(intraday_dates.iloc[0], 'date'):
                     intraday_dates = intraday_dates.dt.date
@@ -696,7 +304,7 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
     # Check if daily data starts before intraday data
     if daily_start >= intraday_start:
         is_valid = False
-        warnings.append("⚠️ Daily data should start BEFORE intraday data for proper ATR calculation")
+        warnings.append("Daily data should start BEFORE intraday data for proper ATR calculation")
         recommendations.append("Extend daily data backwards to include more historical periods")
     
     # Check buffer period for ATR calculation
@@ -705,7 +313,7 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
     
     if buffer_days < required_days:
         is_valid = False
-        warnings.append(f"⚠️ Insufficient buffer period: {buffer_days} days (need {required_days}+ days)")
+        warnings.append(f"Insufficient buffer period: {buffer_days} days (need {required_days}+ days)")
         recommendations.append(f"Add at least {required_days - buffer_days} more days of daily data before intraday period")
     
     # Check date overlap
@@ -714,12 +322,12 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
     
     if overlap_start > overlap_end:
         is_valid = False
-        warnings.append("❌ No date overlap between daily and intraday data")
+        warnings.append("No date overlap between daily and intraday data")
         recommendations.append("Ensure daily and intraday data cover overlapping time periods")
     else:
         overlap_days = (overlap_end - overlap_start).days
         if overlap_days < 5:
-            warnings.append("⚠️ Very small overlap period between daily and intraday data")
+            warnings.append("Very small overlap period between daily and intraday data")
             recommendations.append("Increase overlap period for more reliable analysis")
     
     # Data quality checks - with better error handling
@@ -729,16 +337,16 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
         missing_daily_cols = [col for col in required_daily_cols if col not in daily_data.columns]
         
         if missing_daily_cols:
-            warnings.append(f"⚠️ Daily data missing OHLC columns: {missing_daily_cols}")
+            warnings.append(f"Daily data missing OHLC columns: {missing_daily_cols}")
             recommendations.append("Ensure daily data has Open, High, Low, Close columns")
         else:
             # Only check for missing values if columns exist
             daily_missing = daily_data[required_daily_cols].isnull().sum().sum()
             if daily_missing > 0:
-                warnings.append(f"⚠️ {daily_missing} missing values in daily OHLC data")
+                warnings.append(f"{daily_missing} missing values in daily OHLC data")
                 recommendations.append("Clean daily data to remove or fill missing values")
     except Exception as e:
-        warnings.append(f"⚠️ Error checking daily data quality: {str(e)}")
+        warnings.append(f"Error checking daily data quality: {str(e)}")
         recommendations.append("Check daily data format and column names")
     
     try:
@@ -747,427 +355,77 @@ def validate_data_alignment(daily_data, intraday_data, atr_period=14, min_buffer
         missing_intraday_cols = [col for col in required_intraday_cols if col not in intraday_data.columns]
         
         if missing_intraday_cols:
-            warnings.append(f"⚠️ Intraday data missing OHLC columns: {missing_intraday_cols}")
+            warnings.append(f"Intraday data missing OHLC columns: {missing_intraday_cols}")
             recommendations.append("Ensure intraday data has Open, High, Low, Close columns")
         else:
             # Only check for missing values if columns exist
             intraday_missing = intraday_data[required_intraday_cols].isnull().sum().sum()
             if intraday_missing > 0:
-                warnings.append(f"⚠️ {intraday_missing} missing values in intraday OHLC data")
+                warnings.append(f"{intraday_missing} missing values in intraday OHLC data")
                 recommendations.append("Clean intraday data to remove or fill missing values")
     except Exception as e:
-        warnings.append(f"⚠️ Error checking intraday data quality: {str(e)}")
+        warnings.append(f"Error checking intraday data quality: {str(e)}")
         recommendations.append("Check intraday data format and column names")
     
     return is_valid, warnings, recommendations
 
-def download_public_data_chunked(ticker, start_date, end_date, chunk_years=3, max_retries=3):
-    """
-    Download public financial data in chunks with retry logic
-    """
-    import time
-    
-    # Ensure we have date objects, not datetime objects
-    if hasattr(start_date, 'date'):
-        start_date = start_date.date()
-    if hasattr(end_date, 'date'):
-        end_date = end_date.date()
-    
-    all_data = []
-    current_start = start_date
-    
-    # Calculate total timespan for progress tracking
-    total_days = (end_date - start_date).days
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    chunk_count = 0
-    
-    while current_start < end_date:
-        chunk_count += 1
-        
-        # Calculate chunk end date (don't exceed final end_date)
-        chunk_end_date = current_start + timedelta(days=chunk_years * 365)
-        chunk_end = min(chunk_end_date, end_date)
-        
-        # Update progress
-        days_processed = (current_start - start_date).days
-        progress = min(days_processed / total_days, 1.0)
-        progress_bar.progress(progress)
-        status_text.text(f"📊 Downloading chunk {chunk_count}: {current_start} to {chunk_end}")
-        
-        # Try to download this chunk with retries
-        chunk_data = None
-        for attempt in range(max_retries):
-            try:
-                st.info(f"🔄 Attempt {attempt + 1}/{max_retries} for chunk {chunk_count}")
-                
-                chunk_data = yf.download(
-                    ticker, 
-                    start=current_start, 
-                    end=chunk_end + timedelta(days=1),  # Add 1 day to ensure end date is included
-                    interval='1d', 
-                    progress=False
-                )
-                
-                if not chunk_data.empty:
-                    st.success(f"✅ Chunk {chunk_count} downloaded: {len(chunk_data)} records")
-                    break
-                else:
-                    st.warning(f"⚠️ Chunk {chunk_count} returned empty data")
-                    
-            except Exception as e:
-                st.warning(f"⚠️ Chunk {chunk_count}, attempt {attempt + 1} failed: {str(e)}")
-                if attempt < max_retries - 1:
-                    wait_time = (attempt + 1) * 2  # Progressive backoff: 2s, 4s, 6s
-                    st.info(f"⏳ Waiting {wait_time} seconds before retry...")
-                    time.sleep(wait_time)
-        
-        # Check if chunk download succeeded
-        if chunk_data is None or chunk_data.empty:
-            st.error(f"❌ Failed to download chunk {chunk_count} after {max_retries} attempts")
-            
-            # Give user choice
-            user_choice = st.radio(
-                f"How to handle failed chunk {chunk_count} ({current_start} to {chunk_end})?",
-                ["Skip this chunk and continue", "Stop download and use partial data", "Retry with smaller chunks"],
-                key=f"chunk_error_{chunk_count}"
-            )
-            
-            if user_choice == "Skip this chunk and continue":
-                st.warning(f"⏭️ Skipping chunk {chunk_count}, continuing with next chunk...")
-                current_start = chunk_end
-                continue
-            elif user_choice == "Stop download and use partial data":
-                st.warning("🛑 Stopping download, will use partial data collected so far")
-                break
-            else:  # Retry with smaller chunks
-                st.info("🔄 Retrying with smaller chunk size...")
-                smaller_chunk_years = max(1, chunk_years // 2)
-                return download_public_data_chunked(ticker, start_date, end_date, smaller_chunk_years, max_retries)
-        
+def load_daily_data(uploaded_file):
+    """Load daily data from uploaded CSV file"""
+    try:
+        # Handle different file types
+        if uploaded_file.name.endswith('.csv'):
+            daily = pd.read_csv(uploaded_file)
+        elif uploaded_file.name.endswith(('.xlsx', '.xls')):
+            # Try to detect header row for Excel files
+            daily = pd.read_excel(uploaded_file, header=0)
+            # If that doesn't work, try other common header positions
+            if 'Date' not in daily.columns and 'Close' not in daily.columns:
+                for header_row in [1, 2, 3, 4, 5]:
+                    try:
+                        daily = pd.read_excel(uploaded_file, header=header_row)
+                        if 'Date' in daily.columns or 'Close' in daily.columns:
+                            st.info(f"Found headers at row {header_row + 1}")
+                            break
+                    except:
+                        continue
         else:
-            # Successful chunk - add to collection
-            all_data.append(chunk_data)
-        
-        # Move to next chunk
-        current_start = chunk_end
-        
-        # Small delay to be respectful
-        time.sleep(0.5)
-    
-    # Clear progress indicators
-    progress_bar.empty()
-    status_text.empty()
-    
-    # Combine all chunks
-    if all_data:
-        st.info("🔗 Combining all downloaded chunks...")
-        combined_data = pd.concat(all_data, ignore_index=False)
-        
-        # Remove any duplicate dates that might occur at chunk boundaries
-        combined_data = combined_data[~combined_data.index.duplicated(keep='first')]
-        
-        # Sort by date
-        combined_data = combined_data.sort_index()
-        
-        # CRITICAL: Reset index to convert DatetimeIndex to Date column
-        combined_data.reset_index(inplace=True)
-        
-        # Ensure Date column exists
-        if 'Date' not in combined_data.columns and len(combined_data.columns) > 0:
-            # First column should be the date after reset_index
-            combined_data.rename(columns={combined_data.columns[0]: 'Date'}, inplace=True)
-        
-        st.success(f"✅ Chunked download complete: {len(combined_data)} total records")
-        if 'Date' in combined_data.columns:
-            # Safe date display
-            try:
-                date_min = combined_data['Date'].min()
-                date_max = combined_data['Date'].max()
-                if hasattr(date_min, 'date'):
-                    date_min = date_min.date()
-                if hasattr(date_max, 'date'):
-                    date_max = date_max.date()
-                st.info(f"📅 Final date range: {date_min} to {date_max}")
-            except Exception as e:
-                st.info(f"📅 Final dataset ready with {len(combined_data)} records")
-        
-        return combined_data
-    else:
-        st.error("❌ No data was successfully downloaded")
-        return pd.DataFrame()
-
-def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=None, intraday_data=None):
-    """
-    Load daily data from uploaded file or public data source
-    If using public source, automatically detect date range from intraday data
-    NOW WITH CHUNKED DOWNLOAD SUPPORT
-    """
-    if uploaded_file is not None:
-        try:
-            # Handle different file types
-            if uploaded_file.name.endswith('.csv'):
-                daily = pd.read_csv(uploaded_file)
-            elif uploaded_file.name.endswith(('.xlsx', '.xls')):
-                # Try to detect header row for Excel files
-                daily = pd.read_excel(uploaded_file, header=0)
-                # If that doesn't work, try other common header positions
-                if 'Date' not in daily.columns and 'Close' not in daily.columns:
-                    for header_row in [1, 2, 3, 4, 5]:
-                        try:
-                            daily = pd.read_excel(uploaded_file, header=header_row)
-                            if 'Date' in daily.columns or 'Close' in daily.columns:
-                                st.info(f"✅ Found headers at row {header_row + 1}")
-                                break
-                        except:
-                            continue
-            else:
-                st.error("Unsupported file format. Please use CSV or Excel files.")
-                return None
-            
-            # Standardize column names
-            daily = standardize_columns(daily)
-            
-            # Validate required columns
-            required_cols = ['Date', 'Open', 'High', 'Low', 'Close']
-            missing_cols = [col for col in required_cols if col not in daily.columns]
-            if missing_cols:
-                st.error(f"Missing required columns in daily data: {missing_cols}")
-                return None
-            
-            # Sort by date and ensure proper date format
-            daily['Date'] = pd.to_datetime(daily['Date'])
-            daily = daily.sort_values('Date').reset_index(drop=True)
-            
-            st.success(f"✅ Loaded daily data: {len(daily)} records")
-            date_min = daily['Date'].min()
-            date_max = daily['Date'].max()
-            # Handle different date formats for display
-            if hasattr(date_min, 'date'):
-                date_min_str = date_min.date()
-                date_max_str = date_max.date()
-            else:
-                date_min_str = date_min
-                date_max_str = date_max
-            st.info(f"Date range: {date_min_str} to {date_max_str}")
-            
-            return daily
-            
-        except Exception as e:
-            st.error(f"Error loading daily data: {str(e)}")
+            st.error("Unsupported file format. Please use CSV or Excel files.")
             return None
-    
-    elif ticker and intraday_data is not None:
-        # Smart auto-detection from intraday data
-        try:
-            # Apply ticker mapping for public data source
-            original_ticker = ticker
-            public_ticker = TickerMapper.get_public_ticker(ticker)
-            
-            if public_ticker != original_ticker:
-                st.info(f"🔄 Mapped ticker: '{original_ticker}' → '{public_ticker}' for public data source")
-            
-            st.info(f"🔍 Analyzing intraday data to determine optimal daily data range...")
-            
-            # Get date range from intraday data
-            intraday_dates = pd.to_datetime(intraday_data['Date'] if 'Date' in intraday_data.columns 
-                                          else intraday_data['Datetime'])
-            
-            # Handle different date formats safely
-            if hasattr(intraday_dates.iloc[0], 'date'):
-                # It's already a datetime, extract date
-                intraday_start = intraday_dates.dt.date.min()
-                intraday_end = intraday_dates.dt.date.max()
-            else:
-                # It's already a date
-                intraday_start = intraday_dates.min()
-                intraday_end = intraday_dates.max()
-                
-            # Ensure we have date objects for timedelta operations
-            # Convert to date objects safely
-            try:
-                if hasattr(intraday_start, 'date'):
-                    intraday_start = intraday_start.date()
-                if hasattr(intraday_end, 'date'):
-                    intraday_end = intraday_end.date()
-            except:
-                # If conversion fails, try pandas conversion
-                intraday_start = pd.to_datetime(intraday_start).date()
-                intraday_end = pd.to_datetime(intraday_end).date()
-            
-            # Calculate smart date range with buffer
-            buffer_start = intraday_start - timedelta(days=180)  # 6 months buffer
-            fetch_end = intraday_end + timedelta(days=5)  # Small buffer for end date
-            
-            st.info(f"📊 Intraday data spans: {intraday_start} to {intraday_end}")
-            st.info(f"📈 Fetching public daily data for '{public_ticker}' from {buffer_start} to {fetch_end}")
-            
-            # Try chunked download first for large date ranges
-            date_span_years = (fetch_end - buffer_start).days / 365.25
-            
-            if date_span_years > 5:  # Use chunked download for > 5 years
-                st.info(f"📊 Large date range detected ({date_span_years:.1f} years). Using chunked download...")
-                daily_data = download_public_data_chunked(public_ticker, buffer_start, fetch_end)
-            else:
-                # Try regular download for smaller ranges
-                st.info(f"📊 Standard download for {date_span_years:.1f} years...")
-                try:
-                    daily_data = yf.download(public_ticker, start=buffer_start, end=fetch_end, interval='1d', progress=False)
-                except Exception as e:
-                    st.warning(f"⚠️ Standard download failed: {e}")
-                    st.info("🔄 Falling back to chunked download...")
-                    daily_data = download_public_data_chunked(public_ticker, buffer_start, fetch_end)
-            
-            if daily_data.empty:
-                st.error(f"❌ No daily data found for '{public_ticker}' in the calculated date range")
-                
-                # Suggest alternatives
-                alternatives = TickerMapper.suggest_alternatives(original_ticker)
-                if alternatives:
-                    st.info("💡 Try these alternative ticker formats:")
-                    for alt in alternatives:
-                        st.info(f"   • {alt}")
-                
-                return None
-            
-            # CRITICAL: Public source returns data with DatetimeIndex, not 'Date' column
-            daily_data.reset_index(inplace=True)
-            
-            # Ensure Date column exists and is properly formatted
-            if 'Date' not in daily_data.columns:
-                # Check for alternative column names after reset_index
-                potential_date_cols = [col for col in daily_data.columns if 'date' in str(col).lower()]
-                if potential_date_cols:
-                    # Rename the first date-like column to 'Date'
-                    daily_data.rename(columns={potential_date_cols[0]: 'Date'}, inplace=True)
-                    st.info(f"✅ Renamed '{potential_date_cols[0]}' column to 'Date'")
-                elif len(daily_data.columns) > 0:
-                    # First column after reset_index is usually the date
-                    daily_data.rename(columns={daily_data.columns[0]: 'Date'}, inplace=True)
-                    st.info(f"✅ Renamed '{daily_data.columns[0]}' (first column) to 'Date'")
-                else:
-                    st.error("❌ Could not find any suitable date column in public data")
-                    st.info(f"Available columns: {list(daily_data.columns)}")
-                    return None
-            
-            # Standardize column names (after ensuring Date exists)
-            daily_data = standardize_columns(daily_data)
-            
-            # Debug: Show columns after standardization
-            st.info(f"🔧 DEBUG: Daily data columns after standardization: {list(daily_data.columns)}")
-            st.info(f"🔧 DEBUG: Daily data shape: {daily_data.shape}")
-            
-            # Validate that we have the required OHLC columns
-            required_cols = ['Open', 'High', 'Low', 'Close']
-            missing_cols = [col for col in required_cols if col not in daily_data.columns]
-            
-            if missing_cols:
-                st.error(f"❌ Missing required columns in daily data after standardization: {missing_cols}")
-                st.info("Available columns: " + ", ".join(daily_data.columns))
-                return None
-            
-            st.success(f"✅ Auto-fetched daily data from public source: {len(daily_data)} records")
-            
-            # Safe date range display
-            try:
-                if 'Date' in daily_data.columns:
-                    date_min = daily_data['Date'].min()
-                    date_max = daily_data['Date'].max()
-                    
-                    # Handle different date formats safely
-                    if pd.api.types.is_datetime64_any_dtype(daily_data['Date']):
-                        if hasattr(date_min, 'date'):
-                            date_min = date_min.date()
-                        if hasattr(date_max, 'date'):
-                            date_max = date_max.date()
-                    
-                    st.success(f"📅 Daily data range: {date_min} to {date_max}")
-                else:
-                    st.success(f"📅 Daily data ready: {len(daily_data)} records")
-            except Exception as e:
-                st.info(f"📅 Daily data ready: {len(daily_data)} records (date display unavailable)")
-                # Don't show the error to user, just log it
-                print(f"Debug: Date range display error: {e}")
-            
-            return daily_data
-            
-        except Exception as e:
-            st.error(f"Error auto-fetching from public data source for '{public_ticker}': {str(e)}")
-            
-            # Suggest alternatives on error
-            alternatives = TickerMapper.suggest_alternatives(original_ticker)
-            if alternatives:
-                st.info("💡 If the ticker wasn't found, try these alternative formats:")
-                for alt in alternatives:
-                    st.info(f"   • {alt}")
-            
+        
+        # Standardize column names
+        daily = standardize_columns(daily)
+        
+        # Validate required columns
+        required_cols = ['Date', 'Open', 'High', 'Low', 'Close']
+        missing_cols = [col for col in required_cols if col not in daily.columns]
+        if missing_cols:
+            st.error(f"Missing required columns in daily data: {missing_cols}")
             return None
-    
-    elif ticker and start_date and end_date:
-        # Fallback to manual date range (for backward compatibility)
-        try:
-            st.info(f"📈 Fetching daily data from public source for {ticker}...")
-            
-            # Add buffer for ATR calculation
-            buffer_start = start_date - timedelta(days=180)  # 6 months buffer
-            
-            # Try chunked download for large date ranges
-            date_span_years = (end_date - buffer_start).days / 365.25
-            
-            if date_span_years > 5:  # Use chunked download for > 5 years
-                st.info(f"📊 Large date range detected ({date_span_years:.1f} years). Using chunked download...")
-                daily_data = download_public_data_chunked(ticker, buffer_start, end_date)
-            else:
-                # Try regular download for smaller ranges
-                try:
-                    daily_data = yf.download(ticker, start=buffer_start, end=end_date, interval='1d', progress=False)
-                except Exception as e:
-                    st.warning(f"⚠️ Standard download failed: {e}")
-                    st.info("🔄 Falling back to chunked download...")
-                    daily_data = download_public_data_chunked(ticker, buffer_start, end_date)
-            
-            if daily_data.empty:
-                st.error(f"No daily data found for {ticker}")
-                return None
-            
-            # CRITICAL: Public source returns data with DatetimeIndex, not 'Date' column
-            daily_data.reset_index(inplace=True)
-            
-            # Ensure Date column exists and is properly formatted
-            if 'Date' not in daily_data.columns:
-                # Check for alternative column names after reset_index
-                potential_date_cols = [col for col in daily_data.columns if 'date' in str(col).lower()]
-                if potential_date_cols:
-                    # Rename the first date-like column to 'Date'
-                    daily_data.rename(columns={potential_date_cols[0]: 'Date'}, inplace=True)
-                    st.info(f"✅ Renamed '{potential_date_cols[0]}' column to 'Date'")
-                elif len(daily_data.columns) > 0:
-                    # First column after reset_index is usually the date
-                    daily_data.rename(columns={daily_data.columns[0]: 'Date'}, inplace=True)
-                    st.info(f"✅ Renamed first column to 'Date'")
-                else:
-                    st.error("❌ Could not find any suitable date column in public data")
-                    st.info(f"Available columns: {list(daily_data.columns)}")
-                    return None
-            
-            # Standardize column names (after ensuring Date exists)
-            daily_data = standardize_columns(daily_data)
-            
-            st.success(f"✅ Loaded daily data from public source: {len(daily_data)} records (includes 6-month buffer)")
-            st.info(f"Date range: {daily_data['Date'].min().date()} to {daily_data['Date'].max().date()}")
-            return daily_data
-            
-        except Exception as e:
-            st.error(f"Error fetching from public data source: {str(e)}")
-            return None
-    
-    return None
+        
+        # Sort by date and ensure proper date format
+        daily['Date'] = pd.to_datetime(daily['Date'])
+        daily = daily.sort_values('Date').reset_index(drop=True)
+        
+        st.success(f"Loaded daily data: {len(daily)} records")
+        date_min = daily['Date'].min()
+        date_max = daily['Date'].max()
+        # Handle different date formats for display
+        if hasattr(date_min, 'date'):
+            date_min_str = date_min.date()
+            date_max_str = date_max.date()
+        else:
+            date_min_str = date_min
+            date_max_str = date_max
+        st.info(f"Date range: {date_min_str} to {date_max_str}")
+        
+        return daily
+        
+    except Exception as e:
+        st.error(f"Error loading daily data: {str(e)}")
+        return None
 
 def load_intraday_data(uploaded_file):
-    """
-    Load intraday data from uploaded file with progress tracking
-    """
+    """Load intraday data from uploaded file with progress tracking"""
     try:
         # Handle case where uploaded_file might be a list (safety check)
         if isinstance(uploaded_file, list):
@@ -1230,7 +488,7 @@ def load_intraday_data(uploaded_file):
         status_text.text("Finalizing...")
         progress_bar.progress(100)
         
-        st.success(f"✅ Loaded intraday data: {len(intraday):,} records")
+        st.success(f"Loaded intraday data: {len(intraday):,} records")
         st.info(f"Date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
         
         # Clear progress indicators
@@ -1244,9 +502,7 @@ def load_intraday_data(uploaded_file):
         return None
 
 def standardize_columns(df):
-    """
-    Standardize column names across different data sources
-    """
+    """Standardize column names across different data sources"""
     try:
         # Clean column names first - handle non-string column names
         clean_columns = []
@@ -1259,20 +515,21 @@ def standardize_columns(df):
         
         df.columns = clean_columns
         
-        # Debug: Show original columns
-        st.info(f"🔧 DEBUG: Original columns: {list(df.columns)}")
-        
-        # Common column mappings
+        # Common column mappings including single letters
         column_mappings = {
             # Date columns
             'date': 'Date',
             'timestamp': 'Date', 
             'datetime': 'Datetime',
-            # OHLC columns - be more flexible with case and variations
+            # OHLC columns - including single letter variations
             'open': 'Open',
+            'o': 'Open',          # Single letter
             'high': 'High', 
+            'h': 'High',          # Single letter
             'low': 'Low',
+            'l': 'Low',           # Single letter
             'close': 'Close',
+            'c': 'Close',         # Single letter
             'last': 'Close',  # Common in some data providers
             'adj close': 'Close',
             'adj_close': 'Close',
@@ -1281,43 +538,28 @@ def standardize_columns(df):
             # Volume
             'volume': 'Volume',
             'vol': 'Volume',
+            'v': 'Volume',        # Single letter
             # Session
             'session': 'Session'
         }
         
         # Apply mappings (case insensitive)
-        columns_mapped = []
-        for col in df.columns:
-            mapped = False
-            if isinstance(col, str):
-                col_lower = col.lower().strip()
-                for old_name, new_name in column_mappings.items():
-                    if col_lower == old_name:
-                        df.rename(columns={col: new_name}, inplace=True)
-                        columns_mapped.append(f"{col} → {new_name}")
-                        mapped = True
-                        break
-            
-            # If no mapping found, keep original
-            if not mapped:
-                columns_mapped.append(f"{col} (unchanged)")
-        
-        # Debug: Show mapping results
-        st.info(f"🔧 DEBUG: Column mappings: {columns_mapped}")
-        st.info(f"🔧 DEBUG: Final columns: {list(df.columns)}")
+        for old_name, new_name in column_mappings.items():
+            for col in df.columns:
+                if isinstance(col, str) and col.lower() == old_name:
+                    df.rename(columns={col: new_name}, inplace=True)
+                    break
         
         return df
         
     except Exception as e:
-        st.error(f"❌ Error in standardize_columns: {e}")
+        st.error(f"Error in standardize_columns: {e}")
         st.info(f"DataFrame columns: {list(df.columns)}")
         st.info(f"DataFrame shape: {df.shape}")
         return df  # Return original df if standardization fails
 
 def filter_by_session_and_hours(intraday_data, date, asset_config, session_filter=None):
-    """
-    Filter intraday data based on sessions and trading hours
-    """
+    """Filter intraday data based on sessions and trading hours"""
     day_data = intraday_data[intraday_data['Date'] == date].copy()
     
     if day_data.empty:
@@ -1465,10 +707,6 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                     trigger_candle = day_data.iloc[below_trigger_row]
                     
                     for goal_level in fib_levels:
-                        # CHANGE: Allow same level for retracement testing
-                        # if goal_level == trigger_level:  # Skip same level
-                        #     continue
-                        
                         goal_price = level_map[goal_level]
                         goal_hit = False
                         goal_time = ''
@@ -1481,15 +719,6 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                             goal_type = 'Continuation'  # Further below
                         else:
                             goal_type = 'Retracement'   # Back above (includes cross-zero)
-                        
-                        # ===== CRITICAL RETRACEMENT LOGIC - DO NOT MODIFY WITHOUT UNDERSTANDING =====
-                        # RETRACEMENT GOALS: Cannot complete on same candle as trigger because we cannot
-                        # determine intra-candle sequence (did goal hit before or after trigger?)
-                        # CONTINUATION GOALS: Can complete on same candle (price continues same direction)
-                        # 
-                        # OPEN TRIGGER = opening price of 0930 candle specifically
-                        # 0930 TIME = high/low of 0930 candle (different from OPEN price)
-                        # ============================================================================
                         
                         # Check for goal completion - FIXED LOGIC (including same-level retests)
                         if below_trigger_time == 'OPEN':
@@ -1540,13 +769,6 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                                             break
                         
                         else:  # Intraday below trigger (e.g., 1000, 1100, etc.)
-                            # ===== CRITICAL INTRADAY RETRACEMENT LOGIC =====
-                            # For CONTINUATION goals: Can check same candle as trigger
-                            # For RETRACEMENT goals: MUST skip same candle as trigger
-                            # For RETEST goals: MUST skip same candle as trigger (like retracement)
-                            # Reason: Unknown intra-candle sequence for retracements and retests
-                            # ===============================================
-                            
                             if goal_level == trigger_level:  # RETEST - Skip same candle entirely
                                 # DO NOT check trigger candle - start from next candle only
                                 pass  # Skip same-candle check for retests
@@ -1627,10 +849,6 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                     trigger_candle = day_data.iloc[above_trigger_row]
                     
                     for goal_level in fib_levels:
-                        # CHANGE: Allow same level for retracement testing
-                        # if goal_level == trigger_level:  # Skip same level
-                        #     continue
-                        
                         goal_price = level_map[goal_level]
                         goal_hit = False
                         goal_time = ''
@@ -1685,13 +903,6 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                                             break
                         
                         else:  # Intraday above trigger (e.g., 1000, 1100, etc.)
-                            # ===== CRITICAL INTRADAY RETRACEMENT LOGIC =====
-                            # For CONTINUATION goals: Can check same candle as trigger  
-                            # For RETRACEMENT goals: MUST skip same candle as trigger
-                            # For RETEST goals: MUST skip same candle as trigger (like retracement)
-                            # Reason: Unknown intra-candle sequence for retracements and retests
-                            # ===============================================
-                            
                             if goal_level == trigger_level:  # RETEST - Skip same candle entirely
                                 # DO NOT check trigger candle - start from next candle only
                                 pass  # Skip same-candle check for retests
@@ -1749,77 +960,28 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
     progress_bar.empty()
     status_text.empty()
     
-    # Add zero-fill records for hours with no triggers (for troubleshooting)
-    df_results = pd.DataFrame(results)
-    if not df_results.empty:
-        # Get all unique dates and combinations
-        unique_dates = df_results['Date'].unique()
-        
-        # Create zero-fill records for missing hour combinations
-        zero_fill_records = []
-        for date in unique_dates:
-            date_data = df_results[df_results['Date'] == date]
-            existing_combinations = set()
-            
-            for _, row in date_data.iterrows():
-                combo_key = f"{row['Direction']}_{row['TriggerLevel']}_{row['GoalLevel']}"
-                existing_combinations.add(combo_key)
-            
-            # Find combinations that should exist but don't have records
-            for direction in ['Above', 'Below']:
-                for trigger_level in fib_levels:
-                    for goal_level in fib_levels:
-                        if trigger_level == goal_level:
-                            continue
-                        
-                        combo_key = f"{direction}_{trigger_level}_{goal_level}"
-                        if combo_key not in existing_combinations:
-                            # Add zero record for troubleshooting
-                            zero_fill_records.append({
-                                'Date': date,
-                                'Direction': direction,
-                                'TriggerLevel': trigger_level,
-                                'TriggerTime': '',
-                                'TriggerPrice': 0.0,
-                                'GoalLevel': goal_level,
-                                'GoalPrice': 0.0,
-                                'GoalHit': 'No',
-                                'GoalTime': '',
-                                'GoalClassification': 'No Trigger',
-                                'PreviousClose': 0.0,
-                                'PreviousATR': 0.0,
-                                'SameTime': False,
-                                'RetestedTrigger': 'No'
-                            })
-        
-        if zero_fill_records:
-            zero_df = pd.DataFrame(zero_fill_records)
-            df_results = pd.concat([df_results, zero_df], ignore_index=True)
-
-    return df_results
+    return pd.DataFrame(results)
 
 def debug_single_day_analysis(daily, intraday, debug_date, custom_ratios=None):
-    """
-    Quick debug mode: Analyze a single day with detailed 10-minute breakdown
-    """
+    """Quick debug mode: Analyze a single day with detailed 10-minute breakdown"""
     if custom_ratios is None:
         fib_levels = [0.236, 0.382, 0.500, 0.618, 0.786, 1.000, 
                      -0.236, -0.382, -0.500, -0.618, -0.786, -1.000, 0.000]
     else:
         fib_levels = custom_ratios
     
-    st.subheader(f"🐛 Debug Analysis for {debug_date}")
+    st.subheader(f"Debug Analysis for {debug_date}")
     
     # Find the debug date in daily data
     daily_debug = daily[daily['Date'].dt.date == debug_date]
     if daily_debug.empty:
-        st.error(f"❌ Date {debug_date} not found in daily data")
+        st.error(f"Date {debug_date} not found in daily data")
         return
     
     # Get previous day for ATR calculation
     debug_index = daily_debug.index[0]
     if debug_index == 0:
-        st.error(f"❌ Cannot debug first day - need previous day for ATR calculation")
+        st.error(f"Cannot debug first day - need previous day for ATR calculation")
         return
     
     previous_row = daily.iloc[debug_index - 1]
@@ -1829,7 +991,7 @@ def debug_single_day_analysis(daily, intraday, debug_date, custom_ratios=None):
     previous_atr = previous_row['ATR']
     
     if pd.isna(previous_atr):
-        st.error(f"❌ No valid ATR for previous day")
+        st.error(f"No valid ATR for previous day")
         return
     
     # Generate ATR levels
@@ -1838,7 +1000,7 @@ def debug_single_day_analysis(daily, intraday, debug_date, custom_ratios=None):
     # Get intraday data for debug date
     day_data = intraday[intraday['Date'] == debug_date].copy()
     if day_data.empty:
-        st.error(f"❌ No intraday data found for {debug_date}")
+        st.error(f"No intraday data found for {debug_date}")
         return
     
     day_data['Time'] = day_data['Datetime'].dt.strftime('%H%M')
@@ -1854,18 +1016,18 @@ def debug_single_day_analysis(daily, intraday, debug_date, custom_ratios=None):
         st.metric("Intraday Candles", len(day_data))
     
     # Show ATR levels
-    st.subheader("📊 ATR Levels for Debug Date")
+    st.subheader("ATR Levels for Debug Date")
     levels_df = pd.DataFrame([
         {"Level": level, "Price": f"{price:.2f}"} 
         for level, price in sorted(level_map.items(), key=lambda x: x[1], reverse=True)
     ])
     st.dataframe(levels_df, use_container_width=True)
     
-    # Detailed 10-minute analysis
-    st.subheader("🕒 10-Minute Candle Analysis")
+    # Detailed analysis
+    st.subheader("10-Minute Candle Analysis")
     
     open_price = day_data.iloc[0]['Open']
-    st.info(f"🎯 Opening Price: {open_price:.2f}")
+    st.info(f"Opening Price: {open_price:.2f}")
     
     # Analyze each candle
     candle_analysis = []
@@ -1922,7 +1084,7 @@ def debug_single_day_analysis(daily, intraday, debug_date, custom_ratios=None):
     # Display candle analysis
     for analysis in candle_analysis:
         if analysis["Triggered_Levels"] > 0:
-            with st.expander(f"🎯 {analysis['Time']} - {analysis['Triggered_Levels']} triggers"):
+            with st.expander(f"{analysis['Time']} - {analysis['Triggered_Levels']} triggers"):
                 col1, col2 = st.columns([1, 2])
                 
                 with col1:
@@ -1937,331 +1099,154 @@ def debug_single_day_analysis(daily, intraday, debug_date, custom_ratios=None):
                     for detail in analysis["Details"]:
                         st.write(f"• **{detail['Level']}** ({detail['Direction']}) @ {detail['Price']:.2f} - Type: {detail['Type']}")
         else:
-            st.write(f"⚪ **{analysis['Time']}**: O:{analysis['Open']} H:{analysis['High']} L:{analysis['Low']} C:{analysis['Close']} - No triggers")
+            st.write(f"**{analysis['Time']}**: O:{analysis['Open']} H:{analysis['High']} L:{analysis['Low']} C:{analysis['Close']} - No triggers")
     
     # Summary
     total_triggers = sum(len(a["Details"]) for a in candle_analysis)
-    st.success(f"📋 **Debug Summary**: {total_triggers} total level triggers detected across {len(day_data)} candles")
-    
-def run_debug_analysis(debug_date, ticker=None, asset_type='STOCKS', daily_file=None, 
-                      intraday_file=None, atr_period=14, custom_ratios=None, 
-                      session_filter=None, extended_hours=False):
-    """
-    Dedicated debug function that only processes one day
-    """
-    try:
-        # Create cache key for this configuration
-        cache_key = f"debug_{ticker}_{asset_type}_{atr_period}_{hash(str(custom_ratios))}"
-        if daily_file:
-            cache_key += f"_{daily_file.name if hasattr(daily_file, 'name') else 'uploaded'}"
-        if intraday_file:
-            cache_key += f"_{intraday_file.name if hasattr(intraday_file, 'name') else 'uploaded'}"
-        
-        # Check for cached data
-        if 'debug_cached_data' in st.session_state and st.session_state.get('debug_cache_key') == cache_key:
-            st.info("⚡ **Using Cached Debug Data** - Loading instantly...")
-            daily = st.session_state['debug_cached_data']['daily']
-            intraday = st.session_state['debug_cached_data']['intraday']
-        else:
-            st.info("🔄 **Loading Data for Debug** - This will be cached for future runs...")
-            
-            # Load intraday data
-            intraday = load_intraday_data(intraday_file)
-            if intraday is None:
-                st.error("❌ Failed to load intraday data")
-                return False
-            
-            # Load daily data
-            if daily_file is not None:
-                daily = load_daily_data(daily_file)
-            else:
-                daily = load_daily_data(uploaded_file=None, ticker=ticker, intraday_data=intraday)
-            
-            if daily is None:
-                st.error("❌ Failed to load daily data")
-                return False
-            
-            # Calculate ATR for the full series (needed for accuracy)
-            st.info("🧮 **Calculating ATR** - Using full dataset for accuracy...")
-            daily = calculate_atr(daily, period=atr_period)
-            
-            # Validate ATR
-            valid_atr = daily[daily['ATR'].notna()]
-            if valid_atr.empty:
-                st.error("⚠️ No valid ATR values calculated")
-                return False
-            
-            st.success(f"✅ ATR calculated successfully - Recent values: {valid_atr['ATR'].tail(3).round(2).tolist()}")
-            
-            # Cache the data
-            st.session_state['debug_cached_data'] = {
-                'daily': daily,
-                'intraday': intraday
-            }
-            st.session_state['debug_cache_key'] = cache_key
-            st.success("💾 **Debug Data Cached** - Future runs will be instant!")
-        
-        # Run the single-day debug analysis
-        st.info(f"🐛 **Analyzing Debug Date: {debug_date}**")
-        debug_success = debug_single_day_analysis(daily, intraday, debug_date, custom_ratios)
-        
-        if debug_success:
-            st.success("🎉 **Debug analysis completed successfully!**")
-        else:
-            st.error("❌ **Debug analysis encountered an error**")
-        
-        return debug_success
-        
-    except Exception as e:
-        st.error(f"❌ Debug analysis error: {str(e)}")
-        import traceback
-        st.error(traceback.format_exc())
-        return False
-
-    return True
+    st.success(f"**Debug Summary**: {total_triggers} total level triggers detected across {len(day_data)} candles")
 
 # ==============================================================================================
 # END OF CRITICAL SECTION
 # ==============================================================================================
 
-def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_file=None, 
-                 start_date=None, end_date=None, atr_period=14, custom_ratios=None, 
-                 session_filter=None, extended_hours=False, intraday_data=None, debug_mode=False, debug_date=None):
-    """
-    Main function for flexible ATR analysis with file inputs
-    NOW WITH SESSION STATE CACHING FOR FAST DEBUG MODE
-    """
+def main_csv_only(ticker, asset_type, daily_file, intraday_file, atr_period=14, 
+                 custom_ratios=None, session_filter=None, extended_hours=False, 
+                 debug_mode=False, debug_date=None):
+    """Main function for CSV-only ATR analysis"""
     debug_info = []
     
     try:
-        # Early debug mode check with clear messaging
+        # Early debug mode check
         if debug_mode and debug_date:
-            st.success(f"🐛 **DEBUG MODE CONFIRMED** - Will process ONLY {debug_date}")
-            st.success("⚡ **SKIPPING FULL SYSTEMATIC DETECTION** - Only single day analysis")
-        elif debug_mode and not debug_date:
-            st.warning("🐛 Debug mode enabled but no date selected - will run normal processing")
+            st.success(f"DEBUG MODE - Will process ONLY {debug_date}")
         else:
-            st.info("📊 **FULL MODE** - Will process all days")
+            st.info("FULL MODE - Will process all days")
         
-        # Create a unique cache key based on input parameters
-        cache_key = f"{ticker}_{asset_type}_{atr_period}_{hash(str(custom_ratios))}"
-        if daily_file:
-            cache_key += f"_{daily_file.name if hasattr(daily_file, 'name') else 'uploaded'}"
-        if intraday_file:
-            cache_key += f"_{intraday_file.name if hasattr(intraday_file, 'name') else 'uploaded'}"
+        # Get asset configuration
+        asset_config = AssetConfig.get_config(asset_type, extended_hours)
+        debug_info.append(f"Asset Type: {asset_config['description']}")
+        debug_info.append(f"Market Hours: {asset_config['market_open']} - {asset_config['market_close']}")
+        debug_info.append(f"Extended Hours: {extended_hours}")
         
-        # Check if we have cached data and it matches current parameters
-        use_cache = (
-            debug_mode and 
-            'cached_data' in st.session_state and 
-            st.session_state.get('cache_key') == cache_key
-        )
+        # Load daily data
+        daily = load_daily_data(daily_file)
+        if daily is None:
+            debug_info.append("Failed to load daily data")
+            return pd.DataFrame(), debug_info
         
-        if use_cache:
-            st.info("⚡ **Using Cached Data** - ATR already calculated, running debug analysis only")
-            daily = st.session_state['cached_data']['daily']
-            intraday = st.session_state['cached_data']['intraday']
-            debug_info = st.session_state['cached_data']['debug_info'].copy()
-            debug_info.append("✅ Loaded cached ATR data from session state")
+        debug_info.append(f"Daily data loaded: {daily.shape}")
+        debug_info.append(f"Daily date range: {daily['Date'].min()} to {daily['Date'].max()}")
+        
+        # Load intraday data
+        intraday = load_intraday_data(intraday_file)
+        if intraday is None:
+            debug_info.append("Failed to load intraday data")
+            return pd.DataFrame(), debug_info
+        
+        debug_info.append(f"Intraday data loaded: {intraday.shape}")
+        debug_info.append(f"Intraday date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
+        
+        # Validate data alignment
+        if not debug_mode:
+            st.subheader("Data Alignment Validation")
+            is_valid, warnings, recommendations = validate_data_alignment(daily, intraday, atr_period)
             
-            # IMMEDIATE debug mode execution with cached data
-            if debug_mode and debug_date:
-                st.info(f"🐛 **CACHED DEBUG MODE** - Analyzing {debug_date} with cached data")
-                debug_success = debug_single_day_analysis(daily, intraday, debug_date, custom_ratios)
-                if debug_success:
-                    return pd.DataFrame(), debug_info + [f"Cached debug analysis completed for {debug_date}"]
-                else:
-                    return pd.DataFrame(), debug_info + [f"Cached debug analysis failed for {debug_date}"]
+            if warnings:
+                for warning in warnings:
+                    st.warning(warning)
+            
+            if recommendations:
+                with st.expander("Recommendations"):
+                    for rec in recommendations:
+                        st.info(f"• {rec}")
+            
+            if not is_valid:
+                st.error("Data alignment issues detected. Please address the warnings above.")
+                user_choice = st.radio(
+                    "How would you like to proceed?",
+                    ["Fix data alignment first", "Continue anyway (may produce unreliable results)"],
+                    index=0
+                )
+                if user_choice == "Fix data alignment first":
+                    return pd.DataFrame(), debug_info + warnings
+            else:
+                st.success("Data alignment validation passed!")
+        
+        # Calculate ATR using TRUE Wilder's method
+        debug_info.append(f"Calculating ATR with TRUE Wilder's method, period {atr_period}...")
+        daily = calculate_atr(daily, period=atr_period)
+        
+        # Validate ATR
+        valid_atr = daily[daily['ATR'].notna()]
+        if not valid_atr.empty:
+            recent_atr = valid_atr['ATR'].tail(3).round(2).tolist()
+            debug_info.append(f"ATR calculated successfully. Recent values: {recent_atr}")
         else:
-            # Full data loading and processing
-            if use_cache:  # Only show this message when we're actually doing full processing
-                st.info("🔄 **Full Processing** - Calculating ATR for entire dataset...")
-            
-            # Get asset configuration
-            asset_config = AssetConfig.get_config(asset_type, extended_hours)
-            debug_info.append(f"📊 Asset Type: {asset_config['description']}")
-            debug_info.append(f"Market Hours: {asset_config['market_open']} - {asset_config['market_close']}")
-            debug_info.append(f"Special OPEN handling: {asset_config['has_open_special']}")
-            debug_info.append(f"Extended Hours: {extended_hours}")
-            
-            # Load intraday data FIRST (needed for smart daily data fetching)
-            if intraday_data is None:
-                if not intraday_file:
-                    debug_info.append("⚠️ No intraday data provided - analysis cannot proceed")
-                    return pd.DataFrame(), debug_info
-                
-                # Debug information
-                debug_info.append(f"🔧 DEBUG: intraday_file type: {type(intraday_file)}")
-                if hasattr(intraday_file, 'name'):
-                    debug_info.append(f"🔧 DEBUG: intraday_file.name: {intraday_file.name}")
-                
-                # Handle single file from Streamlit uploader (not a list)
-                intraday = load_intraday_data(intraday_file)
-            else:
-                intraday = intraday_data
-            
-            if intraday is None:
-                debug_info.append("❌ Failed to load intraday data")
-                return pd.DataFrame(), debug_info
-            
-            debug_info.append(f"Intraday data loaded: {intraday.shape}")
-            debug_info.append(f"Intraday date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
-            
-            # Load daily data (now can use intraday data for smart auto-fetching)
-            if daily_file is not None:
-                # Upload Both Files scenario
-                daily = load_daily_data(daily_file)
-            else:
-                # Public Daily + Upload Intraday scenario - use smart auto-detection
-                daily = load_daily_data(uploaded_file=None, ticker=ticker, intraday_data=intraday)
-            
-            if daily is None:
-                debug_info.append("❌ Failed to load daily data")
-                return pd.DataFrame(), debug_info
-            
-            debug_info.append(f"Daily data loaded: {daily.shape}")
-            
-            # Validate data alignment
-            if not debug_mode:  # Skip alignment validation in debug mode for speed
-                st.subheader("🔍 Data Alignment Validation")
-                is_valid, warnings, recommendations = validate_data_alignment(daily, intraday, atr_period)
-                
-                if warnings:
-                    for warning in warnings:
-                        st.warning(warning)
-                
-                if recommendations:
-                    with st.expander("💡 Recommendations"):
-                        for rec in recommendations:
-                            st.info(f"• {rec}")
-                
-                if not is_valid:
-                    st.error("❌ Data alignment issues detected. Please address the warnings above before proceeding.")
-                    user_choice = st.radio(
-                        "How would you like to proceed?",
-                        ["Fix data alignment first", "Continue anyway (may produce unreliable results)"],
-                        index=0
-                    )
-                    if user_choice == "Fix data alignment first":
-                        return pd.DataFrame(), debug_info + warnings
-                else:
-                    st.success("✅ Data alignment validation passed!")
-            
-            # Calculate ATR using TRUE Wilder's method
-            debug_info.append(f"🧮 Calculating ATR with TRUE Wilder's method, period {atr_period}...")
-            daily = calculate_atr(daily, period=atr_period)
-            
-            # Validate ATR
-            valid_atr = daily[daily['ATR'].notna()]
-            if not valid_atr.empty:
-                recent_atr = valid_atr['ATR'].tail(3).round(2).tolist()
-                debug_info.append(f"ATR calculated successfully using TRUE Wilder's method. Recent values: {recent_atr}")
-            else:
-                debug_info.append("⚠️ No valid ATR values calculated")
-                return pd.DataFrame(), debug_info
-            
-            # Check for session column
-            if 'Session' in intraday.columns:
-                unique_sessions = intraday['Session'].unique()
-                debug_info.append(f"Session types found: {list(unique_sessions)}")
-            
-            # Cache the processed data for future debug runs
-            if debug_mode:
-                st.session_state['cached_data'] = {
-                    'daily': daily,
-                    'intraday': intraday,
-                    'debug_info': debug_info.copy()
-                }
-                st.session_state['cache_key'] = cache_key
-                st.success("💾 **Data Cached** - Future debug runs will be much faster!")
-                
-                # IMMEDIATE debug execution after caching
-                if debug_date:
-                    st.info(f"🐛 **IMMEDIATE DEBUG MODE** - Analyzing {debug_date} after caching")
-                    debug_success = debug_single_day_analysis(daily, intraday, debug_date, custom_ratios)
-                    if debug_success:
-                        return pd.DataFrame(), debug_info + [f"First-time debug analysis completed for {debug_date}"]
-                    else:
-                        return pd.DataFrame(), debug_info + [f"First-time debug analysis failed for {debug_date}"]
+            debug_info.append("No valid ATR values calculated")
+            return pd.DataFrame(), debug_info
+        
+        # Check for session column
+        if 'Session' in intraday.columns:
+            unique_sessions = intraday['Session'].unique()
+            debug_info.append(f"Session types found: {list(unique_sessions)}")
         
         # Quick Debug Mode
         if debug_mode and debug_date:
-            st.info(f"🐛 **Debug Mode Active** - Analyzing single day: {debug_date}")
-            if not use_cache:
-                st.info("⚡ **Fast Mode**: Full ATR calculated, trigger/goal detection ONLY for debug day")
+            st.info(f"Debug Mode Active - Analyzing single day: {debug_date}")
             debug_success = debug_single_day_analysis(daily, intraday, debug_date, custom_ratios)
             if debug_success:
                 return pd.DataFrame(), debug_info + [f"Debug analysis completed for {debug_date}"]
             else:
                 return pd.DataFrame(), debug_info + [f"Debug analysis failed for {debug_date}"]
         
-        # Only run full systematic detection if NOT in debug mode
+        # Run full systematic analysis
         if not debug_mode:
-            # Run analysis using the SYSTEMATIC logic from run_generate.py
-            debug_info.append("🎯 Running SYSTEMATIC trigger and goal detection (from run_generate.py)...")
+            debug_info.append("Running SYSTEMATIC trigger and goal detection...")
             df = detect_triggers_and_goals_systematic(daily, intraday, custom_ratios)
-            debug_info.append(f"✅ Detection complete: {len(df)} trigger-goal combinations found")
+            debug_info.append(f"Detection complete: {len(df)} trigger-goal combinations found")
             
             # Additional statistics
             if not df.empty:
                 above_triggers = len(df[df['Direction'] == 'Above'])
                 below_triggers = len(df[df['Direction'] == 'Below'])
-                debug_info.append(f"✅ Above triggers: {above_triggers}, Below triggers: {below_triggers}")
+                debug_info.append(f"Above triggers: {above_triggers}, Below triggers: {below_triggers}")
                 
                 goals_hit = len(df[df['GoalHit'] == 'Yes'])
                 hit_rate = goals_hit / len(df) * 100 if len(df) > 0 else 0
-                debug_info.append(f"✅ Goals hit: {goals_hit}/{len(df)} ({hit_rate:.1f}%)")
+                debug_info.append(f"Goals hit: {goals_hit}/{len(df)} ({hit_rate:.1f}%)")
                 
-                # Session analysis if available
-                if session_filter:
-                    debug_info.append(f"✅ Session filter applied: {session_filter}")
-                
-                # Validation from run_generate.py
+                # Validation metrics
                 same_time_count = len(df[df['SameTime'] == True])
-                debug_info.append(f"✅ Same-time scenarios found: {same_time_count}")
-                
-                same_time_hits = len(df[(df['SameTime'] == True) & (df['GoalHit'] == 'Yes')])
-                debug_info.append(f"✅ Same-time hits: {same_time_hits}")
-                
-                open_goals = len(df[df['GoalTime'] == 'OPEN'])
-                debug_info.append(f"✅ Records with GoalTime=OPEN: {open_goals}")
-                
-                # Check cross-zero scenarios (corrected logic)
-                cross_zero_below_to_above = len(df[(df['Direction'] == 'Below') & (df['GoalLevel'] > df['TriggerLevel'])])
-                cross_zero_above_to_below = len(df[(df['Direction'] == 'Above') & (df['GoalLevel'] < df['TriggerLevel'])])
-                debug_info.append(f"✅ Cross-zero scenarios - Below triggers to above goals: {cross_zero_below_to_above}")
-                debug_info.append(f"✅ Cross-zero scenarios - Above triggers to below goals: {cross_zero_above_to_below}")
+                debug_info.append(f"Same-time scenarios found: {same_time_count}")
                 
                 open_triggers = len(df[df['TriggerTime'] == 'OPEN'])
                 intraday_triggers = len(df[df['TriggerTime'] != 'OPEN'])
-                debug_info.append(f"✅ OPEN triggers: {open_triggers}, Intraday triggers: {intraday_triggers}")
+                debug_info.append(f"OPEN triggers: {open_triggers}, Intraday triggers: {intraday_triggers}")
             
             return df, debug_info
         else:
-            # Debug mode but no debug_date selected
-            debug_info.append("🐛 Debug mode enabled but no debug date selected")
+            debug_info.append("Debug mode enabled but no debug date selected")
             return pd.DataFrame(), debug_info
         
     except Exception as e:
-        debug_info.append(f"❌ Error: {str(e)}")
+        debug_info.append(f"Error: {str(e)}")
         import traceback
         debug_info.append(f"Traceback: {traceback.format_exc()}")
         return pd.DataFrame(), debug_info
 
-def display_results(result_df, debug_messages, ticker, asset_type, data_source_label):
-    """Helper function to display analysis results with enhanced statistics"""
+def display_results(result_df, debug_messages, ticker, asset_type):
+    """Display analysis results with enhanced statistics"""
     # Show debug info
-    with st.expander('📋 Processing Information'):
+    with st.expander('Processing Information'):
         for msg in debug_messages:
             st.write(msg)
     
     if not result_df.empty:
         result_df['Ticker'] = ticker
         result_df['AssetType'] = asset_type
-        result_df['DataSource'] = data_source_label
         
         # Enhanced summary stats
-        st.subheader('📊 Summary Statistics')
+        st.subheader('Summary Statistics')
         
         # Top row metrics
         col1, col2, col3, col4, col5 = st.columns(5)
@@ -2283,7 +1268,7 @@ def display_results(result_df, debug_messages, ticker, asset_type, data_source_l
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader('🎯 Direction Analysis')
+            st.subheader('Direction Analysis')
             direction_stats = result_df.groupby('Direction').agg({
                 'GoalHit': lambda x: (x == 'Yes').sum(),
                 'TriggerLevel': 'count'
@@ -2292,7 +1277,7 @@ def display_results(result_df, debug_messages, ticker, asset_type, data_source_l
             st.dataframe(direction_stats)
         
         with col2:
-            st.subheader('📈 Goal Classification')
+            st.subheader('Goal Classification')
             goal_stats = result_df.groupby('GoalClassification').agg({
                 'GoalHit': lambda x: (x == 'Yes').sum(),
                 'TriggerLevel': 'count'
@@ -2303,9 +1288,8 @@ def display_results(result_df, debug_messages, ticker, asset_type, data_source_l
         # Show ATR validation
         if 'PreviousATR' in result_df.columns:
             latest_atr = result_df['PreviousATR'].iloc[-1]
-            st.subheader('🔍 ATR Validation')
-            st.write(f"**Latest ATR in results: {latest_atr:.2f}**")
-            st.write("This should match Excel calculations (TRUE Wilder's method)")
+            st.subheader('ATR Validation')
+            st.write(f"**Latest ATR: {latest_atr:.2f}** (TRUE Wilder's method)")
             
             # ATR trend chart
             atr_by_date = result_df.groupby('Date')['PreviousATR'].first().tail(20)
@@ -2313,7 +1297,7 @@ def display_results(result_df, debug_messages, ticker, asset_type, data_source_l
                 st.line_chart(atr_by_date)
         
         # Show systematic validation metrics
-        st.subheader('🔍 Systematic Logic Validation')
+        st.subheader('Systematic Logic Validation')
         col1, col2, col3 = st.columns(3)
         with col1:
             same_time_count = len(result_df[result_df['SameTime'] == True])
@@ -2326,8 +1310,8 @@ def display_results(result_df, debug_messages, ticker, asset_type, data_source_l
                         len(result_df[(result_df['Direction'] == 'Above') & (result_df['GoalLevel'] < result_df['TriggerLevel'])])
             st.metric('Cross-Zero Scenarios', cross_zero)
         
-        # Show data preview with better formatting
-        st.subheader('📋 Results Preview')
+        # Show data preview
+        st.subheader('Results Preview')
         preview_df = result_df.head(10).copy()
         # Format numeric columns
         numeric_cols = ['TriggerPrice', 'GoalPrice', 'PreviousClose', 'PreviousATR']
@@ -2337,16 +1321,16 @@ def display_results(result_df, debug_messages, ticker, asset_type, data_source_l
         
         st.dataframe(preview_df, use_container_width=True)
         
-        # Enhanced download options
-        st.subheader('⬇️ Download Options')
+        # Download options
+        st.subheader('Download Results')
         col1, col2 = st.columns(2)
         
         with col1:
             # Full results
             ticker_clean = ticker.replace("^", "").replace("=", "_")
-            output_filename = f'{ticker_clean}_{asset_type}_ATR_analysis_SYSTEMATIC_{datetime.now().strftime("%Y%m%d")}.csv'
+            output_filename = f'{ticker_clean}_{asset_type}_ATR_analysis_{datetime.now().strftime("%Y%m%d")}.csv'
             st.download_button(
-                '📊 Download Full Results CSV',
+                'Download Full Results CSV',
                 data=result_df.to_csv(index=False),
                 file_name=output_filename,
                 mime='text/csv'
@@ -2359,350 +1343,268 @@ def display_results(result_df, debug_messages, ticker, asset_type, data_source_l
                 'Value': [len(result_df), result_df['Date'].nunique(), goals_hit, f"{hit_rate:.1f}%", f"{avg_atr:.2f}", same_time_count, open_triggers, cross_zero]
             }
             summary_df = pd.DataFrame(summary_data)
-            summary_filename = f'{ticker_clean}_{asset_type}_summary_SYSTEMATIC_{datetime.now().strftime("%Y%m%d")}.csv'
+            summary_filename = f'{ticker_clean}_{asset_type}_summary_{datetime.now().strftime("%Y%m%d")}.csv'
             st.download_button(
-                '📋 Download Summary CSV',
+                'Download Summary CSV',
                 data=summary_df.to_csv(index=False),
                 file_name=summary_filename,
                 mime='text/csv'
             )
         
-        st.success(f'🎉 Analysis complete for {ticker} using SYSTEMATIC logic from run_generate.py!')
+        st.success(f'Analysis complete for {ticker} using SYSTEMATIC logic!')
         
     else:
-        st.warning('⚠️ No results generated - check processing information above')
+        st.warning('No results generated - check processing information above')
 
 # Streamlit Interface
-st.title('🎯 Advanced ATR Generator - Enhanced with SYSTEMATIC Logic')
-st.write('**Now includes the validated systematic trigger/goal detection logic from run_generate.py**')
-st.write('**Intraday data must always be uploaded. Choose public source or file upload for daily data.**')
+st.title('🎯 CSV-Only ATR Analysis Generator')
+st.write('**Clean, focused ATR analysis using the validated systematic trigger/goal detection logic**')
+st.write('**Upload your daily and intraday CSV files to get started**')
 
-# Data source selection
-st.sidebar.header("📁 Data Input")
-data_source = st.sidebar.radio(
-    "Daily Data Source",
-    options=["Upload Both Files", "Public Source + Upload Intraday"],
-    index=0,
-    help="Choose how to provide daily data. Intraday data must always be uploaded."
-)
+# File upload section
+st.header("📁 Data Upload")
 
-# Intraday data upload (ALWAYS REQUIRED)
-st.sidebar.subheader("📊 Intraday Data (Required)")
-st.sidebar.info("⚠️ **Intraday data must always be uploaded as CSV/Excel - public sources don't provide sufficient intraday history**")
+col1, col2 = st.columns(2)
 
-intraday_file = st.sidebar.file_uploader(
-    "Intraday OHLC Data",
-    type=['csv', 'xlsx', 'xls'],
-    accept_multiple_files=False,
-    help="Upload single file - the system will process it with the systematic logic"
-)
-
-if data_source == "Upload Both Files":
-    st.sidebar.subheader("📈 Daily Data Upload")
-    
-    # Enhanced warning about data alignment
-    st.sidebar.error("""
-    🚨 **CRITICAL**: Your daily data must start at least 4-6 months 
-    BEFORE your intraday data begins for proper ATR calculation.
-    """)
-    
-    # Daily data upload
-    daily_file = st.sidebar.file_uploader(
-        "Daily OHLC Data",
+with col1:
+    st.subheader("📈 Daily Data")
+    daily_file = st.file_uploader(
+        "Upload Daily OHLC Data",
         type=['csv', 'xlsx', 'xls'],
-        help="Upload daily OHLC data (CSV or Excel)"
+        help="CSV or Excel file with daily OHLC data",
+        key="daily_upload"
     )
     
-    ticker = st.sidebar.text_input(
-        "Ticker Symbol (for labeling)",
-        value="",
-        help="Optional: Enter ticker symbol for output labeling"
-    )
-    
-    start_date = None
-    end_date = None
+    if daily_file:
+        st.success(f"✅ Daily file uploaded: {daily_file.name}")
+        st.info("📊 Daily data should start at least 4-6 months before your intraday data for proper ATR calculation")
 
-else:  # Public Source + Upload Intraday
-    st.sidebar.subheader("📈 Daily Data from Public Source")
-    st.sidebar.info("📅 **Smart Auto-Detection**: Daily data will be automatically fetched based on your intraday file's date range + 6-month buffer")
+with col2:
+    st.subheader("📊 Intraday Data")
+    intraday_file = st.file_uploader(
+        "Upload Intraday OHLC Data",
+        type=['csv', 'xlsx', 'xls'],
+        help="CSV or Excel file with intraday OHLC data",
+        key="intraday_upload"
+    )
     
-    ticker = st.sidebar.text_input(
-        "Ticker Symbol",
-        value="SPX",
-        help="Enter ticker symbol - system will auto-map to public data format (e.g., SPX → ^GSPC)"
-    ).upper()
+    if intraday_file:
+        st.success(f"✅ Intraday file uploaded: {intraday_file.name}")
+        st.info("📊 Intraday data should be properly formatted with datetime information")
+
+# Configuration section
+if daily_file and intraday_file:
+    st.header("⚙️ Analysis Configuration")
     
-    # Show ticker mapping preview
-    if ticker:
-        mapped_ticker = TickerMapper.get_public_ticker(ticker)
-        if mapped_ticker != ticker:
-            st.sidebar.success(f"✅ Will map: {ticker} → {mapped_ticker}")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("🏷️ Basic Settings")
+        
+        ticker = st.text_input(
+            "Ticker Symbol (for labeling)",
+            value="TICKER",
+            help="Enter ticker symbol for output file naming"
+        )
+        
+        asset_type = st.selectbox(
+            "Asset Class",
+            options=['STOCKS', 'STOCKS_24H', 'CRYPTO', 'FOREX', 'FUTURES', 'COMMODITIES'],
+            help="Select asset type for appropriate market handling"
+        )
+        
+        # Extended hours for stocks
+        extended_hours = False
+        if asset_type == 'STOCKS':
+            extended_hours = st.checkbox(
+                "Include Extended Hours",
+                value=False,
+                help="Include pre-market (4AM) and after-hours (8PM) data"
+            )
+        
+        atr_period = st.number_input(
+            "ATR Period", 
+            min_value=1, 
+            max_value=50, 
+            value=14,
+            help="Period for ATR calculation (default: 14)"
+        )
+    
+    with col2:
+        st.subheader("🔧 Advanced Settings")
+        
+        # Custom ratios
+        use_custom_ratios = st.checkbox("Use Custom Ratios")
+        if use_custom_ratios:
+            custom_ratios_text = st.text_area(
+                "Custom Ratios (comma-separated)",
+                value="0.236, 0.382, 0.5, 0.618, 0.786, 1.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0, 0.0",
+                help="Enter custom ratios separated by commas"
+            )
+            try:
+                custom_ratios = [float(x.strip()) for x in custom_ratios_text.split(',')]
+            except:
+                st.error("Invalid custom ratios format")
+                custom_ratios = None
         else:
-            st.sidebar.info(f"📈 Will fetch: {ticker}")
-    
-    st.sidebar.success("✨ No date selection needed - the system will analyze your intraday file and fetch the appropriate daily data range automatically!")
-    
-    # Set these to None - will be determined from intraday data
-    start_date = None
-    end_date = None
-    daily_file = None
-
-# Asset configuration (common to both options)
-st.sidebar.subheader("🏷️ Asset Configuration")
-asset_type = st.sidebar.selectbox(
-    "Asset Class",
-    options=['STOCKS', 'STOCKS_24H', 'CRYPTO', 'FOREX', 'FUTURES', 'COMMODITIES'],
-    help="Select asset type for appropriate market handling"
-)
-
-# Extended hours for stocks
-extended_hours = False
-if asset_type == 'STOCKS':
-    extended_hours = st.sidebar.checkbox(
-        "Include Extended Hours",
-        value=False,
-        help="Include pre-market (4AM) and after-hours (8PM) data"
-    )
-
-config = AssetConfig.get_config(asset_type, extended_hours)
-
-# Session filtering
-if len(config['session_types']) > 1:
-    session_filter = st.sidebar.multiselect(
-        "Filter by Sessions",
-        options=config['session_types'],
-        default=config['default_session'],
-        help="Select trading sessions to include in analysis"
-    )
-else:
-    session_filter = None
-
-st.sidebar.info("""
-📋 **Required Columns:**
-- **Daily**: Date, Open, High, Low, Close
-- **Intraday**: Datetime (or Date+Time), Open, High, Low, Close
-- **Optional**: Volume, Session (PM/R/AH)
-""")
-
-# Add this to Advanced Settings section
-with st.sidebar.expander("⚙️ Advanced Settings"):
-    atr_period = st.number_input("ATR Period", min_value=1, max_value=50, value=14)
-    
-    # Quick Debug Mode
-    debug_mode = st.checkbox("🐛 Quick Debug Mode", key="debug_mode", help="Analyze just one specific day with detailed 10-minute breakdown")
-    debug_date = None
-    if debug_mode:
-        col1, col2 = st.columns([2, 1])
-        with col1:
+            custom_ratios = None
+        
+        # Debug mode
+        debug_mode = st.checkbox("Debug Mode", help="Analyze just one specific day with detailed breakdown")
+        debug_date = None
+        if debug_mode:
             debug_date = st.date_input(
-                "Debug Date (YYYY-MM-DD)",
-                key="debug_date",
+                "Debug Date",
                 value=pd.to_datetime("2024-01-03").date(),
                 help="Enter a specific date to analyze in detail"
             )
-        with col2:
-            if st.button("🗑️ Clear Cache", help="Clear cached data to force full recalculation"):
-                if 'cached_data' in st.session_state:
-                    del st.session_state['cached_data']
-                    del st.session_state['cache_key']
-                    st.success("Cache cleared!")
-                else:
-                    st.info("No cache to clear")
-        
-        st.info("📋 Debug mode will show detailed trigger/goal analysis for each 10-minute candle")
-        
-        # Show cache status
-        if 'cached_data' in st.session_state:
-            st.success("💾 **Cached Data Available** - Debug runs will be instant!")
-        else:
-            st.info("⚡ **First Debug Run** - Will calculate full ATR then cache for speed")
-        
-        # Separate Debug Button
-        if st.button("🐛 Run Debug Analysis", key="debug_button"):
-            if not intraday_file:
-                st.error("❌ Please upload intraday data file for debug mode")
-            elif data_source == "Upload Both Files" and not daily_file:
-                st.error("❌ Please upload daily data file for debug mode")
-            elif data_source == "Public Source + Upload Intraday" and not ticker:
-                st.error("❌ Please enter ticker symbol for debug mode")
-            else:
-                with st.spinner(f'🐛 Debug Mode: Processing {debug_date}...'):
-                    try:
-                        # Get custom ratios setting - check if checkbox is enabled and ratios are valid
-                        try:
-                            if 'use_custom_ratios' in locals() and use_custom_ratios and 'custom_ratios' in locals():
-                                debug_custom_ratios = custom_ratios
-                            else:
-                                debug_custom_ratios = None
-                        except:
-                            debug_custom_ratios = None
-                        
-                        # Call a dedicated debug function
-                        debug_result = run_debug_analysis(
-                            debug_date=debug_date,
-                            ticker=ticker,
-                            asset_type=asset_type,
-                            daily_file=daily_file,
-                            intraday_file=intraday_file,
-                            atr_period=atr_period,
-                            custom_ratios=debug_custom_ratios,
-                            session_filter=session_filter,
-                            extended_hours=extended_hours
-                        )
-                        
-                        if debug_result:
-                            st.success(f"🎉 Debug analysis complete for {debug_date}!")
-                        else:
-                            st.error("❌ Debug analysis failed")
-                            
-                    except Exception as e:
-                        st.error(f'❌ Debug Error: {e}')
-                        import traceback
-                        st.error(traceback.format_exc())
     
-    # Custom ratio input
-    use_custom_ratios = st.checkbox("Use Custom Ratios")
-    if use_custom_ratios:
-        custom_ratios_text = st.text_area(
-            "Custom Ratios (comma-separated)",
-            value="0.236, 0.382, 0.5, 0.618, 0.786, 1.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0, 0.0",
-            help="Enter custom ratios separated by commas"
-        )
-        try:
-            custom_ratios = [float(x.strip()) for x in custom_ratios_text.split(',')]
-        except:
-            st.error("Invalid custom ratios format")
-            custom_ratios = None
+    # Session filtering (if applicable)
+    config = AssetConfig.get_config(asset_type, extended_hours)
+    if len(config['session_types']) > 1:
+        with st.expander("📊 Session Filtering"):
+            session_filter = st.multiselect(
+                "Filter by Sessions",
+                options=config['session_types'],
+                default=config['default_session'],
+                help="Select trading sessions to include in analysis"
+            )
     else:
-        custom_ratios = None
-
-# Generate button section
-if st.button('🚀 Generate Enhanced ATR Analysis with SYSTEMATIC Logic'):
-    # First check if intraday files are uploaded
-    if intraday_file is None:
-        st.error("❌ Please upload intraday data file")
-    elif data_source == "Upload Both Files":
-        if daily_file is None:
-            st.error("❌ Please upload daily data file")
-        else:
-            with st.spinner('Processing with SYSTEMATIC logic from run_generate.py...'):
-                try:
-                    result_df, debug_messages = main_flexible(
-                        ticker=ticker or "UPLOADED_DATA",
-                        asset_type=asset_type,
-                        daily_file=daily_file,
-                        intraday_file=intraday_file,  # Pass single file directly
-                        atr_period=atr_period,
-                        custom_ratios=custom_ratios,
-                        session_filter=session_filter,
-                        extended_hours=extended_hours
-                    )
-                    
-                    display_results(result_df, debug_messages, ticker or "UPLOADED_DATA", asset_type, "Upload Both Files")
-                        
-                except Exception as e:
-                    st.error(f'❌ Error: {e}')
-                    import traceback
-                    st.error(traceback.format_exc())
+        session_filter = None
     
-    elif data_source == "Public Source + Upload Intraday":
-        if not ticker:
-            st.error("❌ Please enter a ticker symbol for public data source daily data")
-        else:
-            with st.spinner(f'Auto-detecting date range and processing with SYSTEMATIC logic...'):
-                try:
-                    result_df, debug_messages = main_flexible(
-                        ticker=ticker,
-                        asset_type=asset_type,
-                        daily_file=None,
-                        intraday_file=intraday_file,  # Pass single file directly
-                        atr_period=atr_period,
-                        custom_ratios=custom_ratios,
-                        session_filter=session_filter,
-                        extended_hours=extended_hours
-                    )
+    # Run analysis button
+    st.markdown("---")
+    
+    if st.button('🚀 Generate ATR Analysis', type="primary", use_container_width=True):
+        with st.spinner('Processing with SYSTEMATIC logic...'):
+            try:
+                result_df, debug_messages = main_csv_only(
+                    ticker=ticker,
+                    asset_type=asset_type,
+                    daily_file=daily_file,
+                    intraday_file=intraday_file,
+                    atr_period=atr_period,
+                    custom_ratios=custom_ratios,
+                    session_filter=session_filter,
+                    extended_hours=extended_hours,
+                    debug_mode=debug_mode,
+                    debug_date=debug_date
+                )
+                
+                display_results(result_df, debug_messages, ticker, asset_type)
                     
-                    display_results(result_df, debug_messages, ticker, asset_type, "Public Daily (Auto-detected) + Uploaded Intraday")
-                        
-                except Exception as e:
-                    st.error(f'❌ Error: {e}')
-                    import traceback
-                    st.error(traceback.format_exc())
+            except Exception as e:
+                st.error(f'Error: {e}')
+                import traceback
+                st.error(traceback.format_exc())
 
-# Enhanced help section
+else:
+    # Show requirements when files aren't uploaded
+    st.info("👆 **Please upload both daily and intraday CSV files to proceed**")
+    
+    # Show file format requirements
+    with st.expander("📋 Required File Formats", expanded=True):
+        st.markdown("""
+        **📈 Daily Data Requirements:**
+        - **Columns**: Date, Open, High, Low, Close
+        - **Alternative formats**: o, h, l, c (single letters)
+        - **Date format**: Any standard date format
+        - **Coverage**: Should start 4-6 months before intraday data
+        
+        **📊 Intraday Data Requirements:**
+        - **Columns**: Date/Datetime, Open, High, Low, Close
+        - **Alternative formats**: o, h, l, c (single letters)
+        - **Datetime**: Full datetime or separate Date + Time columns
+        - **Timeframe**: Any intraday timeframe (1min, 5min, 10min, etc.)
+        
+        **✅ Supported Formats:**
+        - CSV files (.csv)
+        - Excel files (.xlsx, .xls)
+        - Both long format (Open, High, Low, Close) and short format (o, h, l, c)
+        """)
+    
+    # Show workflow
+    with st.expander("🔧 Analysis Workflow", expanded=False):
+        st.markdown("""
+        **🎯 Step-by-Step Process:**
+        
+        1. **Upload Files** - Daily and intraday CSV/Excel files
+        2. **Configure Settings** - Ticker, asset type, ATR period
+        3. **Data Validation** - System checks alignment and quality
+        4. **ATR Calculation** - TRUE Wilder's method (matches Excel)
+        5. **Systematic Detection** - Trigger and goal analysis
+        6. **Results Export** - Download full analysis or summary
+        
+        **🔍 What You Get:**
+        - Complete trigger/goal combinations for each day
+        - Hit rates and success statistics
+        - Goal classifications (Continuation, Retracement, Retest)
+        - Same-time scenario analysis
+        - Cross-zero detection
+        - Debug mode for detailed single-day analysis
+        
+        **💾 Perfect for:**
+        - Systematic trading strategy development
+        - ATR-based level analysis
+        - Intraday goal completion studies
+        - Trading system backtesting
+        """)
+
+# Help section
+st.markdown("---")
+st.subheader("📚 Key Features")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.markdown("""
+    **🎯 Systematic Logic**
+    - Validated trigger/goal detection
+    - TRUE Wilder's ATR calculation
+    - Matches Excel formulas exactly
+    - Same-candle completion rules
+    - Cross-zero scenario handling
+    """)
+
+with col2:
+    st.markdown("""
+    **📊 Data Flexibility**
+    - CSV and Excel support
+    - Multiple column formats
+    - o,h,l,c or Open,High,Low,Close
+    - Automatic column detection
+    - Date/datetime parsing
+    """)
+
+with col3:
+    st.markdown("""
+    **🔧 Analysis Features**
+    - Multi-asset class support
+    - Custom ratio definitions
+    - Session filtering
+    - Debug mode for single days
+    - Comprehensive statistics
+    """)
+
+st.info("💡 **Tip**: Use the CSV Data Handler tool to prepare and clean your data files before analysis!")
+
 st.markdown("""
 ---
-### 🔧 MAJOR ENHANCEMENT: SYSTEMATIC Logic Integration
+### 🎯 About This Tool
 
-#### 🎯 **Critical Logic from run_generate.py Now Included**
-This enhanced version now includes the **validated systematic trigger and goal detection logic** from your `run_generate.py` file, with all the explicit comments and warnings preserved:
+This is a **clean, focused ATR analysis tool** that uses the validated systematic trigger/goal detection logic. 
 
-**Key Features Merged:**
-- ✅ **TRUE Wilder's ATR calculation** (not pandas EMA!)
-- ✅ **PERFECT SYSTEMATIC approach** - each level checked in both directions
-- ✅ **FIXED 0930 candle goal completion logic**
-- ✅ **Critical retracement logic** with intra-candle sequence handling
-- ✅ **Explicit comments preserved** about not modifying core sections
-- ✅ **Enhanced validation metrics** from the original logic
+**Key Improvements from the original:**
+- ✅ **CSV-only input** - No complex public data source handling
+- ✅ **Simplified interface** - Focus on the core analysis
+- ✅ **Better reliability** - No external API dependencies  
+- ✅ **Faster processing** - Streamlined data handling
+- ✅ **Cleaner codebase** - Single responsibility principle
 
-#### 🚨 **Protected Logic Sections**
-The core trigger and goal detection logic is now protected with clear comments:
-```python
-# ==============================================================================================
-# CRITICAL SECTION: DO NOT MODIFY THE CORE TRIGGER AND GOAL DETECTION LOGIC
-# This section contains the validated systematic logic from run_generate.py
-# ==============================================================================================
-```
+**Perfect workflow:**
+1. **CSV Data Handler** → Process and prepare your data files
+2. **This ATR Tool** → Run systematic trigger/goal analysis  
+3. **Export Results** → Get clean CSV files for further analysis
 
-#### 📊 **Systematic Approach Preserved**
-1. **Each trigger level checked in BOTH directions:**
-   - LOW <= trigger (Below direction) → check all 12 goals
-   - HIGH >= trigger (Above direction) → check all 12 goals
-
-2. **Goal completion logic:**
-   - Above goals: check HIGH >= goal
-   - Below goals: check LOW <= goal
-
-3. **CRITICAL retracement handling:**
-   - CONTINUATION goals: Can complete on same candle as trigger
-   - RETRACEMENT goals: MUST skip same candle as trigger
-   - Reason: Unknown intra-candle sequence for retracements
-
-4. **OPEN vs 0930 distinction:**
-   - OPEN TRIGGER = opening price of 0930 candle specifically
-   - 0930 TIME = high/low of 0930 candle (different from OPEN price)
-
-#### 🔍 **Enhanced Validation Metrics**
-The system now provides all the validation metrics from `run_generate.py`:
-- Same-time scenarios found
-- Same-time hits
-- Records with GoalTime=OPEN
-- Cross-zero scenarios (Below triggers to above goals, Above triggers to below goals)
-- OPEN triggers vs Intraday triggers
-- Zero-level trigger analysis
-
-#### 📈 **Flexible Data Sources + Systematic Logic**
-You now get the best of both worlds:
-- **Flexible data input options** (Public source auto-detection, file uploads, multi-asset support)
-- **Systematic trigger/goal detection** (the exact logic that was working correctly)
-- **Enhanced progress tracking** and validation
-- **TRUE Wilder's ATR calculation** that matches Excel
-
-#### ⚠️ **What Was Preserved**
-All the critical comments and logic from `run_generate.py`:
-- "DO NOT MODIFY WITHOUT UNDERSTANDING" sections
-- Explicit retracement logic explanations
-- OPEN vs intraday trigger handling
-- Same-candle completion rules
-- Zero-fill record generation for troubleshooting
-
-#### 🎯 **Result Validation**
-The output now includes systematic validation that matches `run_generate.py`:
-- ATR values should match Excel calculations
-- Same-time scenario counts
-- Cross-zero scenario analysis
-- OPEN trigger validation
-- Goal classification breakdown (Continuation vs Retracement)
-
-This merger ensures you get the **proven systematic logic** from `run_generate.py` while keeping all the **enhanced flexibility and features** from the newer flexible ATR generator.
+This creates a clean, maintainable pipeline where each tool does one thing really well!
 """)
