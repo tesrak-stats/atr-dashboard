@@ -791,7 +791,7 @@ def download_public_data_chunked(ticker, start_date, end_date, chunk_years=3, ma
             else:  # Retry with smaller chunks
                 st.info("🔄 Retrying with smaller chunk size...")
                 smaller_chunk_years = max(1, chunk_years // 2)
-                return download_yahoo_data_chunked(ticker, start_date, end_date, smaller_chunk_years, max_retries)
+                return download_public_data_chunked(ticker, start_date, end_date, smaller_chunk_years, max_retries)
         
         else:
             # Successful chunk - add to collection
@@ -800,7 +800,7 @@ def download_public_data_chunked(ticker, start_date, end_date, chunk_years=3, ma
         # Move to next chunk
         current_start = chunk_end
         
-        # Small delay to be nice to Yahoo Finance
+        # Small delay to be respectful
         time.sleep(0.5)
     
     # Clear progress indicators
@@ -847,8 +847,8 @@ def download_public_data_chunked(ticker, start_date, end_date, chunk_years=3, ma
 
 def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=None, intraday_data=None):
     """
-    Load daily data from uploaded file or Yahoo Finance
-    If using Yahoo Finance, automatically detect date range from intraday data
+    Load daily data from uploaded file or public data source
+    If using public source, automatically detect date range from intraday data
     NOW WITH CHUNKED DOWNLOAD SUPPORT
     """
     if uploaded_file is not None:
@@ -908,12 +908,12 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
     elif ticker and intraday_data is not None:
         # Smart auto-detection from intraday data
         try:
-            # Apply ticker mapping for Yahoo Finance
+            # Apply ticker mapping for public data source
             original_ticker = ticker
-            yahoo_ticker = TickerMapper.get_yahoo_ticker(ticker)
+            public_ticker = TickerMapper.get_public_ticker(ticker)
             
-            if yahoo_ticker != original_ticker:
-                st.info(f"🔄 Mapped ticker: '{original_ticker}' → '{yahoo_ticker}' for Yahoo Finance")
+            if public_ticker != original_ticker:
+                st.info(f"🔄 Mapped ticker: '{original_ticker}' → '{public_ticker}' for public data source")
             
             st.info(f"🔍 Analyzing intraday data to determine optimal daily data range...")
             
@@ -948,26 +948,26 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
             fetch_end = intraday_end + timedelta(days=5)  # Small buffer for end date
             
             st.info(f"📊 Intraday data spans: {intraday_start} to {intraday_end}")
-            st.info(f"📈 Fetching Yahoo daily data for '{yahoo_ticker}' from {buffer_start} to {fetch_end}")
+            st.info(f"📈 Fetching public daily data for '{public_ticker}' from {buffer_start} to {fetch_end}")
             
             # Try chunked download first for large date ranges
             date_span_years = (fetch_end - buffer_start).days / 365.25
             
             if date_span_years > 5:  # Use chunked download for > 5 years
                 st.info(f"📊 Large date range detected ({date_span_years:.1f} years). Using chunked download...")
-                daily_data = download_yahoo_data_chunked(yahoo_ticker, buffer_start, fetch_end)
+                daily_data = download_public_data_chunked(public_ticker, buffer_start, fetch_end)
             else:
                 # Try regular download for smaller ranges
                 st.info(f"📊 Standard download for {date_span_years:.1f} years...")
                 try:
-                    daily_data = yf.download(yahoo_ticker, start=buffer_start, end=fetch_end, interval='1d', progress=False)
+                    daily_data = yf.download(public_ticker, start=buffer_start, end=fetch_end, interval='1d', progress=False)
                 except Exception as e:
                     st.warning(f"⚠️ Standard download failed: {e}")
                     st.info("🔄 Falling back to chunked download...")
-                    daily_data = download_yahoo_data_chunked(yahoo_ticker, buffer_start, fetch_end)
+                    daily_data = download_public_data_chunked(public_ticker, buffer_start, fetch_end)
             
             if daily_data.empty:
-                st.error(f"❌ No daily data found for '{yahoo_ticker}' in the calculated date range")
+                st.error(f"❌ No daily data found for '{public_ticker}' in the calculated date range")
                 
                 # Suggest alternatives
                 alternatives = TickerMapper.suggest_alternatives(original_ticker)
@@ -978,17 +978,17 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
                 
                 return None
             
-            # CRITICAL: Yahoo Finance returns data with DatetimeIndex, not 'Date' column
+            # CRITICAL: Public source returns data with DatetimeIndex, not 'Date' column
             daily_data.reset_index(inplace=True)
             
             # Ensure Date column exists and is properly formatted
             if 'Date' not in daily_data.columns:
-                # Yahoo data usually has the date as index, now as first column after reset_index
+                # Public data usually has the date as index, now as first column after reset_index
                 if daily_data.index.name == 'Date' or 'Date' in str(daily_data.columns[0]).lower():
                     # First column should be the date after reset_index
                     daily_data.rename(columns={daily_data.columns[0]: 'Date'}, inplace=True)
                 else:
-                    st.error("❌ Could not find Date column in Yahoo Finance data")
+                    st.error("❌ Could not find Date column in public data")
                     st.info(f"Available columns: {list(daily_data.columns)}")
                     return None
             
@@ -1013,7 +1013,7 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
             return daily_data
             
         except Exception as e:
-            st.error(f"Error auto-fetching from Yahoo Finance for '{yahoo_ticker}': {str(e)}")
+            st.error(f"Error auto-fetching from public data source for '{public_ticker}': {str(e)}")
             
             # Suggest alternatives on error
             alternatives = TickerMapper.suggest_alternatives(original_ticker)
@@ -1027,7 +1027,7 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
     elif ticker and start_date and end_date:
         # Fallback to manual date range (for backward compatibility)
         try:
-            st.info(f"📈 Fetching daily data from Yahoo Finance for {ticker}...")
+            st.info(f"📈 Fetching daily data from public source for {ticker}...")
             
             # Add buffer for ATR calculation
             buffer_start = start_date - timedelta(days=180)  # 6 months buffer
@@ -1037,7 +1037,7 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
             
             if date_span_years > 5:  # Use chunked download for > 5 years
                 st.info(f"📊 Large date range detected ({date_span_years:.1f} years). Using chunked download...")
-                daily_data = download_yahoo_data_chunked(ticker, buffer_start, end_date)
+                daily_data = download_public_data_chunked(ticker, buffer_start, end_date)
             else:
                 # Try regular download for smaller ranges
                 try:
@@ -1045,35 +1045,35 @@ def load_daily_data(uploaded_file=None, ticker=None, start_date=None, end_date=N
                 except Exception as e:
                     st.warning(f"⚠️ Standard download failed: {e}")
                     st.info("🔄 Falling back to chunked download...")
-                    daily_data = download_yahoo_data_chunked(ticker, buffer_start, end_date)
+                    daily_data = download_public_data_chunked(ticker, buffer_start, end_date)
             
             if daily_data.empty:
                 st.error(f"No daily data found for {ticker}")
                 return None
             
-            # CRITICAL: Yahoo Finance returns data with DatetimeIndex, not 'Date' column
+            # CRITICAL: Public source returns data with DatetimeIndex, not 'Date' column
             daily_data.reset_index(inplace=True)
             
             # Ensure Date column exists and is properly formatted
             if 'Date' not in daily_data.columns:
-                # Yahoo data usually has the date as index, now as first column after reset_index
+                # Public data usually has the date as index, now as first column after reset_index
                 if daily_data.index.name == 'Date' or 'Date' in str(daily_data.columns[0]).lower():
                     # First column should be the date after reset_index
                     daily_data.rename(columns={daily_data.columns[0]: 'Date'}, inplace=True)
                 else:
-                    st.error("❌ Could not find Date column in Yahoo Finance data")
+                    st.error("❌ Could not find Date column in public data")
                     st.info(f"Available columns: {list(daily_data.columns)}")
                     return None
             
             # Standardize column names (after ensuring Date exists)
             daily_data = standardize_columns(daily_data)
             
-            st.success(f"✅ Loaded daily data from Yahoo: {len(daily_data)} records (includes 6-month buffer)")
+            st.success(f"✅ Loaded daily data from public source: {len(daily_data)} records (includes 6-month buffer)")
             st.info(f"Date range: {daily_data['Date'].min().date()} to {daily_data['Date'].max().date()}")
             return daily_data
             
         except Exception as e:
-            st.error(f"Error fetching from Yahoo Finance: {str(e)}")
+            st.error(f"Error fetching from public data source: {str(e)}")
             return None
     
     return None
@@ -2003,12 +2003,12 @@ def main_flexible(ticker=None, asset_type='STOCKS', daily_file=None, intraday_fi
             debug_info.append(f"Intraday data loaded: {intraday.shape}")
             debug_info.append(f"Intraday date range: {intraday['Date'].min()} to {intraday['Date'].max()}")
             
-            # Load daily data (now can use intraday data for smart Yahoo fetching)
+            # Load daily data (now can use intraday data for smart auto-fetching)
             if daily_file is not None:
                 # Upload Both Files scenario
                 daily = load_daily_data(daily_file)
             else:
-                # Yahoo Daily + Upload Intraday scenario - use smart auto-detection
+                # Public Daily + Upload Intraday scenario - use smart auto-detection
                 daily = load_daily_data(uploaded_file=None, ticker=ticker, intraday_data=intraday)
             
             if daily is None:
@@ -2271,7 +2271,7 @@ def display_results(result_df, debug_messages, ticker, asset_type, data_source_l
 # Streamlit Interface
 st.title('🎯 Advanced ATR Generator - Enhanced with SYSTEMATIC Logic')
 st.write('**Now includes the validated systematic trigger/goal detection logic from run_generate.py**')
-st.write('**Intraday data must always be uploaded. Choose Yahoo Finance or file upload for daily data.**')
+st.write('**Intraday data must always be uploaded. Choose public source or file upload for daily data.**')
 
 # Data source selection
 st.sidebar.header("📁 Data Input")
@@ -2419,7 +2419,7 @@ with st.sidebar.expander("⚙️ Advanced Settings"):
                 st.error("❌ Please upload intraday data file for debug mode")
             elif data_source == "Upload Both Files" and not daily_file:
                 st.error("❌ Please upload daily data file for debug mode")
-            elif data_source == "Yahoo Daily + Upload Intraday" and not ticker:
+            elif data_source == "Public Source + Upload Intraday" and not ticker:
                 st.error("❌ Please enter ticker symbol for debug mode")
             else:
                 with st.spinner(f'🐛 Debug Mode: Processing {debug_date}...'):
@@ -2518,7 +2518,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis with SYSTEMATIC Logic'):
                         extended_hours=extended_hours
                     )
                     
-                    display_results(result_df, debug_messages, ticker, asset_type, "Yahoo Daily (Auto-detected) + Uploaded Intraday")
+                    display_results(result_df, debug_messages, ticker, asset_type, "Public Daily (Auto-detected) + Uploaded Intraday")
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
@@ -2539,7 +2539,6 @@ This enhanced version now includes the **validated systematic trigger and goal d
 - ✅ **FIXED 0930 candle goal completion logic**
 - ✅ **Critical retracement logic** with intra-candle sequence handling
 - ✅ **Explicit comments preserved** about not modifying core sections
-- ✅ **Zero-fill records** for troubleshooting
 - ✅ **Enhanced validation metrics** from the original logic
 
 #### 🚨 **Protected Logic Sections**
@@ -2580,7 +2579,7 @@ The system now provides all the validation metrics from `run_generate.py`:
 
 #### 📈 **Flexible Data Sources + Systematic Logic**
 You now get the best of both worlds:
-- **Flexible data input options** (Yahoo Finance auto-detection, file uploads, multi-asset support)
+- **Flexible data input options** (Public source auto-detection, file uploads, multi-asset support)
 - **Systematic trigger/goal detection** (the exact logic that was working correctly)
 - **Enhanced progress tracking** and validation
 - **TRUE Wilder's ATR calculation** that matches Excel
