@@ -28,7 +28,7 @@ ticker_config = {
         "summary_file": "atr_dashboard_summary_IWM.csv",  # You'll need to create this
         "display_name": "Russell 2000 (IWM)",
         "ticker_symbol": "IWM"
-    }
+    },
     "NVDA": {
         "summary_file": "atr_dashboard_summary_NVDA.csv",
         "display_name": "S&P 500 (NVDA)",
