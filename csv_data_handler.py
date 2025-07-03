@@ -75,26 +75,6 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         st.info(f"📋 Daily columns: {list(daily_df.columns)}")
         st.info(f"📋 Intraday columns: {list(intraday_df.columns)}")
         
-        # Add CSV export buttons for debugging
-        st.subheader("🔍 Debug Data Export")
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.download_button(
-                "📥 Download Raw Daily Data",
-                data=daily_df.to_csv(index=False),
-                file_name=f"debug_raw_daily_{datetime.now().strftime('%H%M%S')}.csv",
-                mime="text/csv"
-            )
-        
-        with col2:
-            st.download_button(
-                "📥 Download Raw Intraday Data", 
-                data=intraday_df.to_csv(index=False),
-                file_name=f"debug_raw_intraday_{datetime.now().strftime('%H%M%S')}.csv",
-                mime="text/csv"
-            )
-        
         # Standardize columns
         daily_df = CSVProcessor.standardize_columns(daily_df)
         intraday_df = CSVProcessor.standardize_columns(intraday_df)
@@ -102,23 +82,9 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         st.info(f"📋 Standardized daily columns: {list(daily_df.columns)}")
         st.info(f"📋 Standardized intraday columns: {list(intraday_df.columns)}")
         
-        # Export standardized data
-        col1, col2 = st.columns(2)
-        with col1:
-            st.download_button(
-                "📥 Download Standardized Daily Data",
-                data=daily_df.to_csv(index=False),
-                file_name=f"debug_standardized_daily_{datetime.now().strftime('%H%M%S')}.csv",
-                mime="text/csv"
-            )
-        
-        with col2:
-            st.download_button(
-                "📥 Download Standardized Intraday Data",
-                data=intraday_df.to_csv(index=False),
-                file_name=f"debug_standardized_intraday_{datetime.now().strftime('%H%M%S')}.csv",
-                mime="text/csv"
-            )
+        # Store data in session state for download buttons
+        st.session_state['debug_raw_daily'] = daily_df.copy()
+        st.session_state['debug_raw_intraday'] = intraday_df.copy()
         
         # Validate required columns
         required_cols = ['Date', 'Open', 'High', 'Low', 'Close']
@@ -132,6 +98,58 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         
         if intraday_missing:
             st.error(f"❌ Intraday data missing columns: {intraday_missing}")
+            return None
+        
+        # Clean and validate OHLC data
+        st.info("🧹 Cleaning and validating OHLC data...")
+        
+        # Function to clean OHLC data
+        def clean_ohlc_data(df, data_type="data"):
+            original_count = len(df)
+            
+            # Convert OHLC columns to numeric, forcing errors to NaN
+            ohlc_cols = ['Open', 'High', 'Low', 'Close']
+            for col in ohlc_cols:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+            
+            # Remove rows where any OHLC value is NaN or invalid
+            df_clean = df.dropna(subset=ohlc_cols)
+            
+            # Additional validation: ensure High >= Low, Open/Close within High/Low range
+            valid_mask = (
+                (df_clean['High'] >= df_clean['Low']) &
+                (df_clean['Open'] >= df_clean['Low']) &
+                (df_clean['Open'] <= df_clean['High']) &
+                (df_clean['Close'] >= df_clean['Low']) &
+                (df_clean['Close'] <= df_clean['High']) &
+                (df_clean['High'] > 0) &  # Prices should be positive
+                (df_clean['Low'] > 0)
+            )
+            
+            df_clean = df_clean[valid_mask]
+            
+            cleaned_count = len(df_clean)
+            removed_count = original_count - cleaned_count
+            
+            if removed_count > 0:
+                st.warning(f"🧹 {data_type}: Removed {removed_count} invalid OHLC rows (corporate actions, text, invalid prices)")
+                st.info(f"✅ {data_type}: {cleaned_count} valid OHLC rows remaining")
+            else:
+                st.success(f"✅ {data_type}: All {cleaned_count} rows have valid OHLC data")
+            
+            return df_clean.reset_index(drop=True)
+        
+        # Clean both datasets
+        daily_df = clean_ohlc_data(daily_df, "Daily data")
+        intraday_df = clean_ohlc_data(intraday_df, "Intraday data")
+        
+        # Check if we still have data after cleaning
+        if daily_df.empty:
+            st.error("❌ No valid daily OHLC data remaining after cleaning")
+            return None
+        
+        if intraday_df.empty:
+            st.error("❌ No valid intraday OHLC data remaining after cleaning")
             return None
         
         # Process dates
@@ -169,13 +187,8 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         st.info(f"Daily data shape after ATR: {daily_with_atr.shape}")
         st.info(f"ATR column sample: {daily_with_atr['ATR'].head(20).tolist()}")
         
-        # Export daily data with ATR
-        st.download_button(
-            "📥 Download Daily Data with ATR",
-            data=daily_with_atr.to_csv(index=False),
-            file_name=f"debug_daily_with_atr_{datetime.now().strftime('%H%M%S')}.csv",
-            mime="text/csv"
-        )
+        # Store processed data in session state
+        st.session_state['debug_daily_with_atr'] = daily_with_atr.copy()
         
         # Validate ATR calculation
         valid_atr = daily_with_atr[daily_with_atr['ATR'].notna()]
@@ -187,13 +200,8 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         
         st.success(f"✅ ATR calculated successfully: {len(valid_atr)} valid ATR values")
         
-        # Export only valid ATR records
-        st.download_button(
-            "📥 Download Valid ATR Records Only",
-            data=valid_atr.to_csv(index=False),
-            file_name=f"debug_valid_atr_only_{datetime.now().strftime('%H%M%S')}.csv",
-            mime="text/csv"
-        )
+        # Store valid ATR data
+        st.session_state['debug_valid_atr'] = valid_atr.copy()
         
         # Data alignment info
         daily_start = daily_df['Date'].min()
@@ -260,38 +268,8 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             total_intraday = len(intraday_df)
             st.info(f"✅ ATR mapping result: {matched_atr}/{total_intraday} intraday records got ATR values")
             
-            # Export intraday data with ATR mapping attempts
-            st.download_button(
-                "📥 Download Intraday with ATR Mapping",
-                data=intraday_df.to_csv(index=False),
-                file_name=f"debug_intraday_with_atr_{datetime.now().strftime('%H%M%S')}.csv",
-                mime="text/csv"
-            )
-            
-            # Add previous day's ATR (safe method)
-            prev_atr_lookup = {}
-            for i in range(1, len(daily_with_atr)):
-                current_date = daily_with_atr.iloc[i]['Date']
-                prev_atr = daily_with_atr.iloc[i-1]['ATR']
-                prev_atr_lookup[current_date] = prev_atr
-            
-            intraday_df['Previous_ATR'] = intraday_df['Date'].map(prev_atr_lookup)
-            
-            # Add daily OHLC for reference (safe method)
-            daily_ohlc_lookup = {}
-            for _, row in daily_with_atr.iterrows():
-                daily_ohlc_lookup[row['Date']] = {
-                    'Open': row['Open'],
-                    'High': row['High'],
-                    'Low': row['Low'],
-                    'Close': row['Close']
-                }
-            
-            # Add daily OHLC columns
-            intraday_df['Daily_Open'] = intraday_df['Date'].map(lambda x: daily_ohlc_lookup.get(x, {}).get('Open'))
-            intraday_df['Daily_High'] = intraday_df['Date'].map(lambda x: daily_ohlc_lookup.get(x, {}).get('High'))
-            intraday_df['Daily_Low'] = intraday_df['Date'].map(lambda x: daily_ohlc_lookup.get(x, {}).get('Low'))
-            intraday_df['Daily_Close'] = intraday_df['Date'].map(lambda x: daily_ohlc_lookup.get(x, {}).get('Close'))
+            # Store final mapped data
+            st.session_state['debug_intraday_with_atr'] = intraday_df.copy()
             
             # Filter to only intraday records with ATR
             combined_df = intraday_df[intraday_df['ATR'].notna()].copy()
@@ -313,6 +291,42 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
                 st.error(str(intraday_df['Date'].head(10).tolist()))
                 st.error("Debug - ATR values sample:")
                 st.error(str(intraday_df['ATR'].head(10).tolist()))
+                
+                # Show debug download buttons only when there's an error
+                st.subheader("🔍 Debug Data Downloads")
+                st.info("💡 **Download these files to debug the issue:**")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    if 'debug_daily_with_atr' in st.session_state:
+                        st.download_button(
+                            "📥 Daily with ATR",
+                            data=st.session_state['debug_daily_with_atr'].to_csv(index=False),
+                            file_name=f"debug_daily_with_atr_{datetime.now().strftime('%H%M%S')}.csv",
+                            mime="text/csv",
+                            key="download_daily_atr"
+                        )
+                
+                with col2:
+                    if 'debug_valid_atr' in st.session_state:
+                        st.download_button(
+                            "📥 Valid ATR Only",
+                            data=st.session_state['debug_valid_atr'].to_csv(index=False),
+                            file_name=f"debug_valid_atr_{datetime.now().strftime('%H%M%S')}.csv",
+                            mime="text/csv",
+                            key="download_valid_atr"
+                        )
+                
+                with col3:
+                    if 'debug_intraday_with_atr' in st.session_state:
+                        st.download_button(
+                            "📥 Intraday with ATR",
+                            data=st.session_state['debug_intraday_with_atr'].to_csv(index=False),
+                            file_name=f"debug_intraday_atr_{datetime.now().strftime('%H%M%S')}.csv",
+                            mime="text/csv",
+                            key="download_intraday_atr"
+                        )
                 
                 return None
             
