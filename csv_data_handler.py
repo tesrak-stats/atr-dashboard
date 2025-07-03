@@ -110,9 +110,15 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         
         intraday_df['Date'] = intraday_df['Datetime'].dt.date
         
-        # Sort data
+        # Sort data and handle duplicates
         daily_df = daily_df.sort_values('Date').reset_index(drop=True)
         intraday_df = intraday_df.sort_values('Datetime').reset_index(drop=True)
+        
+        # Check for and handle duplicate dates in daily data
+        duplicate_dates = daily_df['Date'].duplicated().sum()
+        if duplicate_dates > 0:
+            st.warning(f"⚠️ Found {duplicate_dates} duplicate dates in daily data. Using first occurrence of each date.")
+            daily_df = daily_df.drop_duplicates(subset=['Date'], keep='first')
         
         # Calculate ATR on daily data
         st.info("📊 Calculating ATR on daily data...")
@@ -143,27 +149,38 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         if align_method == 'date_match':
             st.info("🔄 Combining data using date matching...")
             
-            # Create ATR lookup dict
-            atr_lookup = dict(zip(daily_with_atr['Date'], daily_with_atr['ATR']))
+            # Create ATR lookup dict (safe method that handles duplicates)
+            atr_lookup = {}
+            for _, row in daily_with_atr.iterrows():
+                atr_lookup[row['Date']] = row['ATR']
             
             # Add ATR to intraday data
             intraday_df['ATR'] = intraday_df['Date'].map(atr_lookup)
             
-            # Add previous day's ATR (common for analysis)
-            daily_with_atr['Date_shifted'] = daily_with_atr['Date'].shift(-1)
-            prev_atr_lookup = dict(zip(daily_with_atr['Date_shifted'], daily_with_atr['ATR']))
+            # Add previous day's ATR (safe method)
+            prev_atr_lookup = {}
+            for i in range(1, len(daily_with_atr)):
+                current_date = daily_with_atr.iloc[i]['Date']
+                prev_atr = daily_with_atr.iloc[i-1]['ATR']
+                prev_atr_lookup[current_date] = prev_atr
+            
             intraday_df['Previous_ATR'] = intraday_df['Date'].map(prev_atr_lookup)
             
-            # Add daily OHLC for reference
-            daily_ohlc_lookup = daily_with_atr.set_index('Date')[['Open', 'High', 'Low', 'Close']].to_dict('index')
+            # Add daily OHLC for reference (safe method)
+            daily_ohlc_lookup = {}
+            for _, row in daily_with_atr.iterrows():
+                daily_ohlc_lookup[row['Date']] = {
+                    'Open': row['Open'],
+                    'High': row['High'],
+                    'Low': row['Low'],
+                    'Close': row['Close']
+                }
             
-            for idx, row in intraday_df.iterrows():
-                date = row['Date']
-                if date in daily_ohlc_lookup:
-                    intraday_df.loc[idx, 'Daily_Open'] = daily_ohlc_lookup[date]['Open']
-                    intraday_df.loc[idx, 'Daily_High'] = daily_ohlc_lookup[date]['High']
-                    intraday_df.loc[idx, 'Daily_Low'] = daily_ohlc_lookup[date]['Low']
-                    intraday_df.loc[idx, 'Daily_Close'] = daily_ohlc_lookup[date]['Close']
+            # Add daily OHLC columns
+            intraday_df['Daily_Open'] = intraday_df['Date'].map(lambda x: daily_ohlc_lookup.get(x, {}).get('Open'))
+            intraday_df['Daily_High'] = intraday_df['Date'].map(lambda x: daily_ohlc_lookup.get(x, {}).get('High'))
+            intraday_df['Daily_Low'] = intraday_df['Date'].map(lambda x: daily_ohlc_lookup.get(x, {}).get('Low'))
+            intraday_df['Daily_Close'] = intraday_df['Date'].map(lambda x: daily_ohlc_lookup.get(x, {}).get('Close'))
             
             # Filter to only intraday records with ATR
             combined_df = intraday_df[intraday_df['ATR'].notna()].copy()
