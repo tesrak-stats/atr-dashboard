@@ -45,21 +45,42 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
     results = []
     
     try:
-        # Load daily data
+        # Load daily data with proper file handling
+        daily_file.seek(0)  # Reset file pointer
         if daily_file.name.endswith('.csv'):
             daily_df = pd.read_csv(daily_file)
         else:
             daily_df = pd.read_excel(daily_file)
         
-        # Load intraday data
+        # Load intraday data with proper file handling
+        intraday_file.seek(0)  # Reset file pointer
         if intraday_file.name.endswith('.csv'):
             intraday_df = pd.read_csv(intraday_file)
         else:
             intraday_df = pd.read_excel(intraday_file)
         
+        # Validate that we actually loaded data
+        if daily_df.empty:
+            st.error("❌ Daily file appears to be empty or unreadable")
+            return None
+        
+        if intraday_df.empty:
+            st.error("❌ Intraday file appears to be empty or unreadable")
+            return None
+        
+        st.info(f"📊 Loaded daily data: {daily_df.shape[0]} rows, {daily_df.shape[1]} columns")
+        st.info(f"📊 Loaded intraday data: {intraday_df.shape[0]} rows, {intraday_df.shape[1]} columns")
+        
+        # Show column names for debugging
+        st.info(f"📋 Daily columns: {list(daily_df.columns)}")
+        st.info(f"📋 Intraday columns: {list(intraday_df.columns)}")
+        
         # Standardize columns
         daily_df = CSVProcessor.standardize_columns(daily_df)
         intraday_df = CSVProcessor.standardize_columns(intraday_df)
+        
+        st.info(f"📋 Standardized daily columns: {list(daily_df.columns)}")
+        st.info(f"📋 Standardized intraday columns: {list(intraday_df.columns)}")
         
         # Validate required columns
         required_cols = ['Date', 'Open', 'High', 'Low', 'Close']
