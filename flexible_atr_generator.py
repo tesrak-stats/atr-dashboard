@@ -425,6 +425,26 @@ def load_daily_data(uploaded_file):
             st.info(f"Available columns: {list(daily.columns)}")
             return None
         
+        # Filter out rows with missing OHLC data (e.g., dividend entries)
+        ohlc_cols = ['Open', 'High', 'Low', 'Close']
+        original_count = len(daily)
+        
+        # Remove rows where any OHLC value is null/empty
+        daily = daily.dropna(subset=ohlc_cols)
+        
+        # Also remove rows where OHLC values are zero (common in dividend entries)
+        for col in ohlc_cols:
+            daily = daily[daily[col] != 0]
+        
+        ohlc_filtered = original_count - len(daily)
+        
+        if ohlc_filtered > 0:
+            st.warning(f"Filtered out {ohlc_filtered} rows with missing/zero OHLC data (likely dividend/split entries)")
+        
+        if daily.empty:
+            st.error("No valid OHLC data remaining after filtering")
+            return None
+        
         # Sort by date and ensure proper date format
         daily['Date'] = pd.to_datetime(daily['Date'], errors='coerce')
         
@@ -437,6 +457,14 @@ def load_daily_data(uploaded_file):
         if daily.empty:
             st.error("No valid data remaining after date processing")
             return None
+        
+        # Check for and handle duplicate dates
+        original_count = len(daily)
+        daily = daily.drop_duplicates(subset=['Date'], keep='first')
+        duplicates_removed = original_count - len(daily)
+        
+        if duplicates_removed > 0:
+            st.warning(f"Found {duplicates_removed} duplicate dates in daily data - keeping first occurrence")
         
         daily = daily.sort_values('Date').reset_index(drop=True)
         
