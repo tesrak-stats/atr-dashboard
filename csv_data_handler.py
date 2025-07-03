@@ -159,12 +159,31 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             st.info("🔄 Combining data using date matching...")
             
             # Create ATR lookup dict (safe method that handles duplicates)
+            st.info("🔧 Creating ATR lookup dictionary...")
             atr_lookup = {}
             for _, row in daily_with_atr.iterrows():
                 atr_lookup[row['Date']] = row['ATR']
             
+            st.info(f"📊 ATR lookup created with {len(atr_lookup)} entries")
+            
+            # Debug the lookup process
+            sample_intraday_dates = intraday_df['Date'].head(5).tolist()
+            st.info(f"🔍 Sample intraday dates: {sample_intraday_dates}")
+            
+            sample_lookups = []
+            for date in sample_intraday_dates:
+                atr_val = atr_lookup.get(date, 'NOT_FOUND')
+                sample_lookups.append(f"{date}: {atr_val}")
+            st.info(f"🔍 Sample ATR lookups: {sample_lookups}")
+            
             # Add ATR to intraday data
+            st.info("📊 Mapping ATR values to intraday data...")
             intraday_df['ATR'] = intraday_df['Date'].map(atr_lookup)
+            
+            # Check how many matches we got
+            matched_atr = intraday_df['ATR'].notna().sum()
+            total_intraday = len(intraday_df)
+            st.info(f"✅ ATR mapping result: {matched_atr}/{total_intraday} intraday records got ATR values")
             
             # Add previous day's ATR (safe method)
             prev_atr_lookup = {}
