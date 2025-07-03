@@ -75,12 +75,50 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         st.info(f"📋 Daily columns: {list(daily_df.columns)}")
         st.info(f"📋 Intraday columns: {list(intraday_df.columns)}")
         
+        # Add CSV export buttons for debugging
+        st.subheader("🔍 Debug Data Export")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.download_button(
+                "📥 Download Raw Daily Data",
+                data=daily_df.to_csv(index=False),
+                file_name=f"debug_raw_daily_{datetime.now().strftime('%H%M%S')}.csv",
+                mime="text/csv"
+            )
+        
+        with col2:
+            st.download_button(
+                "📥 Download Raw Intraday Data", 
+                data=intraday_df.to_csv(index=False),
+                file_name=f"debug_raw_intraday_{datetime.now().strftime('%H%M%S')}.csv",
+                mime="text/csv"
+            )
+        
         # Standardize columns
         daily_df = CSVProcessor.standardize_columns(daily_df)
         intraday_df = CSVProcessor.standardize_columns(intraday_df)
         
         st.info(f"📋 Standardized daily columns: {list(daily_df.columns)}")
         st.info(f"📋 Standardized intraday columns: {list(intraday_df.columns)}")
+        
+        # Export standardized data
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button(
+                "📥 Download Standardized Daily Data",
+                data=daily_df.to_csv(index=False),
+                file_name=f"debug_standardized_daily_{datetime.now().strftime('%H%M%S')}.csv",
+                mime="text/csv"
+            )
+        
+        with col2:
+            st.download_button(
+                "📥 Download Standardized Intraday Data",
+                data=intraday_df.to_csv(index=False),
+                file_name=f"debug_standardized_intraday_{datetime.now().strftime('%H%M%S')}.csv",
+                mime="text/csv"
+            )
         
         # Validate required columns
         required_cols = ['Date', 'Open', 'High', 'Low', 'Close']
@@ -131,6 +169,14 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         st.info(f"Daily data shape after ATR: {daily_with_atr.shape}")
         st.info(f"ATR column sample: {daily_with_atr['ATR'].head(20).tolist()}")
         
+        # Export daily data with ATR
+        st.download_button(
+            "📥 Download Daily Data with ATR",
+            data=daily_with_atr.to_csv(index=False),
+            file_name=f"debug_daily_with_atr_{datetime.now().strftime('%H%M%S')}.csv",
+            mime="text/csv"
+        )
+        
         # Validate ATR calculation
         valid_atr = daily_with_atr[daily_with_atr['ATR'].notna()]
         if valid_atr.empty:
@@ -140,6 +186,14 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             return None
         
         st.success(f"✅ ATR calculated successfully: {len(valid_atr)} valid ATR values")
+        
+        # Export only valid ATR records
+        st.download_button(
+            "📥 Download Valid ATR Records Only",
+            data=valid_atr.to_csv(index=False),
+            file_name=f"debug_valid_atr_only_{datetime.now().strftime('%H%M%S')}.csv",
+            mime="text/csv"
+        )
         
         # Data alignment info
         daily_start = daily_df['Date'].min()
@@ -167,8 +221,29 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             st.info(f"📊 ATR lookup created with {len(atr_lookup)} entries")
             
             # Debug the lookup process
+            # Debug the lookup process
             sample_intraday_dates = intraday_df['Date'].head(5).tolist()
             st.info(f"🔍 Sample intraday dates: {sample_intraday_dates}")
+            
+            # Check ATR around the intraday start date
+            intraday_start_date = intraday_df['Date'].min()
+            st.info(f"🔍 Intraday starts on: {intraday_start_date}")
+            
+            # Find daily data around that date
+            daily_around_start = daily_with_atr[
+                (daily_with_atr['Date'] >= intraday_start_date - timedelta(days=5)) &
+                (daily_with_atr['Date'] <= intraday_start_date + timedelta(days=5))
+            ][['Date', 'ATR']].head(10)
+            
+            st.info(f"🔍 Daily ATR around intraday start:\n{daily_around_start}")
+            
+            # Find first valid ATR in daily data after intraday start
+            valid_daily_after_start = daily_with_atr[
+                (daily_with_atr['Date'] >= intraday_start_date) & 
+                (daily_with_atr['ATR'].notna())
+            ].head(5)
+            
+            st.info(f"🔍 First valid daily ATR after intraday start:\n{valid_daily_after_start[['Date', 'ATR']]}")
             
             sample_lookups = []
             for date in sample_intraday_dates:
@@ -184,6 +259,14 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             matched_atr = intraday_df['ATR'].notna().sum()
             total_intraday = len(intraday_df)
             st.info(f"✅ ATR mapping result: {matched_atr}/{total_intraday} intraday records got ATR values")
+            
+            # Export intraday data with ATR mapping attempts
+            st.download_button(
+                "📥 Download Intraday with ATR Mapping",
+                data=intraday_df.to_csv(index=False),
+                file_name=f"debug_intraday_with_atr_{datetime.now().strftime('%H%M%S')}.csv",
+                mime="text/csv"
+            )
             
             # Add previous day's ATR (safe method)
             prev_atr_lookup = {}
