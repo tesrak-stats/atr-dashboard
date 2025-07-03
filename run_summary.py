@@ -6,6 +6,43 @@ from datetime import datetime
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.utils.dataframe import dataframe_to_rows
+import re
+
+def detect_ticker_from_filename(filename):
+    """Extract ticker from filename - looks for patterns like SPX_data.csv or data_SPX.csv"""
+    if not filename:
+        return None
+    
+    # Remove file extension
+    basename = filename.replace('.csv', '').replace('.CSV', '')
+    
+    # Common ticker patterns
+    ticker_patterns = [
+        r'([A-Z]{1,5})_',  # SPX_data, QQQ_results
+        r'_([A-Z]{1,5})$',  # data_SPX, results_QQQ
+        r'^([A-Z]{1,5})$',  # Just SPX
+        r'([A-Z]{1,5})\.', # SPX.data
+    ]
+    
+    for pattern in ticker_patterns:
+        match = re.search(pattern, basename)
+        if match:
+            return match.group(1)
+    
+    return None
+
+def detect_ticker_from_data(df):
+    """Try to detect ticker from data columns if available"""
+    # Check if there's a ticker column
+    ticker_columns = ['ticker', 'Ticker', 'TICKER', 'symbol', 'Symbol', 'SYMBOL']
+    
+    for col in ticker_columns:
+        if col in df.columns:
+            unique_tickers = df[col].unique()
+            if len(unique_tickers) == 1:
+                return str(unique_tickers[0]).upper()
+    
+    return None
 
 def bucket_time(time_value):
     """Convert numeric times to hour buckets for dashboard display"""
@@ -41,7 +78,7 @@ def bucket_time(time_value):
     else:
         return "1600"
 
-def generate_excel_report(summary_df, metadata):
+def generate_excel_report(summary_df, metadata, ticker):
     """Generate Excel report matching the format of all levels 4.xlsx"""
     
     # Create workbook and worksheets
@@ -53,7 +90,7 @@ def generate_excel_report(summary_df, metadata):
     # Create Information sheet
     info_ws = wb.create_sheet("Information")
     info_ws.cell(row=1, column=1, value="The sheets in this workbook show ATR analysis scenarios involving stock market behavior. Each table shows the likelihood of achieving one level at a particular time given that another level has already been achieved. It is broken up by hour in which the event triggers (the first level is hit) and the goal is reached (the second level is hit). OPEN is treated as a time, as it is the print when the market opens. If a level is achieved at OPEN and also the goal is reached, that result is discounted as it is not a tradeable situation. The numbers in the table are how often the goal is reached during that hour cross referenced to the hour it triggers. The percents listed are how often the trigger is reached during that hour if it is completed.")
-    info_ws.cell(row=2, column=1, value=f"Generated from data: {metadata['date_range']} | Total Records: {metadata['total_records']:,} | Trading Days: {metadata['unique_dates']:,}")
+    info_ws.cell(row=2, column=1, value=f"Ticker: {ticker} | Generated from data: {metadata['date_range']} | Total Records: {metadata['total_records']:,} | Trading Days: {metadata['unique_dates']:,}")
     
     # Separate data by direction
     above_data = summary_df[summary_df['Direction'] == 'Above'].copy()
@@ -185,7 +222,7 @@ def create_direction_sheet(ws, data, direction):
         adjusted_width = min(max_length + 2, 20)  # Cap at 20 characters
         ws.column_dimensions[column_letter].width = adjusted_width
 
-def generate_html_report(summary_df, metadata):
+def generate_html_report(summary_df, metadata, ticker):
     """Generate comprehensive HTML report of all trigger-goal combinations"""
     
     # Get unique trigger levels for organizing sections
@@ -200,7 +237,7 @@ def generate_html_report(summary_df, metadata):
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>ATR Analysis Report - {metadata['date_range']}</title>
+        <title>ATR Analysis Report - {ticker} - {metadata['date_range']}</title>
         <style>
             body {{
                 font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -232,6 +269,15 @@ def generate_html_report(summary_df, metadata):
                 margin: 0;
                 opacity: 0.9;
                 font-size: 1.1em;
+            }}
+            .ticker-badge {{
+                background: rgba(255,255,255,0.2);
+                padding: 8px 16px;
+                border-radius: 20px;
+                font-size: 1.2em;
+                font-weight: bold;
+                margin: 10px 0;
+                display: inline-block;
             }}
             .summary-stats {{
                 display: grid;
@@ -345,6 +391,7 @@ def generate_html_report(summary_df, metadata):
         <div class="container">
             <div class="header">
                 <h1>📊 ATR Analysis Report</h1>
+                <div class="ticker-badge">{ticker}</div>
                 <p>Comprehensive Trigger-Goal Analysis | {metadata['date_range']}</p>
             </div>
             
@@ -491,7 +538,7 @@ def generate_html_report(summary_df, metadata):
             </div>
             
             <div class="footer">
-                <p>Generated on {current_time} | ATR Analysis System</p>
+                <p>Generated on {current_time} | ATR Analysis System | Ticker: {ticker}</p>
                 <p>📊 This report contains {len(summary_df):,} trigger-goal combinations across {metadata['unique_dates']} trading days</p>
             </div>
         </div>
@@ -501,87 +548,17 @@ def generate_html_report(summary_df, metadata):
     
     return html_content
 
-st.title("🎯 Enhanced Summary with OPEN Completion Data")
-st.write("**Includes HTML and Excel report generation with OPEN completion counts**")
-st.write("**Excel format now matches the structure of all levels 4.xlsx**")
-
-uploaded_file = st.file_uploader("Upload combined_trigger_goal_results_PERFECT.csv", type="csv")
-
-if uploaded_file is not None:
-    # Load results with OPEN completions
-    df = pd.read_csv(uploaded_file)
+def process_ticker_data(df, ticker, uploaded_filename):
+    """Process data for a single ticker and return summary"""
     
-    st.success(f"📊 Loaded {len(df)} records with OPEN completions")
-    
-    # Verify this has OPEN completions
-    same_time_count = len(df[df['SameTime'] == True]) if 'SameTime' in df.columns else 0
-    open_goals = len(df[df['GoalTime'] == 'OPEN']) if 'GoalTime' in df.columns else 0
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Same-Time Records", same_time_count)
-    with col2:
-        st.metric("OPEN Goal Records", open_goals)
-    
-    if same_time_count == 0 and open_goals == 0:
-        st.error("❌ This doesn't appear to have OPEN completion data!")
-        st.info("Make sure you're uploading the output from the PERFECT systematic generator")
-    else:
-        st.success("✅ Confirmed data has OPEN completion data for processing")
+    st.write(f"## 📊 Processing {ticker}")
     
     # Apply time bucketing
-    st.write("🕐 Applying time bucketing...")
     df['TriggerTimeBucket'] = df['TriggerTime'].apply(bucket_time)
     df['GoalTimeBucket'] = df['GoalTime'].apply(lambda x: bucket_time(x) if pd.notna(x) and x != '' else 'N/A')
 
-    # Debug section - moved INSIDE the main if block
-    st.write("## 🔍 Debug: Null Trigger Times (Now Preserved)")
-
-    # Check for missing/null trigger times in original data
-    try:
-        null_mask = pd.isna(df['TriggerTime']) | df['TriggerTime'].isnull()
-        null_trigger_times = df[null_mask]
-        st.write(f"**Records with null/NaN TriggerTime (preserved as 'No Trigger'):** {len(null_trigger_times)}")
-
-        if len(null_trigger_times) > 0:
-            st.write("**Sample records with null TriggerTime:**")
-            st.dataframe(null_trigger_times[['Date', 'TriggerLevel', 'TriggerTime', 'Direction', 'GoalLevel', 'GoalTime']].head(10))
-            
-            # Show unique patterns
-            st.write("**Date distribution of null trigger times:**")
-            date_counts = null_trigger_times['Date'].value_counts().head(10)
-            st.dataframe(date_counts)
-    except Exception as e:
-        st.error(f"Error checking null trigger times: {e}")
-        st.write("**TriggerTime column info:**")
-        st.write(f"Data type: {df['TriggerTime'].dtype}")
-        st.write(f"First 10 values: {df['TriggerTime'].head(10).tolist()}")
-
-    # Check what gets bucketed as "No Trigger"
-    try:
-        no_trigger_bucketed = df[df['TriggerTimeBucket'] == 'No Trigger']
-        st.write(f"**Records bucketed as 'No Trigger':** {len(no_trigger_bucketed)}")
-
-        if len(no_trigger_bucketed) > 0:
-            st.write("**Sample records bucketed as No Trigger:**")
-            st.dataframe(no_trigger_bucketed[['Date', 'TriggerLevel', 'TriggerTime', 'TriggerTimeBucket', 'Direction']].head(10))
-            st.info("💡 These records will appear in Excel as '0 trigger' scenarios to show complete trigger-goal matrix")
-    except Exception as e:
-        st.error(f"Error checking No Trigger bucketed records: {e}")
-
-    # Check unique values in original TriggerTime column
-    try:
-        st.write("**Unique TriggerTime values (first 20):**")
-        unique_trigger_times = df['TriggerTime'].unique()
-        st.write(f"Total unique values: {len(unique_trigger_times)}")
-        st.write("Sample values:", unique_trigger_times[:20])
-    except Exception as e:
-        st.error(f"Error checking unique trigger times: {e}")
-
-    st.write("---")  # Separator before continuing to Basic Statistics
-    
     # Show basic stats
-    st.write("## Basic Statistics")
+    st.write(f"### Basic Statistics for {ticker}")
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -596,7 +573,7 @@ if uploaded_file is not None:
         st.metric("Overall Hit Rate", f"{hit_rate:.1f}%")
     
     # STEP 1: Count total triggers per trigger combination (including 0-trigger scenarios)
-    st.write("## Step 1: Count Total Triggers (Including 0-Trigger Scenarios)")
+    st.write(f"### Step 1: Count Total Triggers for {ticker}")
     
     # For "No Trigger" scenarios, we need to count them as 0 triggers
     # Create a comprehensive list of all trigger combinations
@@ -633,10 +610,9 @@ if uploaded_file is not None:
     st.write(f"✅ Found {len(actual_trigger_counts)} actual trigger combinations")
     st.write(f"✅ Found {len(no_trigger_counts_df)} no-trigger scenarios")  
     st.write(f"✅ Total combinations (including 0-trigger): {len(total_trigger_counts)}")
-    st.write(f"✅ Total actual trigger events: {actual_trigger_counts['TotalTriggers'].sum():,}")
     
     # STEP 2: Count OPEN completions per trigger-goal combination
-    st.write("## Step 2: Count OPEN Completions per Goal")
+    st.write(f"### Step 2: Count OPEN Completions for {ticker}")
     
     open_completions = df[
         (df['GoalHit'] == 'Yes') & 
@@ -651,11 +627,8 @@ if uploaded_file is not None:
     )
     
     st.write(f"✅ Found {len(open_completion_counts)} trigger-goal combinations with OPEN completions")
-    st.write(f"✅ Total OPEN completions: {open_completion_counts['OpenCompletions'].sum():,}")
     
     # STEP 2.5: Count total OPEN completions per trigger (for dashboard tooltip)
-    st.write("## Step 2.5: Count Total OPEN Completions per Trigger")
-    
     open_completions_per_trigger = (
         open_completions
         .groupby(['TriggerLevel', 'TriggerTimeBucket', 'Direction'])
@@ -663,10 +636,8 @@ if uploaded_file is not None:
         .reset_index(name='TotalOpenCompletions')
     )
     
-    st.write(f"✅ OPEN completions per trigger calculated")
-    
     # STEP 3: Count non-OPEN goal hits per trigger-goal-time combination
-    st.write("## Step 3: Count Non-OPEN Goal Hits")
+    st.write(f"### Step 3: Count Non-OPEN Goal Hits for {ticker}")
     
     non_open_hits = df[
         (df['GoalHit'] == 'Yes') & 
@@ -682,10 +653,9 @@ if uploaded_file is not None:
     )
     
     st.write(f"✅ Found {len(goal_hit_counts)} non-OPEN goal hit combinations")
-    st.write(f"✅ Total non-OPEN hits: {goal_hit_counts['NonOpenHits'].sum():,}")
     
     # STEP 4: Calculate goal-specific denominators
-    st.write("## Step 4: Calculate Goal-Specific Denominators")
+    st.write(f"### Step 4: Calculate Goal-Specific Denominators for {ticker}")
     
     # Create summary with goal-specific denominators
     summary_rows = []
@@ -716,8 +686,6 @@ if uploaded_file is not None:
         total_open_completions = total_open_comps['TotalOpenCompletions'].iloc[0] if len(total_open_comps) > 0 else 0
         
         for goal_level in all_goals:
-            
-            
             # Get OPEN completions for this specific trigger-goal combination
             open_comps = open_completion_counts[
                 (open_completion_counts['TriggerLevel'] == trigger_level) &
@@ -768,161 +736,229 @@ if uploaded_file is not None:
     # Remove combinations with 0 actionable triggers
     summary = summary[summary['ActionableTriggers'] > 0]
     
-    st.write(f"✅ Complete summary: {len(summary)} combinations with goal-specific denominators")
-    
-    # Validation: Check for impossible percentages
-    over_100 = summary[summary['PctCompletion'] > 100]
-    if len(over_100) > 0:
-        st.error(f"❌ Found {len(over_100)} combinations with >100% completion!")
-        st.dataframe(over_100)
-    else:
-        st.success("✅ All completion rates ≤ 100% - logic is correct!")
-    
-    # Show validation example
-    st.write("## Validation Example")
-    st.write("**Compare the -1 OPEN → 1 vs other goals example:**")
-    
-    example_filter = (
-        (summary['Direction'] == 'Below') &
-        (summary['TriggerLevel'] == -1.0) &
-        (summary['TriggerTime'] == 'OPEN') &
-        (summary['GoalTime'] == '0900') &
-        (summary['GoalLevel'].isin([0.236, 1.0]))
-    )
-    
-    example_data = summary[example_filter][['GoalLevel', 'TotalTriggers', 'OpenCompletions', 'ActionableTriggers', 'NumHits', 'PctCompletion', 'TotalOpenCompletions']]
-    
-    if len(example_data) > 0:
-        st.dataframe(example_data)
-        st.write("**Key insight:** Different ActionableTriggers denominators with OPEN completion data!")
-    
-    # Show top performing combinations
-    st.write("### Top Performing Combinations:")
-    top_performers = summary[summary['ActionableTriggers'] >= 20].nlargest(10, 'PctCompletion')
-    st.dataframe(top_performers[['Direction', 'TriggerLevel', 'TriggerTime', 'GoalLevel', 'GoalTime', 'ActionableTriggers', 'NumHits', 'PctCompletion']])
+    st.write(f"✅ Complete summary for {ticker}: {len(summary)} combinations")
     
     # Create final summary for dashboard (with OPEN completion data)
     dashboard_summary = summary[['Direction', 'TriggerLevel', 'TriggerTime', 'GoalLevel', 'GoalTime', 'ActionableTriggers', 'NumHits', 'PctCompletion', 'OpenCompletions', 'TotalOpenCompletions']].copy()
     dashboard_summary = dashboard_summary.rename(columns={'ActionableTriggers': 'NumTriggers'})
     
-    # Report Generation Section
-    st.write("## 📊 Report Generation")
+    return summary, dashboard_summary
+
+st.title("🎯 Multi-Ticker Enhanced Summary Generator")
+st.write("**Supports multiple tickers with automatic detection and naming**")
+st.write("**Generates ticker-specific Excel and HTML reports**")
+
+uploaded_file = st.file_uploader("Upload combined_trigger_goal_results_PERFECT.csv", type="csv")
+
+if uploaded_file is not None:
+    # Load the data
+    df = pd.read_csv(uploaded_file)
     
-    col1, col2 = st.columns(2)
+    st.success(f"📊 Loaded {len(df)} records")
     
+    # Detect ticker from filename or data
+    detected_ticker = None
+    
+    # Try to detect from filename first
+    if hasattr(uploaded_file, 'name'):
+        detected_ticker = detect_ticker_from_filename(uploaded_file.name)
+        if detected_ticker:
+            st.info(f"🎯 Detected ticker from filename: **{detected_ticker}**")
+    
+    # If not found in filename, try to detect from data
+    if not detected_ticker:
+        detected_ticker = detect_ticker_from_data(df)
+        if detected_ticker:
+            st.info(f"🎯 Detected ticker from data: **{detected_ticker}**")
+    
+    # Allow user to override or set ticker manually
+    col1, col2 = st.columns([3, 1])
     with col1:
-        # Checkbox for generating HTML report
-        generate_html = st.checkbox("📄 Generate HTML Report", 
-                                   help="Creates a detailed HTML report with all trigger-goal combinations for web viewing")
+        ticker_input = st.text_input(
+            "Ticker Symbol", 
+            value=detected_ticker or "SPX",
+            help="Enter the ticker symbol for this data (e.g., SPX, QQQ, IWM, NVDA)"
+        ).upper()
     
     with col2:
-        # Checkbox for generating Excel report
-        generate_excel = st.checkbox("📊 Generate Excel Report", 
-                                    help="Creates a detailed Excel report matching the format of all levels 4.xlsx")
+        st.write("**Common Tickers:**")
+        st.write("SPX, QQQ, IWM, NVDA")
     
-    if generate_html:
-        st.write("🔄 Generating HTML report...")
+    if ticker_input:
+        ticker = ticker_input
+        st.success(f"✅ Processing data for ticker: **{ticker}**")
         
-        # Prepare metadata for the report
-        date_range = f"{df['Date'].min()} to {df['Date'].max()}"
-        total_actionable = summary.groupby(['Direction', 'TriggerLevel', 'TriggerTime'])['ActionableTriggers'].first().sum()
-        total_hits = summary['NumHits'].sum()
-        overall_rate = (total_hits / total_actionable * 100) if total_actionable > 0 else 0
-        
-        metadata = {
-            'date_range': date_range,
-            'total_records': len(summary),
-            'unique_dates': df['Date'].nunique(),
-            'total_triggers': total_actionable,
-            'overall_rate': overall_rate
-        }
-        
-        # Generate HTML content
-        html_content = generate_html_report(summary, metadata)
-        
-        # Create download button for HTML
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        html_filename = f"atr_analysis_report_{timestamp}.html"
-        
-        st.download_button(
-            label="📥 Download HTML Report",
-            data=html_content,
-            file_name=html_filename,
-            mime="text/html",
-            help="Download comprehensive HTML report for web viewing and sharing"
-        )
-        
-        st.success("✅ HTML report generated successfully!")
-    
-    if generate_excel:
-        st.write("🔄 Generating Excel report...")
-        
-        # Prepare metadata for the report
-        date_range = f"{df['Date'].min()} to {df['Date'].max()}"
-        total_actionable = summary.groupby(['Direction', 'TriggerLevel', 'TriggerTime'])['ActionableTriggers'].first().sum()
-        total_hits = summary['NumHits'].sum()
-        overall_rate = (total_hits / total_actionable * 100) if total_actionable > 0 else 0
-        
-        metadata = {
-            'date_range': date_range,
-            'total_records': len(summary),
-            'unique_dates': df['Date'].nunique(),
-            'total_triggers': total_actionable,
-            'overall_rate': overall_rate
-        }
-        
-        try:
-            # Generate Excel content
-            excel_content = generate_excel_report(summary, metadata)
+        # Check if this is multi-ticker data
+        if 'Ticker' in df.columns or 'ticker' in df.columns:
+            ticker_col = 'Ticker' if 'Ticker' in df.columns else 'ticker'
+            unique_tickers = df[ticker_col].unique()
             
-            # Create download button for Excel
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            excel_filename = f"atr_analysis_report_{timestamp}.xlsx"
+            if len(unique_tickers) > 1:
+                st.warning(f"⚠️ Multi-ticker data detected: {', '.join(unique_tickers)}")
+                selected_ticker = st.selectbox("Select ticker to process:", unique_tickers)
+                df = df[df[ticker_col] == selected_ticker]
+                ticker = selected_ticker
+                st.info(f"🎯 Filtered to {len(df)} records for {ticker}")
+        
+        # Verify this has OPEN completions
+        same_time_count = len(df[df['SameTime'] == True]) if 'SameTime' in df.columns else 0
+        open_goals = len(df[df['GoalTime'] == 'OPEN']) if 'GoalTime' in df.columns else 0
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Same-Time Records", same_time_count)
+        with col2:
+            st.metric("OPEN Goal Records", open_goals)
+        
+        if same_time_count == 0 and open_goals == 0:
+            st.error("❌ This doesn't appear to have OPEN completion data!")
+            st.info("Make sure you're uploading the output from the PERFECT systematic generator")
+        else:
+            st.success("✅ Confirmed data has OPEN completion data for processing")
+            
+            # Process the ticker data
+            summary, dashboard_summary = process_ticker_data(df, ticker, uploaded_file.name)
+            
+            # Report Generation Section
+            st.write("## 📊 Report Generation")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Checkbox for generating HTML report
+                generate_html = st.checkbox("📄 Generate HTML Report", 
+                                           help="Creates a detailed HTML report with all trigger-goal combinations for web viewing")
+            
+            with col2:
+                # Checkbox for generating Excel report
+                generate_excel = st.checkbox("📊 Generate Excel Report", 
+                                            help="Creates a detailed Excel report matching the format of all levels 4.xlsx")
+            
+            if generate_html:
+                st.write("🔄 Generating HTML report...")
+                
+                # Prepare metadata for the report
+                date_range = f"{df['Date'].min()} to {df['Date'].max()}"
+                total_actionable = summary.groupby(['Direction', 'TriggerLevel', 'TriggerTime'])['ActionableTriggers'].first().sum()
+                total_hits = summary['NumHits'].sum()
+                overall_rate = (total_hits / total_actionable * 100) if total_actionable > 0 else 0
+                
+                metadata = {
+                    'date_range': date_range,
+                    'total_records': len(summary),
+                    'unique_dates': df['Date'].nunique(),
+                    'total_triggers': total_actionable,
+                    'overall_rate': overall_rate
+                }
+                
+                # Generate HTML content
+                html_content = generate_html_report(summary, metadata, ticker)
+                
+                # Create download button for HTML
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                html_filename = f"atr_dashboard_summary_{ticker}_{timestamp}.html"
+                
+                st.download_button(
+                    label="📥 Download HTML Report",
+                    data=html_content,
+                    file_name=html_filename,
+                    mime="text/html",
+                    help="Download comprehensive HTML report for web viewing and sharing"
+                )
+                
+                st.success("✅ HTML report generated successfully!")
+            
+            if generate_excel:
+                st.write("🔄 Generating Excel report...")
+                
+                # Prepare metadata for the report
+                date_range = f"{df['Date'].min()} to {df['Date'].max()}"
+                total_actionable = summary.groupby(['Direction', 'TriggerLevel', 'TriggerTime'])['ActionableTriggers'].first().sum()
+                total_hits = summary['NumHits'].sum()
+                overall_rate = (total_hits / total_actionable * 100) if total_actionable > 0 else 0
+                
+                metadata = {
+                    'date_range': date_range,
+                    'total_records': len(summary),
+                    'unique_dates': df['Date'].nunique(),
+                    'total_triggers': total_actionable,
+                    'overall_rate': overall_rate
+                }
+                
+                try:
+                    # Generate Excel content
+                    excel_content = generate_excel_report(summary, metadata, ticker)
+                    
+                    # Create download button for Excel
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    excel_filename = f"atr_dashboard_summary_{ticker}_{timestamp}.xlsx"
+                    
+                    st.download_button(
+                        label="📥 Download Excel Report",
+                        data=excel_content,
+                        file_name=excel_filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        help="Download detailed Excel report matching the format of all levels 4.xlsx"
+                    )
+                    
+                    st.success("✅ Excel report generated successfully!")
+                    
+                except Exception as e:
+                    st.error(f"❌ Error generating Excel report: {str(e)}")
+                    st.info("💡 **Note:** Excel generation requires openpyxl library. If running locally, install with: pip install openpyxl")
+            
+            # Save enhanced summary CSV with ticker-specific naming
+            csv_buffer = io.StringIO()
+            dashboard_summary.to_csv(csv_buffer, index=False)
+            
+            # Create ticker-specific CSV filename to match dashboard expectations
+            csv_filename = f"atr_dashboard_summary_{ticker}_ENHANCED.csv"
             
             st.download_button(
-                label="📥 Download Excel Report",
-                data=excel_content,
-                file_name=excel_filename,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                help="Download detailed Excel report matching the format of all levels 4.xlsx"
+                label=f"📥 Download {ticker} Enhanced Summary CSV",
+                data=csv_buffer.getvalue(),
+                file_name=csv_filename,
+                mime="text/csv",
+                help=f"Download CSV formatted for {ticker} dashboard integration"
             )
             
-            st.success("✅ Excel report generated successfully!")
-            st.info("💡 **Excel Format:** Now matches the structure of all levels 4.xlsx with paired count/percentage rows")
+            # Final statistics
+            st.write(f"## Final Statistics for {ticker}")
+            col1, col2, col3, col4 = st.columns(4)
             
-        except Exception as e:
-            st.error(f"❌ Error generating Excel report: {str(e)}")
-            st.info("💡 **Note:** Excel generation requires openpyxl library. If running locally, install with: pip install openpyxl")
-    
-    # Save enhanced summary
-    csv_buffer = io.StringIO()
-    dashboard_summary.to_csv(csv_buffer, index=False)
-    
-    st.download_button(
-        label="📥 Download Enhanced Summary CSV",
-        data=csv_buffer.getvalue(),
-        file_name="atr_dashboard_summary_ENHANCED.csv",
-        mime="text/csv"
-    )
-    
-    # Final statistics
-    st.write("## Final Statistics")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Summary Records", len(summary))
-    with col2:
-        total_actionable = summary.groupby(['Direction', 'TriggerLevel', 'TriggerTime'])['ActionableTriggers'].first().sum()
-        st.metric("Total Actionable Triggers", f"{total_actionable:,}")
-    with col3:
-        total_hits = summary['NumHits'].sum()
-        st.metric("Total Non-OPEN Hits", f"{total_hits:,}")
-    with col4:
-        overall_rate = (total_hits / total_actionable * 100) if total_actionable > 0 else 0
-        st.metric("Overall Actionable Rate", f"{overall_rate:.1f}%")
-    
-    st.success("🎉 **Enhanced summary complete!** Excel format now matches all levels 4.xlsx structure.")
-    st.write("**Key improvement:** Excel output now uses the same paired row format (counts + percentages) as your reference file.")
+            with col1:
+                st.metric("Summary Records", len(summary))
+            with col2:
+                total_actionable = summary.groupby(['Direction', 'TriggerLevel', 'TriggerTime'])['ActionableTriggers'].first().sum()
+                st.metric("Total Actionable Triggers", f"{total_actionable:,}")
+            with col3:
+                total_hits = summary['NumHits'].sum()
+                st.metric("Total Non-OPEN Hits", f"{total_hits:,}")
+            with col4:
+                overall_rate = (total_hits / total_actionable * 100) if total_actionable > 0 else 0
+                st.metric("Overall Actionable Rate", f"{overall_rate:.1f}%")
+            
+            st.success(f"🎉 **{ticker} enhanced summary complete!**")
+            st.info(f"💡 **File naming:** All outputs include '{ticker}' for easy dashboard integration")
+            st.info(f"🗓️ **Trading Days:** {df['Date'].nunique()} days added to CSV for next program")
+            
+            # Show expected dashboard file pattern
+            st.write("### 📁 Expected Dashboard File Pattern:")
+            st.code(f"""
+Based on your ticker config, the dashboard expects:
+- CSV: atr_dashboard_summary_{ticker}.csv
+- Generated: atr_dashboard_summary_{ticker}_ENHANCED.csv (now includes TradingDays column)
+            """)
 
 else:
     st.info("👆 Upload your PERFECT trigger-goal results CSV to generate enhanced summary and reports")
+    st.write("### 🎯 Ticker Detection:")
+    st.write("The app will automatically detect the ticker from:")
+    st.write("- Filename patterns (e.g., `SPX_data.csv`, `data_QQQ.csv`)")
+    st.write("- Data columns (if ticker/symbol column exists)")
+    st.write("- Manual input override")
+    
+    st.write("### 📊 Multi-Ticker Support:")
+    st.write("- Processes one ticker at a time")
+    st.write("- Generates ticker-specific output files")
+    st.write("- Matches your dashboard's expected file naming pattern")
