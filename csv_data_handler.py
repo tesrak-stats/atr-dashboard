@@ -187,6 +187,22 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             
             if combined_df.empty:
                 st.error("❌ No date overlap between daily and intraday data")
+                st.error(f"Daily range: {daily_start} to {daily_end}")
+                st.error(f"Intraday range: {intraday_start} to {intraday_end}")
+                
+                # Debug the actual overlap
+                overlap_start = max(daily_start, intraday_start)
+                overlap_end = min(daily_end, intraday_end)
+                st.error(f"Expected overlap: {overlap_start} to {overlap_end}")
+                
+                # Show sample of data for debugging
+                st.error("Debug - Daily dates sample:")
+                st.error(str(daily_with_atr['Date'].head(10).tolist()))
+                st.error("Debug - Intraday dates sample:")
+                st.error(str(intraday_df['Date'].head(10).tolist()))
+                st.error("Debug - ATR values sample:")
+                st.error(str(intraday_df['ATR'].head(10).tolist()))
+                
                 return None
             
             st.success(f"✅ Combined data: {len(combined_df):,} intraday records with ATR")
