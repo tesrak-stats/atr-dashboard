@@ -54,7 +54,7 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         else:
             # Load daily data from file
             daily_file.seek(0)  # Reset file pointer
-            if daily_file.name.endswith('.csv'):
+            if daily_file.name.endswith('.csv') or daily_file.name.endswith('.txt'):
                 daily_df = pd.read_csv(daily_file)
             else:
                 daily_df = pd.read_excel(daily_file)
@@ -65,7 +65,7 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         else:
             # Load intraday data from file
             intraday_file.seek(0)  # Reset file pointer
-            if intraday_file.name.endswith('.csv'):
+            if intraday_file.name.endswith('.csv') or intraday_file.name.endswith('.txt'):
                 intraday_df = pd.read_csv(intraday_file)
             else:
                 intraday_df = pd.read_excel(intraday_file)
@@ -1683,7 +1683,7 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
         else:
             analysis_file = st.file_uploader(
                 "Upload Analysis Timeframe Data",
-                type=['csv', 'xlsx', 'xls'],
+                type=['csv', 'xlsx', 'xls', 'txt'],
                 help="Upload the timeframe you want to analyze (usually intraday)",
                 key="analysis_timeframe"
             )
