@@ -8,6 +8,163 @@ import tempfile
 import zipfile
 from io import BytesIO
 
+def calculate_atr(df, period=14):
+    """
+    Calculate TRUE Wilder's ATR for any timeframe
+    """
+    df = df.copy()
+    
+    # Calculate True Range
+    df['H-L'] = df['High'] - df['Low']
+    df['H-PC'] = abs(df['High'] - df['Close'].shift(1))
+    df['L-PC'] = abs(df['Low'] - df['Close'].shift(1))
+    df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+    
+    # Calculate TRUE Wilder's ATR
+    atr_values = [None] * len(df)
+    
+    for i in range(len(df)):
+        if i < period:
+            atr_values[i] = None
+        elif i == period:
+            atr_values[i] = df['TR'].iloc[i-period+1:i+1].mean()
+        else:
+            prev_atr = atr_values[i-1]
+            current_tr = df['TR'].iloc[i]
+            atr_values[i] = (1/period) * current_tr + ((period-1)/period) * prev_atr
+    
+    df['ATR'] = atr_values
+    df.drop(['H-L', 'H-PC', 'L-PC', 'TR'], axis=1, inplace=True)
+    
+    return df
+
+def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_method='date_match'):
+    """
+    Combine daily and intraday data with ATR calculation
+    """
+    results = []
+    
+    try:
+        # Load daily data
+        if daily_file.name.endswith('.csv'):
+            daily_df = pd.read_csv(daily_file)
+        else:
+            daily_df = pd.read_excel(daily_file)
+        
+        # Load intraday data
+        if intraday_file.name.endswith('.csv'):
+            intraday_df = pd.read_csv(intraday_file)
+        else:
+            intraday_df = pd.read_excel(intraday_file)
+        
+        # Standardize columns
+        daily_df = CSVProcessor.standardize_columns(daily_df)
+        intraday_df = CSVProcessor.standardize_columns(intraday_df)
+        
+        # Validate required columns
+        required_cols = ['Date', 'Open', 'High', 'Low', 'Close']
+        
+        daily_missing = [col for col in required_cols if col not in daily_df.columns]
+        intraday_missing = [col for col in required_cols if col not in intraday_df.columns]
+        
+        if daily_missing:
+            st.error(f"❌ Daily data missing columns: {daily_missing}")
+            return None
+        
+        if intraday_missing:
+            st.error(f"❌ Intraday data missing columns: {intraday_missing}")
+            return None
+        
+        # Process dates
+        daily_df['Date'] = pd.to_datetime(daily_df['Date']).dt.date
+        
+        # Handle intraday datetime
+        if 'Datetime' not in intraday_df.columns:
+            if 'Date' in intraday_df.columns and 'Time' in intraday_df.columns:
+                intraday_df['Datetime'] = pd.to_datetime(intraday_df['Date'].astype(str) + ' ' + intraday_df['Time'].astype(str))
+            else:
+                intraday_df['Datetime'] = pd.to_datetime(intraday_df['Date'])
+        else:
+            intraday_df['Datetime'] = pd.to_datetime(intraday_df['Datetime'])
+        
+        intraday_df['Date'] = intraday_df['Datetime'].dt.date
+        
+        # Sort data
+        daily_df = daily_df.sort_values('Date').reset_index(drop=True)
+        intraday_df = intraday_df.sort_values('Datetime').reset_index(drop=True)
+        
+        # Calculate ATR on daily data
+        st.info("📊 Calculating ATR on daily data...")
+        daily_with_atr = calculate_atr(daily_df, period=atr_period)
+        
+        # Validate ATR calculation
+        valid_atr = daily_with_atr[daily_with_atr['ATR'].notna()]
+        if valid_atr.empty:
+            st.error("❌ Failed to calculate ATR - check daily data quality")
+            return None
+        
+        st.success(f"✅ ATR calculated successfully: {len(valid_atr)} valid ATR values")
+        
+        # Data alignment info
+        daily_start = daily_df['Date'].min()
+        daily_end = daily_df['Date'].max()
+        intraday_start = intraday_df['Date'].min()
+        intraday_end = intraday_df['Date'].max()
+        
+        st.info(f"📅 Daily data: {daily_start} to {daily_end}")
+        st.info(f"📅 Intraday data: {intraday_start} to {intraday_end}")
+        
+        # Check alignment
+        if daily_start >= intraday_start:
+            st.warning("⚠️ Daily data should ideally start before intraday data for proper ATR calculation")
+        
+        # Combine data based on alignment method
+        if align_method == 'date_match':
+            st.info("🔄 Combining data using date matching...")
+            
+            # Create ATR lookup dict
+            atr_lookup = dict(zip(daily_with_atr['Date'], daily_with_atr['ATR']))
+            
+            # Add ATR to intraday data
+            intraday_df['ATR'] = intraday_df['Date'].map(atr_lookup)
+            
+            # Add previous day's ATR (common for analysis)
+            daily_with_atr['Date_shifted'] = daily_with_atr['Date'].shift(-1)
+            prev_atr_lookup = dict(zip(daily_with_atr['Date_shifted'], daily_with_atr['ATR']))
+            intraday_df['Previous_ATR'] = intraday_df['Date'].map(prev_atr_lookup)
+            
+            # Add daily OHLC for reference
+            daily_ohlc_lookup = daily_with_atr.set_index('Date')[['Open', 'High', 'Low', 'Close']].to_dict('index')
+            
+            for idx, row in intraday_df.iterrows():
+                date = row['Date']
+                if date in daily_ohlc_lookup:
+                    intraday_df.loc[idx, 'Daily_Open'] = daily_ohlc_lookup[date]['Open']
+                    intraday_df.loc[idx, 'Daily_High'] = daily_ohlc_lookup[date]['High']
+                    intraday_df.loc[idx, 'Daily_Low'] = daily_ohlc_lookup[date]['Low']
+                    intraday_df.loc[idx, 'Daily_Close'] = daily_ohlc_lookup[date]['Close']
+            
+            # Filter to only intraday records with ATR
+            combined_df = intraday_df[intraday_df['ATR'].notna()].copy()
+            
+            if combined_df.empty:
+                st.error("❌ No date overlap between daily and intraday data")
+                return None
+            
+            st.success(f"✅ Combined data: {len(combined_df):,} intraday records with ATR")
+            
+            return combined_df
+        
+        else:
+            st.error("❌ Invalid alignment method")
+            return None
+            
+    except Exception as e:
+        st.error(f"❌ Error combining timeframes: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
+        return None
+
 class TickerMapper:
     """Handle ticker symbol mappings for different data sources"""
     
@@ -478,7 +635,7 @@ st.write('**Combine multiple CSV files and resample to any timeframe you need**'
 # Mode selection
 mode = st.selectbox(
     "🎯 Choose Processing Mode",
-    ["📁 Multi-CSV Processor", "📈 Public Data Download", "🔧 Single File Resampler"],
+    ["📁 Multi-CSV Processor", "📈 Public Data Download", "🔧 Single File Resampler", "🎯 Multi-Timeframe ATR Combiner"],
     help="Select what you want to do"
 )
 
@@ -1103,6 +1260,312 @@ elif mode == "🔧 Single File Resampler":
         except Exception as e:
             st.error(f"❌ Error loading file: {str(e)}")
 
+# ========================================================================================
+# MULTI-TIMEFRAME ATR COMBINER (NEW FEATURE)
+# ========================================================================================
+elif mode == "🎯 Multi-Timeframe ATR Combiner":
+    st.header("🎯 Multi-Timeframe ATR Combiner")
+    st.write("**Combine different timeframes with ATR calculation for systematic analysis**")
+    
+    # Information about the tool
+    st.info("""
+    🎯 **Purpose**: Prepare ATR-ready files for systematic analysis
+    
+    **What this does:**
+    - Calculates TRUE Wilder's ATR on daily data (or any base timeframe)
+    - Combines with intraday data for trigger/goal analysis
+    - Outputs single file ready for ATR Level Analyzer
+    
+    **Perfect for:**
+    - Daily ATR + 10-minute intraday analysis
+    - Weekly ATR + 1-hour intraday analysis  
+    - Any timeframe combination you need
+    """)
+    
+    # Configuration columns
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📊 Base Timeframe (ATR Source)")
+        st.write("**This timeframe will be used for ATR calculation**")
+        
+        base_file = st.file_uploader(
+            "Upload Base Timeframe Data",
+            type=['csv', 'xlsx', 'xls'],
+            help="Upload the timeframe you want to calculate ATR on (usually daily)",
+            key="base_timeframe"
+        )
+        
+        if base_file:
+            st.success(f"✅ Base file: {base_file.name}")
+            
+            # ATR period selection
+            atr_period = st.number_input(
+                "ATR Period",
+                min_value=1,
+                max_value=100,
+                value=14,
+                help="Number of periods for ATR calculation (e.g., 14 days for daily ATR)"
+            )
+            
+            st.info(f"📊 Will calculate {atr_period}-period ATR on base timeframe")
+    
+    with col2:
+        st.subheader("📈 Analysis Timeframe (Intraday)")
+        st.write("**This timeframe will be used for trigger/goal analysis**")
+        
+        analysis_file = st.file_uploader(
+            "Upload Analysis Timeframe Data",
+            type=['csv', 'xlsx', 'xls'],
+            help="Upload the timeframe you want to analyze (usually intraday)",
+            key="analysis_timeframe"
+        )
+        
+        if analysis_file:
+            st.success(f"✅ Analysis file: {analysis_file.name}")
+            
+            # Alignment method
+            align_method = st.selectbox(
+                "Alignment Method",
+                ["date_match"],
+                help="How to align different timeframes"
+            )
+            
+            st.info("📅 Will match ATR values by date")
+    
+    # Processing section
+    if base_file and analysis_file:
+        st.markdown("---")
+        st.subheader("⚙️ Processing Configuration")
+        
+        # Show file details
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**Base File**: {base_file.name}")
+            st.write(f"**ATR Period**: {atr_period}")
+        with col2:
+            st.write(f"**Analysis File**: {analysis_file.name}")
+            st.write(f"**Alignment**: {align_method}")
+        
+        # Data preview option
+        show_preview = st.checkbox("Show Data Preview", value=False)
+        
+        if show_preview:
+            st.subheader("📋 Data Preview")
+            
+            # Preview base file
+            try:
+                if base_file.name.endswith('.csv'):
+                    base_preview = pd.read_csv(base_file).head()
+                else:
+                    base_preview = pd.read_excel(base_file).head()
+                
+                st.write("**Base Timeframe Preview:**")
+                st.dataframe(base_preview, use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"Error previewing base file: {str(e)}")
+            
+            # Preview analysis file
+            try:
+                if analysis_file.name.endswith('.csv'):
+                    analysis_preview = pd.read_csv(analysis_file).head()
+                else:
+                    analysis_preview = pd.read_excel(analysis_file).head()
+                
+                st.write("**Analysis Timeframe Preview:**")
+                st.dataframe(analysis_preview, use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"Error previewing analysis file: {str(e)}")
+        
+        # Process button
+        if st.button("🚀 **Combine Timeframes with ATR**", type="primary", use_container_width=True):
+            with st.spinner("Processing multi-timeframe ATR combination..."):
+                combined_data = combine_timeframes_with_atr(
+                    base_file, 
+                    analysis_file, 
+                    atr_period=atr_period,
+                    align_method=align_method
+                )
+                
+                if combined_data is not None:
+                    st.balloons()
+                    st.success("🎉 **Multi-timeframe ATR combination complete!**")
+                    
+                    # Show results summary
+                    st.subheader("📊 Results Summary")
+                    
+                    # Metrics
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Total Records", f"{len(combined_data):,}")
+                    with col2:
+                        st.metric("Date Range", f"{combined_data['Date'].min()} to {combined_data['Date'].max()}")
+                    with col3:
+                        valid_atr = combined_data['ATR'].notna().sum()
+                        st.metric("Valid ATR Values", f"{valid_atr:,}")
+                    with col4:
+                        atr_coverage = (valid_atr / len(combined_data)) * 100
+                        st.metric("ATR Coverage", f"{atr_coverage:.1f}%")
+                    
+                    # ATR Statistics
+                    st.subheader("📈 ATR Statistics")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        atr_stats = combined_data['ATR'].describe()
+                        st.write("**ATR Distribution:**")
+                        st.dataframe(atr_stats.round(2))
+                    
+                    with col2:
+                        # Recent ATR values
+                        recent_atr = combined_data.groupby('Date')['ATR'].first().tail(10)
+                        st.write("**Recent ATR Values:**")
+                        st.dataframe(recent_atr.round(2))
+                    
+                    # Data preview
+                    st.subheader("📋 Combined Data Preview")
+                    st.dataframe(combined_data.head(10), use_container_width=True)
+                    
+                    # Show column explanations
+                    st.subheader("📋 Column Explanations")
+                    col_explanations = {
+                        'Datetime': 'Analysis timeframe timestamp',
+                        'Date': 'Date for matching',
+                        'Open/High/Low/Close': 'Analysis timeframe OHLC',
+                        'ATR': 'Current day ATR from base timeframe',
+                        'Previous_ATR': 'Previous day ATR (commonly used for analysis)',
+                        'Daily_Open/High/Low/Close': 'Base timeframe OHLC for reference'
+                    }
+                    
+                    for col, desc in col_explanations.items():
+                        if any(col.split('/')[0] in combined_data.columns for col in [col]):
+                            st.write(f"**{col}**: {desc}")
+                    
+                    # Download section
+                    st.markdown("---")
+                    st.subheader("📥 Download ATR-Ready File")
+                    
+                    # Generate filename
+                    base_name = base_file.name.split('.')[0]
+                    analysis_name = analysis_file.name.split('.')[0]
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    
+                    output_filename = f"ATR_Ready_{base_name}_{analysis_name}_{atr_period}ATR_{timestamp}.csv"
+                    
+                    st.download_button(
+                        "📥 **Download ATR-Ready CSV**",
+                        data=combined_data.to_csv(index=False),
+                        file_name=output_filename,
+                        mime="text/csv",
+                        key="download_atr_ready",
+                        use_container_width=True,
+                        type="primary"
+                    )
+                    
+                    st.success(f"✅ Ready for ATR Level Analyzer: **{output_filename}**")
+                    
+                    # Next steps
+                    st.markdown("---")
+                    st.subheader("🎯 Next Steps")
+                    st.info("""
+                    🚀 **Ready for Analysis!**
+                    
+                    1. **Download** the ATR-ready file above
+                    2. **Open** the ATR Level Analyzer tool
+                    3. **Upload** this single file for systematic trigger/goal analysis
+                    4. **No more dual file uploads** - everything is pre-calculated!
+                    
+                    💡 **What's included:**
+                    - ✅ Pre-calculated ATR values
+                    - ✅ Previous day ATR for analysis
+                    - ✅ Both timeframes aligned perfectly
+                    - ✅ Ready for any systematic analysis
+                    """)
+                    
+                else:
+                    st.error("❌ Failed to combine timeframes. Check the processing information above.")
+    
+    else:
+        # Show instructions when files aren't uploaded
+        st.info("👆 **Please upload both base and analysis timeframe files to get started**")
+        
+        # Show workflow explanation
+        with st.expander("🔧 Multi-Timeframe ATR Workflow", expanded=True):
+            st.markdown("""
+            **🎯 What is Multi-Timeframe ATR Analysis?**
+            
+            This combines the power of longer-term ATR calculation with shorter-term analysis:
+            
+            **Example 1: Daily ATR + 10-Minute Analysis**
+            - **Base**: Daily OHLC data (for 14-day ATR calculation)
+            - **Analysis**: 10-minute intraday data (for trigger/goal detection)
+            - **Result**: Each 10-minute bar has the current daily ATR value
+            
+            **Example 2: Weekly ATR + 1-Hour Analysis**
+            - **Base**: Weekly OHLC data (for 14-week ATR calculation)
+            - **Analysis**: 1-hour data (for trigger/goal detection)  
+            - **Result**: Each 1-hour bar has the current weekly ATR value
+            
+            **🔧 Process:**
+            1. **Upload base timeframe** (usually longer period for ATR)
+            2. **Upload analysis timeframe** (usually shorter period for analysis)
+            3. **Set ATR period** (e.g., 14 for 14-day ATR)
+            4. **Combine** - system aligns data by date
+            5. **Download** single ATR-ready file
+            
+            **💡 Why This Approach?**
+            - **Separation of concerns**: ATR calculation vs analysis
+            - **Flexibility**: Any timeframe combination
+            - **Accuracy**: Proper ATR calculation on intended timeframe
+            - **Efficiency**: Calculate once, analyze multiple times
+            
+            **🎯 Output Format:**
+            ```
+            Datetime           Date        Open   High   Low    Close  ATR    Previous_ATR  Daily_Close
+            2024-01-01 09:30   2024-01-01  4100   4110   4095   4105   45.2   42.8         4095
+            2024-01-01 09:40   2024-01-01  4105   4115   4100   4110   45.2   42.8         4095
+            2024-01-01 09:50   2024-01-01  4110   4120   4105   4115   45.2   42.8         4095
+            ```
+            
+            Each analysis timeframe bar includes:
+            - Its own OHLC data
+            - Current day's ATR (from base timeframe)
+            - Previous day's ATR (commonly used for analysis)
+            - Reference data from base timeframe
+            """)
+        
+        # Show supported file formats
+        with st.expander("📁 Supported File Formats", expanded=False):
+            st.markdown("""
+            **✅ File Types Supported:**
+            - **CSV** (.csv) - Most common format
+            - **Excel** (.xlsx, .xls) - Spreadsheet formats
+            
+            **📊 Required Columns (Both Files):**
+            - **Date** (or Datetime) - Date/time information
+            - **Open** - Opening price
+            - **High** - High price  
+            - **Low** - Low price
+            - **Close** - Closing price
+            
+            **🔧 Column Name Flexibility:**
+            - **Long form**: Date, Open, High, Low, Close
+            - **Short form**: Date, o, h, l, c
+            - **Mixed**: Any combination of the above
+            
+            **📅 Date Format Support:**
+            - **Date only**: 2024-01-01, 01/01/2024
+            - **Date + Time**: 2024-01-01 09:30:00
+            - **Separate columns**: Date + Time columns
+            
+            **💡 Pro Tips:**
+            - Use consistent date formats between files
+            - Ensure base timeframe has enough history for ATR calculation
+            - Analysis timeframe should overlap with base timeframe dates
+            """)
+
 # Help section
 st.markdown("---")
 st.subheader("📚 Usage Guide")
@@ -1113,6 +1576,12 @@ st.markdown("""
 - Upload 25+ 1-minute CSV files → Get 1 combined 10-minute file
 - Smart ticker detection and validation
 - Custom time filtering for market hours
+
+**🎯 Multi-Timeframe ATR Combiner** ⭐ (NEW!)
+- Combine different timeframes with ATR calculation
+- Perfect for Daily ATR + 10-minute analysis
+- Outputs single ATR-ready file for systematic analysis
+- No more dual file uploads in analysis tools!
 
 **📈 Public Data Download**
 - Download from public sources (limited intraday history)
