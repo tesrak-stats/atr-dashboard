@@ -1950,9 +1950,15 @@ elif mode == "📈 Public Data Download":
     st.header("📈 Public Data Download")
     st.write("Download financial data from public sources and export as CSV")
     
-    # Configuration in sidebar
-    with st.sidebar:
-        st.header("🎯 Download Configuration")
+    st.info("⚠️ **Note:** Public sources have limitations. For extensive historical intraday data, use the Multi-CSV Processor with broker files.")
+    
+    # Configuration in main frame
+    st.subheader("🎯 Download Configuration")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**📈 Ticker & Data Source**")
         
         # Ticker input
         ticker = st.text_input(
@@ -1968,9 +1974,9 @@ elif mode == "📈 Public Data Download":
                 st.success(f"✅ Will map: {ticker} → {mapped_ticker}")
             else:
                 st.info(f"📈 Will fetch: {ticker}")
-        
-        # Date range
-        st.subheader("📅 Date Range")
+    
+    with col2:
+        st.markdown("**📅 Date Range Configuration**")
         
         # Check if we have held data to suggest smart dates
         held_base_data = st.session_state.get('atr_combiner_base_data')
@@ -2017,31 +2023,43 @@ elif mode == "📈 Public Data Download":
             
             st.info(f"🔍 **Detected held intraday data**: {held_start} to {held_end}")
             st.info("💡 **Suggested range**: Extended back 6 months to provide ATR calculation buffer")
+    
+    # Date range selection - full width
+    st.subheader("📅 Date Range Selection")
+    
+    date_mode = st.radio(
+        "Date Selection Mode",
+        ["Smart ATR Range", "Custom Range", "Suggested Range"] if suggested_start else ["Smart ATR Range", "Custom Range"],
+        help="Smart mode adds buffer for ATR calculation, Suggested uses held data context",
+        horizontal=True
+    )
+    
+    if date_mode == "Suggested Range" and suggested_start:
+        st.success(suggestion_context)
         
-        date_mode = st.radio(
-            "Date Selection Mode",
-            ["Smart ATR Range", "Custom Range", "Suggested Range"] if suggested_start else ["Smart ATR Range", "Custom Range"],
-            help="Smart mode adds buffer for ATR calculation, Suggested uses held data context"
-        )
+        col1, col2 = st.columns(2)
         
-        if date_mode == "Suggested Range" and suggested_start:
-            st.success(suggestion_context)
-            
+        with col1:
             # Use suggested dates as defaults but allow modification
             daily_start = st.date_input(
                 "Daily Data Start Date",
                 value=suggested_start,
+                min_value=date(1850, 1, 1),
+                max_value=date.today(),
                 help="Suggested based on your held data - extends back to provide ATR buffer"
             )
-            
+        
+        with col2:
             daily_end = st.date_input(
                 "Daily Data End Date", 
                 value=suggested_end,
+                min_value=date(1850, 1, 1),
+                max_value=date.today(),
                 help="Suggested to complement your held data"
             )
-            
-            # Show the logic
-            st.info(f"🎯 **Suggestion Logic**:")
+        
+        # Show the logic
+        with st.expander("🎯 **Suggestion Logic**", expanded=False):
             if held_base_data is not None:
                 st.info(f"   • Held base data: {held_base_data['Date'].min().date() if hasattr(held_base_data['Date'].min(), 'date') else held_base_data['Date'].min()} to {held_base_data['Date'].max().date() if hasattr(held_base_data['Date'].max(), 'date') else held_base_data['Date'].max()}")
                 st.info(f"   • Suggested: Extend 1 year back, 30 days forward")
@@ -2050,21 +2068,29 @@ elif mode == "📈 Public Data Download":
                 st.info(f"   • Held intraday data: {held_analysis_data['Date'].min().date() if hasattr(held_analysis_data['Date'].min(), 'date') else held_analysis_data['Date'].min()} to {held_analysis_data['Date'].max().date() if hasattr(held_analysis_data['Date'].max(), 'date') else held_analysis_data['Date'].max()}")
                 st.info(f"   • Suggested: 6 months back for ATR buffer")
                 st.info(f"   • Purpose: Provide sufficient history for ATR calculation")
-            
-        elif date_mode == "Smart ATR Range":
+        
+    elif date_mode == "Smart ATR Range":
+        col1, col2 = st.columns(2)
+        
+        with col1:
             # Simple date range with automatic buffer
             intraday_start = st.date_input(
                 "Intraday Analysis Start Date",
                 value=suggested_start if suggested_start else date(2024, 1, 1),
+                min_value=date(1850, 1, 1),
+                max_value=date.today(),
                 help="When you want your intraday analysis to begin"
             )
             
             intraday_end = st.date_input(
                 "Intraday Analysis End Date", 
                 value=suggested_end if suggested_end else date.today(),
+                min_value=date(1850, 1, 1),
+                max_value=date.today(),
                 help="When you want your intraday analysis to end"
             )
-            
+        
+        with col2:
             # Auto-calculate buffer
             buffer_months = st.slider("Buffer Months for Daily Data", 3, 12, 6)
             daily_start = intraday_start - timedelta(days=buffer_months * 30)
@@ -2072,21 +2098,28 @@ elif mode == "📈 Public Data Download":
             
             st.info(f"📊 Daily data will span: {daily_start} to {daily_end}")
             st.info(f"📈 Buffer: {buffer_months} months before intraday start")
+    
+    else:
+        # Manual date range
+        col1, col2 = st.columns(2)
         
-        else:
-            # Manual date range
+        with col1:
             daily_start = st.date_input(
                 "Daily Data Start Date", 
                 value=suggested_start if suggested_start else date(2023, 1, 1),
+                min_value=date(1850, 1, 1),
+                max_value=date.today(),
                 help="Start date for daily data download"
             )
+        
+        with col2:
             daily_end = st.date_input(
                 "Daily Data End Date", 
                 value=suggested_end if suggested_end else date.today(),
+                min_value=date(1850, 1, 1),
+                max_value=date.today(),
                 help="End date for daily data download"
             )
-    
-    st.info("⚠️ **Note:** Public sources have limitations. For extensive historical intraday data, use the Multi-CSV Processor with broker files.")
     
     if st.button("🚀 Download Daily Data", type="primary"):
         if not ticker:
