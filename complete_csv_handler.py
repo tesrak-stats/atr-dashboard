@@ -163,10 +163,54 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             for col in ohlc_cols:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
             
+            # Check for obvious corporate action indicators before removing
+            corporate_action_indicators = []
+            for idx, row in df.iterrows():
+                if any(pd.isna(row[col]) for col in ohlc_cols):
+                    # Check if original data had corporate action indicators
+                    original_row = daily_df.iloc[idx] if data_type == "Daily data" else intraday_df.iloc[idx]
+                    for col in ohlc_cols:
+                        original_val = str(original_row[col]).upper()
+                        if any(indicator in original_val for indicator in ['SPLIT', 'DIV', 'DIVIDEND', 'CORP', 'ACTION', 'HALT', 'SUSPEND']):
+                            corporate_action_indicators.append(f"Row {idx}: {original_val}")
+            
             # Remove rows where any OHLC value is NaN or invalid
             df_clean = df.dropna(subset=ohlc_cols)
             
-            # Additional validation: ensure High >= Low, Open/Close within High/Low range
+            # Advanced validation: Check for potential stock splits
+            if len(df_clean) > 1:
+                # Calculate day-to-day price changes
+                df_clean = df_clean.sort_values('Date').reset_index(drop=True)
+                
+                # Look for extreme price jumps that might indicate unadjusted splits
+                prev_close = df_clean['Close'].shift(1)
+                next_open = df_clean['Open']
+                
+                # Calculate overnight gaps
+                overnight_change = (next_open - prev_close) / prev_close
+                
+                # Flag potential splits (>40% overnight change)
+                potential_splits = overnight_change.abs() > 0.4
+                
+                if potential_splits.any():
+                    split_dates = df_clean[potential_splits]['Date'].tolist()
+                    st.error(f"🚨 **POTENTIAL STOCK SPLITS DETECTED** in {data_type}:")
+                    st.error(f"📅 **Split dates**: {split_dates}")
+                    st.error(f"💹 **Overnight changes**: {overnight_change[potential_splits].round(3).tolist()}")
+                    st.error("⚠️ **CRITICAL**: Your data may NOT be split-adjusted!")
+                    st.error("💡 **Recommendation**: Use split-adjusted data from your broker or data provider")
+                    
+                    # Check if it looks like a 2:1 split pattern
+                    split_ratios = []
+                    for i in potential_splits[potential_splits].index:
+                        if i > 0:
+                            ratio = prev_close.iloc[i] / next_open.iloc[i]
+                            split_ratios.append(f"{ratio:.2f}:1")
+                    
+                    if split_ratios:
+                        st.error(f"🔍 **Estimated split ratios**: {split_ratios}")
+            
+            # Standard OHLC validation
             valid_mask = (
                 (df_clean['High'] >= df_clean['Low']) &
                 (df_clean['Open'] >= df_clean['Low']) &
@@ -182,8 +226,17 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             cleaned_count = len(df_clean)
             removed_count = original_count - cleaned_count
             
+            # Report what was removed
             if removed_count > 0:
-                st.warning(f"🧹 {data_type}: Removed {removed_count} invalid OHLC rows (corporate actions, text, invalid prices)")
+                st.warning(f"🧹 {data_type}: Removed {removed_count} invalid OHLC rows")
+                
+                if corporate_action_indicators:
+                    st.warning("📋 **Corporate action indicators found:**")
+                    for indicator in corporate_action_indicators[:5]:  # Show first 5
+                        st.warning(f"   • {indicator}")
+                    if len(corporate_action_indicators) > 5:
+                        st.warning(f"   • ... and {len(corporate_action_indicators) - 5} more")
+                
                 st.info(f"✅ {data_type}: {cleaned_count} valid OHLC rows remaining")
             else:
                 st.success(f"✅ {data_type}: All {cleaned_count} rows have valid OHLC data")
@@ -663,6 +716,159 @@ class CSVProcessor:
         return None
     
     @staticmethod
+    def smart_column_detection(df):
+        """
+        Smart detection for unlabeled columns
+        Assumes: First column = Date/Datetime, then O, H, L, C, [Volume]
+        """
+        original_columns = list(df.columns)
+        
+        # Check if we need smart detection
+        ohlc_cols = ['Open', 'High', 'Low', 'Close']
+        date_cols = ['Date', 'Datetime']
+        
+        has_ohlc = any(col in df.columns for col in ohlc_cols)
+        has_date = any(col in df.columns for col in date_cols)
+        
+        # Skip if already properly labeled
+        if has_ohlc and has_date:
+            return df
+        
+        # Check if we have enough columns for OHLC data
+        if len(df.columns) < 5:  # Need at least Date + OHLC
+            return df
+            
+        # Try to detect if this looks like OHLC data
+        numeric_cols = []
+        for col in df.columns[1:]:  # Skip first column (assumed date)
+            try:
+                # Try to convert to numeric
+                pd.to_numeric(df[col], errors='raise')
+                numeric_cols.append(col)
+            except:
+                pass
+        
+        # Need at least 4 numeric columns for OHLC
+        if len(numeric_cols) < 4:
+            return df
+            
+        # Check if the numeric data looks like OHLC (High >= Low, etc.)
+        try:
+            sample_data = df[numeric_cols[:4]].head(10)
+            sample_numeric = sample_data.apply(pd.to_numeric, errors='coerce')
+            
+            # Basic OHLC validation on sample
+            if len(sample_numeric.columns) >= 4:
+                # Assume order is O, H, L, C
+                o_col, h_col, l_col, c_col = sample_numeric.columns[:4]
+                
+                # Check if High >= Low in most cases
+                high_low_valid = (sample_numeric[h_col] >= sample_numeric[l_col]).sum() >= len(sample_numeric) * 0.8
+                
+                if high_low_valid:
+                    st.warning("🔍 **Smart Column Detection Activated**")
+                    st.warning(f"⚠️ **ASSUMED COLUMN MAPPING** - Please verify:")
+                    st.warning(f"   • **{original_columns[0]}** → Date/Datetime")
+                    st.warning(f"   • **{original_columns[1]}** → Open")
+                    st.warning(f"   • **{original_columns[2]}** → High") 
+                    st.warning(f"   • **{original_columns[3]}** → Low")
+                    st.warning(f"   • **{original_columns[4]}** → Close")
+                    
+                    if len(original_columns) > 5:
+                        st.warning(f"   • **{original_columns[5]}** → Volume")
+                    
+                    st.warning("🚨 **IMPORTANT**: Review your data to confirm this mapping is correct!")
+                    
+                    # Apply the mapping
+                    new_columns = {}
+                    new_columns[original_columns[0]] = 'Date'  # First column becomes Date
+                    new_columns[original_columns[1]] = 'Open'
+                    new_columns[original_columns[2]] = 'High'  
+                    new_columns[original_columns[3]] = 'Low'
+                    new_columns[original_columns[4]] = 'Close'
+                    
+                    if len(original_columns) > 5:
+                        new_columns[original_columns[5]] = 'Volume'
+                    
+                    df = df.rename(columns=new_columns)
+                    
+                    st.success("✅ **Smart mapping applied** - Processing will continue with assumed column structure")
+                    
+        except Exception as e:
+            # If smart detection fails, just return original
+            pass
+            
+        return df
+
+    @staticmethod
+    def detect_and_split_datetime(df):
+        """
+        Detect datetime columns and split them into Date and Time if needed
+        Handles various datetime formats and column names
+        """
+        # Common datetime column names to check
+        datetime_candidates = ['datetime', 'timestamp', 'date_time', 'date time', 'dateTime', 'date/time', 'dt']
+        
+        for col in df.columns:
+            if col.lower() in datetime_candidates:
+                try:
+                    # Try to parse as datetime
+                    parsed_datetime = pd.to_datetime(df[col])
+                    
+                    # Check if this column has time information
+                    has_time_info = (parsed_datetime.dt.hour != 0).any() or (parsed_datetime.dt.minute != 0).any()
+                    
+                    if has_time_info:
+                        st.info(f"🔄 **Auto-detected**: '{col}' contains datetime information - splitting into Date and Time")
+                        
+                        # Create separate Date and Time columns
+                        df['Date'] = parsed_datetime.dt.date
+                        df['Time'] = parsed_datetime.dt.time
+                        df['Datetime'] = parsed_datetime
+                        
+                        # Remove original column if it's not already standardized
+                        if col not in ['Date', 'Time', 'Datetime']:
+                            df = df.drop(columns=[col])
+                        
+                        return df
+                        
+                except Exception:
+                    continue
+        
+        # Check if Date column might contain datetime info
+        if 'Date' in df.columns and 'Time' not in df.columns:
+            try:
+                # Sample a few values to check format
+                sample_values = df['Date'].head(10).astype(str)
+                
+                # Look for time patterns in the date column
+                has_time_pattern = any(
+                    ':' in str(val) and len(str(val)) > 10 
+                    for val in sample_values
+                )
+                
+                if has_time_pattern:
+                    parsed_datetime = pd.to_datetime(df['Date'])
+                    
+                    # Check if parsed values actually have time info
+                    has_time_info = (parsed_datetime.dt.hour != 0).any() or (parsed_datetime.dt.minute != 0).any()
+                    
+                    if has_time_info:
+                        st.info("🔄 **Auto-detected**: Date column contains time information - splitting into Date and Time")
+                        
+                        # Split into separate columns
+                        df['Time'] = parsed_datetime.dt.time
+                        df['Date'] = parsed_datetime.dt.date
+                        df['Datetime'] = parsed_datetime
+                        
+                        return df
+                        
+            except Exception:
+                pass
+        
+        return df
+
+    @staticmethod
     def standardize_columns(df):
         """Standardize column names across different CSV formats"""
         # Create a copy to avoid modifying original
@@ -670,6 +876,77 @@ class CSVProcessor:
         
         # Clean column names
         df.columns = [str(col).strip() for col in df.columns]
+        
+        # First, try smart column detection for unlabeled data
+        df = CSVProcessor.smart_column_detection(df)
+        
+        # Then, try to detect and split datetime columns
+        df = CSVProcessor.detect_and_split_datetime(df)
+        """
+        Detect datetime columns and split them into Date and Time if needed
+        Handles various datetime formats and column names
+        """
+        # Common datetime column names to check
+        datetime_candidates = ['datetime', 'timestamp', 'date_time', 'date time', 'dateTime', 'date/time', 'dt']
+        
+        for col in df.columns:
+            if col.lower() in datetime_candidates:
+                try:
+                    # Try to parse as datetime
+                    parsed_datetime = pd.to_datetime(df[col])
+                    
+                    # Check if this column has time information
+                    has_time_info = (parsed_datetime.dt.hour != 0).any() or (parsed_datetime.dt.minute != 0).any()
+                    
+                    if has_time_info:
+                        st.info(f"🔄 **Auto-detected**: '{col}' contains datetime information - splitting into Date and Time")
+                        
+                        # Create separate Date and Time columns
+                        df['Date'] = parsed_datetime.dt.date
+                        df['Time'] = parsed_datetime.dt.time
+                        df['Datetime'] = parsed_datetime
+                        
+                        # Remove original column if it's not already standardized
+                        if col not in ['Date', 'Time', 'Datetime']:
+                            df = df.drop(columns=[col])
+                        
+                        return df
+                        
+                except Exception:
+                    continue
+        
+        # Check if Date column might contain datetime info
+        if 'Date' in df.columns and 'Time' not in df.columns:
+            try:
+                # Sample a few values to check format
+                sample_values = df['Date'].head(10).astype(str)
+                
+                # Look for time patterns in the date column
+                has_time_pattern = any(
+                    ':' in str(val) and len(str(val)) > 10 
+                    for val in sample_values
+                )
+                
+                if has_time_pattern:
+                    parsed_datetime = pd.to_datetime(df['Date'])
+                    
+                    # Check if parsed values actually have time info
+                    has_time_info = (parsed_datetime.dt.hour != 0).any() or (parsed_datetime.dt.minute != 0).any()
+                    
+                    if has_time_info:
+                        st.info("🔄 **Auto-detected**: Date column contains time information - splitting into Date and Time")
+                        
+                        # Split into separate columns
+                        df['Time'] = parsed_datetime.dt.time
+                        df['Date'] = parsed_datetime.dt.date
+                        df['Datetime'] = parsed_datetime
+                        
+                        return df
+                        
+            except Exception:
+                pass
+        
+        return df
         
         # Common column mappings
         column_mappings = {
@@ -679,6 +956,10 @@ class CSVProcessor:
             'datetime': 'Datetime',
             'timestamp': 'Datetime',
             'date_time': 'Datetime',
+            'date time': 'Datetime',
+            'dateTime': 'Datetime',
+            'date/time': 'Datetime',
+            'dt': 'Datetime',
             
             # OHLC columns - including single letter variations
             'open': 'Open',
@@ -720,14 +1001,43 @@ class CSVProcessor:
         """Create a proper Datetime column from available date/time info"""
         if 'Datetime' in df.columns:
             df['Datetime'] = pd.to_datetime(df['Datetime'])
+            
+            # Extract separate Date and Time columns if they don't exist
+            if 'Date' not in df.columns:
+                df['Date'] = df['Datetime'].dt.date
+            if 'Time' not in df.columns:
+                df['Time'] = df['Datetime'].dt.time
+            
             return df
         
         if 'Date' in df.columns and 'Time' in df.columns:
             # Combine Date and Time
             df['Datetime'] = pd.to_datetime(df['Date'].astype(str) + ' ' + df['Time'].astype(str))
         elif 'Date' in df.columns:
-            # Use Date as Datetime
-            df['Datetime'] = pd.to_datetime(df['Date'])
+            # Check if Date column contains time information
+            try:
+                # Try to parse as datetime
+                parsed_datetime = pd.to_datetime(df['Date'])
+                
+                # Check if any parsed values have time information (not just midnight)
+                has_time_info = (parsed_datetime.dt.hour != 0).any() or (parsed_datetime.dt.minute != 0).any()
+                
+                if has_time_info:
+                    # Date column contains datetime info
+                    df['Datetime'] = parsed_datetime
+                    
+                    # Extract separate Date and Time columns
+                    df['Date'] = df['Datetime'].dt.date
+                    df['Time'] = df['Datetime'].dt.time
+                    
+                    st.info("🔄 **Auto-detected**: Date column contains time information - extracted Date and Time columns")
+                else:
+                    # Date column is date-only
+                    df['Datetime'] = pd.to_datetime(df['Date'])
+                    
+            except Exception:
+                # Fallback: treat as date-only
+                df['Datetime'] = pd.to_datetime(df['Date'])
         else:
             raise ValueError("Could not find date/time information in CSV")
         
@@ -1334,23 +1644,35 @@ if mode == "📁 Multi-CSV Processor":
             - **o**, **h**, **l**, **c** (lowercase single letters)
             - **v** (volume - optional)
             
+            **Unlabeled Format (NEW - Smart Detection):**
+            - **Column 1**: Date/Datetime (any format)
+            - **Column 2**: Open price
+            - **Column 3**: High price
+            - **Column 4**: Low price
+            - **Column 5**: Close price
+            - **Column 6**: Volume (optional)
+            
             **Mixed Format Examples:**
             - `Date, o, h, l, c, v`
             - `datetime, Open, High, Low, Close, Volume`
             - `date, time, O, H, L, C`
+            - `9/23/2012 20:35, 4100, 4110, 4095, 4105, 1000` (unlabeled)
             
             **Example filenames that work well:**
             - `SPX_20240101.csv`
             - `AAPL_1min_data.csv`
             - `ES_intraday.csv`
             - `data_2024_01_01.csv`
+            - `unlabeled_ohlc_data.csv`
             
             **The system will:**
             - ✅ Auto-detect ticker symbols from filenames
             - ✅ Handle both long (Open, High, Low, Close) and short (o, h, l, c) formats
+            - ✅ **NEW**: Smart detect unlabeled columns and assume Date + OHLC order
             - ✅ Warn if mixed tickers are found
             - ✅ Standardize all column names automatically
             - ✅ Handle various date/time formats
+            - ✅ **NEW**: Show warnings when assumptions are made
             """)
 
         
@@ -2091,10 +2413,18 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             - **Short form**: Date, o, h, l, c
             - **Mixed**: Any combination of the above
             
-            **📅 Date Format Support:**
-            - **Date only**: 2024-01-01, 01/01/2024
-            - **Date + Time**: 2024-01-01 09:30:00
+            **📅 Date/Time Format Support:**
             - **Separate columns**: Date + Time columns
+            - **Combined datetime**: 2024-01-01 09:30:00
+            - **Date only**: 2024-01-01, 01/01/2024
+            - **Auto-detection**: System detects and splits datetime columns
+            - **Multiple formats**: timestamp, datetime, date_time, etc.
+            
+            **🔄 Auto-Processing:**
+            - Detects datetime columns automatically
+            - Splits combined datetime into Date and Time
+            - Handles various column names (timestamp, datetime, date_time)
+            - Preserves original Datetime column for analysis
             
             **💡 Pro Tips:**
             - Use consistent date formats between files
