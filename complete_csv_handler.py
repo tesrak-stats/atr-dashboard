@@ -811,8 +811,8 @@ class CSVProcessor:
             try:
                 status_text.text(f"Processing {uploaded_file.name} ({i+1}/{len(uploaded_files)})...")
                 
-                # Load the CSV
-                if uploaded_file.name.endswith('.csv'):
+                # Load the file
+                if uploaded_file.name.endswith(('.csv', '.txt')):
                     df = pd.read_csv(uploaded_file)
                 elif uploaded_file.name.endswith(('.xlsx', '.xls')):
                     df = pd.read_excel(uploaded_file)
@@ -1019,9 +1019,9 @@ if mode == "📁 Multi-CSV Processor":
     st.subheader("📤 File Upload")
     uploaded_files = st.file_uploader(
         "Choose Multiple CSV Files",
-        type=['csv', 'xlsx', 'xls'],
+        type=['csv', 'txt', 'xlsx', 'xls'],
         accept_multiple_files=True,
-        help="Select multiple CSV/Excel files to combine and process",
+        help="Select multiple CSV/Excel/TXT files to combine and process",
         key="multi_csv_uploader"
     )
     
@@ -1575,8 +1575,8 @@ elif mode == "🔧 Single File Resampler":
     # Single file upload
     single_file = st.file_uploader(
         "Upload Single CSV File",
-        type=['csv', 'xlsx', 'xls'], 
-        help="Upload one CSV/Excel file to resample"
+        type=['csv', 'txt', 'xlsx', 'xls'], 
+        help="Upload one CSV/Excel/TXT file to resample"
     )
     
     if single_file:
@@ -1584,7 +1584,7 @@ elif mode == "🔧 Single File Resampler":
         
         # Load and preview the file
         try:
-            if single_file.name.endswith('.csv'):
+            if single_file.name.endswith(('.csv', '.txt')):
                 df = pd.read_csv(single_file)
             else:
                 df = pd.read_excel(single_file)
@@ -1753,7 +1753,7 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
         else:
             base_file = st.file_uploader(
                 "Upload Base Timeframe Data",
-                type=['csv', 'xlsx', 'xls'],
+                type=['csv', 'txt', 'xlsx', 'xls'],
                 help="Upload the timeframe you want to calculate ATR on (usually daily)",
                 key="base_timeframe"
             )
@@ -2076,6 +2076,7 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             st.markdown("""
             **✅ File Types Supported:**
             - **CSV** (.csv) - Most common format
+            - **TXT** (.txt) - Tab/comma delimited text files
             - **Excel** (.xlsx, .xls) - Spreadsheet formats
             
             **📊 Required Columns (Both Files):**
@@ -2155,5 +2156,3 @@ Once you have your ATR-ready files, proceed to systematic trigger/goal analysis:
 
 🚀 **[Launch ATR Level Analyzer →](https://atr-dashboard-ekuggfmlyg4gmtw85ksacm.streamlit.app/)**
 """)
-
-        
