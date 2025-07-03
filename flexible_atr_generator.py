@@ -330,7 +330,7 @@ def load_daily_data(uploaded_file=None, ticker=None, intraday_data=None):
             yahoo_ticker = TickerMapper.get_yahoo_ticker(ticker)
             
             if yahoo_ticker != original_ticker:
-                st.info(f"🔄 Mapped ticker: '{original_ticker}' → '{yahoo_ticker}' for Yahoo Finance")
+                st.info(f"🔄 Mapped ticker: '{original_ticker}' → '{yahoo_ticker}' for data source")
             
             st.info(f"🔍 Analyzing intraday data to determine optimal daily data range...")
             
@@ -344,7 +344,7 @@ def load_daily_data(uploaded_file=None, ticker=None, intraday_data=None):
             fetch_end = intraday_end + timedelta(days=5)
             
             st.info(f"📊 Intraday data spans: {intraday_start} to {intraday_end}")
-            st.info(f"📈 Fetching Yahoo daily data for '{yahoo_ticker}' from {buffer_start} to {fetch_end}")
+            st.info(f"📈 Fetching daily data for '{yahoo_ticker}' from {buffer_start} to {fetch_end}")
             
             daily_data = yf.download(yahoo_ticker, start=buffer_start, end=fetch_end, interval='1d', progress=False)
             
@@ -362,12 +362,12 @@ def load_daily_data(uploaded_file=None, ticker=None, intraday_data=None):
             daily_data.reset_index(inplace=True)
             daily_data = standardize_columns(daily_data)
             
-            st.success(f"✅ Auto-fetched daily data from Yahoo: {len(daily_data)} records")
+            st.success(f"✅ Auto-fetched daily data: {len(daily_data)} records")
             st.success(f"📅 Daily data range: {daily_data['Date'].min().date()} to {daily_data['Date'].max().date()}")
             return daily_data
             
         except Exception as e:
-            st.error(f"Error auto-fetching from Yahoo Finance for '{yahoo_ticker}': {str(e)}")
+            st.error(f"Error auto-fetching daily data for '{yahoo_ticker}': {str(e)}")
             
             alternatives = TickerMapper.suggest_alternatives(original_ticker)
             if alternatives:
@@ -965,13 +965,13 @@ if data_source == "Upload Both Files":
     )
 
 else:
-    st.sidebar.subheader("📈 Daily Data from Yahoo Finance")
+    st.sidebar.subheader("📈 Daily Data Auto-Fetch")
     st.sidebar.info("📅 **Smart Auto-Detection**: Daily data will be automatically fetched")
     
     ticker = st.sidebar.text_input(
         "Ticker Symbol",
         value="SPX",
-        help="Enter ticker symbol - system will auto-map to Yahoo Finance format"
+        help="Enter ticker symbol - system will auto-map to appropriate format"
     ).upper()
     
     if ticker:
@@ -1057,11 +1057,11 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                     import traceback
                     st.error(traceback.format_exc())
     
-    elif data_source == "Yahoo Daily + Upload Intraday":
+    elif data_source == "Auto-Fetch Daily + Upload Intraday":
         if not ticker:
-            st.error("❌ Please enter a ticker symbol for Yahoo Finance daily data")
+            st.error("❌ Please enter a ticker symbol for daily data auto-fetch")
         else:
-            with st.spinner(f'Auto-detecting date range and fetching daily data from Yahoo Finance for {ticker}...'):
+            with st.spinner(f'Auto-detecting date range and fetching daily data for {ticker}...'):
                 try:
                     result_df, debug_messages = main_flexible(
                         ticker=ticker,
@@ -1074,7 +1074,7 @@ if st.button('🚀 Generate Enhanced ATR Analysis'):
                         extended_hours=extended_hours
                     )
                     
-                    display_results(result_df, debug_messages, ticker, asset_type, "Yahoo Daily + Uploaded Intraday")
+                    display_results(result_df, debug_messages, ticker, asset_type, "Auto-Fetched Daily + Uploaded Intraday")
                         
                 except Exception as e:
                     st.error(f'❌ Error: {e}')
