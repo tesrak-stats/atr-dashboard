@@ -122,12 +122,21 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         
         # Calculate ATR on daily data
         st.info("📊 Calculating ATR on daily data...")
+        st.info(f"Daily data shape before ATR: {daily_df.shape}")
+        st.info(f"Daily data columns: {list(daily_df.columns)}")
+        st.info(f"Daily data sample:\n{daily_df.head()}")
+        
         daily_with_atr = calculate_atr(daily_df, period=atr_period)
+        
+        st.info(f"Daily data shape after ATR: {daily_with_atr.shape}")
+        st.info(f"ATR column sample: {daily_with_atr['ATR'].head(20).tolist()}")
         
         # Validate ATR calculation
         valid_atr = daily_with_atr[daily_with_atr['ATR'].notna()]
         if valid_atr.empty:
             st.error("❌ Failed to calculate ATR - check daily data quality")
+            st.error(f"All ATR values are NaN. Daily data needs numeric OHLC columns.")
+            st.error(f"Daily data types: {daily_df.dtypes}")
             return None
         
         st.success(f"✅ ATR calculated successfully: {len(valid_atr)} valid ATR values")
