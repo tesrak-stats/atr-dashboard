@@ -149,6 +149,7 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         # Function to clean OHLC data
         def clean_ohlc_data(df, data_type="data"):
             original_count = len(df)
+            removed_rows = []  # Track what gets removed
             
             # Convert OHLC columns to numeric, forcing errors to NaN
             ohlc_cols = ['Open', 'High', 'Low', 'Close']
@@ -165,9 +166,25 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
                         original_val = str(original_row[col]).upper()
                         if any(indicator in original_val for indicator in ['SPLIT', 'DIV', 'DIVIDEND', 'CORP', 'ACTION', 'HALT', 'SUSPEND']):
                             corporate_action_indicators.append(f"Row {idx}: {original_val}")
+                            removed_rows.append({
+                                'row': idx,
+                                'date': row.get('Date', 'Unknown'),
+                                'reason': 'Corporate Action',
+                                'details': original_val
+                            })
             
             # Remove rows where any OHLC value is NaN or invalid
             df_clean = df.dropna(subset=ohlc_cols)
+            
+            # Track NaN removals
+            nan_removed = original_count - len(df_clean)
+            for i in range(nan_removed):
+                removed_rows.append({
+                    'row': 'Multiple',
+                    'date': 'Various',
+                    'reason': 'NaN/Invalid Values',
+                    'details': 'Non-numeric OHLC data'
+                })
             
             # Advanced validation: Check for potential stock splits
             if len(df_clean) > 1:
@@ -192,6 +209,15 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
                     st.error("⚠️ **CRITICAL**: Your data may NOT be split-adjusted!")
                     st.error("💡 **Recommendation**: Use split-adjusted data from your broker or data provider")
                     
+                    # Track split indicators
+                    for i, date in enumerate(split_dates):
+                        removed_rows.append({
+                            'row': 'Split Detection',
+                            'date': date,
+                            'reason': 'Potential Stock Split',
+                            'details': f"Overnight change: {overnight_change[potential_splits].iloc[i]:.3f}"
+                        })
+                    
                     # Check if it looks like a 2:1 split pattern
                     split_ratios = []
                     for i in potential_splits[potential_splits].index:
@@ -203,7 +229,7 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
                         st.error(f"🔍 **Estimated split ratios**: {split_ratios}")
             
             # Standard OHLC validation
-            valid_mask = (
+            invalid_mask = ~(
                 (df_clean['High'] >= df_clean['Low']) &
                 (df_clean['Open'] >= df_clean['Low']) &
                 (df_clean['Open'] <= df_clean['High']) &
@@ -213,14 +239,42 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
                 (df_clean['Low'] > 0)
             )
             
-            df_clean = df_clean[valid_mask]
+            # Track invalid OHLC removals
+            invalid_rows = df_clean[invalid_mask]
+            for idx, row in invalid_rows.iterrows():
+                removed_rows.append({
+                    'row': idx,
+                    'date': row.get('Date', 'Unknown'),
+                    'reason': 'Invalid OHLC Logic',
+                    'details': f"O:{row['Open']:.2f} H:{row['High']:.2f} L:{row['Low']:.2f} C:{row['Close']:.2f}"
+                })
+            
+            df_clean = df_clean[~invalid_mask]
             
             cleaned_count = len(df_clean)
             removed_count = original_count - cleaned_count
             
+            # Store removal details in session state for dropdown
+            removal_key = f"removed_data_{data_type.replace(' ', '_').lower()}"
+            st.session_state[removal_key] = removed_rows
+            
             # Report what was removed
             if removed_count > 0:
                 st.warning(f"🧹 {data_type}: Removed {removed_count} invalid OHLC rows")
+                
+                # Show expandable removal details
+                with st.expander(f"🔍 **View Removed Data Details** ({removed_count} rows)", expanded=False):
+                    if removed_rows:
+                        removal_df = pd.DataFrame(removed_rows)
+                        st.dataframe(removal_df, use_container_width=True)
+                        
+                        # Show summary by reason
+                        reason_counts = removal_df['reason'].value_counts()
+                        st.write("**Removal Summary by Reason:**")
+                        for reason, count in reason_counts.items():
+                            st.write(f"   • **{reason}**: {count} rows")
+                    else:
+                        st.write("No detailed removal information available")
                 
                 if corporate_action_indicators:
                     st.warning("📋 **Corporate action indicators found:**")
@@ -1831,14 +1885,36 @@ if mode == "📁 Multi-CSV Processor":
                             st.session_state['atr_combiner_base_data'] = combined_data
                             st.session_state['atr_combiner_base_filename'] = combined_filename
                             st.success("✅ Held as Base!")
-                            st.rerun()
+                            st.info("💡 **Data successfully stored** - Check sidebar workspace or switch to ATR Combiner mode")
+                            # Force a small delay to ensure session state is saved
+                            time_module.sleep(0.1)
                     
                     with col3:
                         if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent", use_container_width=True):
                             st.session_state['atr_combiner_analysis_data'] = combined_data
                             st.session_state['atr_combiner_analysis_filename'] = combined_filename
                             st.success("✅ Held as Analysis!")
-                            st.rerun()
+                            st.info("💡 **Data successfully stored** - Check sidebar workspace or switch to ATR Combiner mode")
+                            # Force a small delay to ensure session state is saved
+                            time_module.sleep(0.1)
+                    
+                    # Show current hold status immediately
+                    st.markdown("### 📊 **Current Hold Status**")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if 'atr_combiner_base_data' in st.session_state:
+                            base_records = len(st.session_state['atr_combiner_base_data'])
+                            st.success(f"📊 **Base Data Held**: {base_records:,} records")
+                        else:
+                            st.info("📊 **Base Data**: Not held")
+                    
+                    with col2:
+                        if 'atr_combiner_analysis_data' in st.session_state:
+                            analysis_records = len(st.session_state['atr_combiner_analysis_data'])
+                            st.success(f"📈 **Analysis Data Held**: {analysis_records:,} records")
+                        else:
+                            st.info("📈 **Analysis Data**: Not held")
                     
                     # Processing success summary
                     st.markdown("---")
