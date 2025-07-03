@@ -1956,7 +1956,7 @@ st.markdown("""
 
 Once you have your ATR-ready files, proceed to systematic trigger/goal analysis:
 
-### 🔗 [**ATR Level Analyzer**](https://atr-dashboard-ekuggfmlyg4gmtw85ksacm.streamlit.app/)
+### 🔗 [**ATR Level Analyzer**](https://atr-dashboard-bpovcyydv44p7vrdqteryw.streamlit.app/)
 
 **What it does:**
 - ✅ **Single file input** - Upload your ATR-ready CSV
@@ -1969,5 +1969,5 @@ Once you have your ATR-ready files, proceed to systematic trigger/goal analysis:
 2. **Upload to ATR Level Analyzer** → Get systematic analysis
 3. **Download results** → Professional analysis output
 
-🚀 **[Launch ATR Level Analyzer →](https://atr-dashboard-ekuggfmlyg4gmtw85ksacm.streamlit.app/)**
+🚀 **[Launch ATR Level Analyzer →](https://atr-dashboard-bpovcyydv44p7vrdqteryw.streamlit.app/)**
 """)
