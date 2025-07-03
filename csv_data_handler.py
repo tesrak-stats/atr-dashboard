@@ -41,23 +41,33 @@ def calculate_atr(df, period=14):
 def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_method='date_match'):
     """
     Combine daily and intraday data with ATR calculation
+    Handles both file uploads and session state data
     """
     results = []
     
     try:
-        # Load daily data with proper file handling
-        daily_file.seek(0)  # Reset file pointer
-        if daily_file.name.endswith('.csv'):
-            daily_df = pd.read_csv(daily_file)
+        # Handle different input types (file uploads vs session state data)
+        if isinstance(daily_file, pd.DataFrame):
+            # Data from session state
+            daily_df = daily_file.copy()
         else:
-            daily_df = pd.read_excel(daily_file)
+            # Load daily data from file
+            daily_file.seek(0)  # Reset file pointer
+            if daily_file.name.endswith('.csv'):
+                daily_df = pd.read_csv(daily_file)
+            else:
+                daily_df = pd.read_excel(daily_file)
         
-        # Load intraday data with proper file handling
-        intraday_file.seek(0)  # Reset file pointer
-        if intraday_file.name.endswith('.csv'):
-            intraday_df = pd.read_csv(intraday_file)
+        if isinstance(intraday_file, pd.DataFrame):
+            # Data from session state
+            intraday_df = intraday_file.copy()
         else:
-            intraday_df = pd.read_excel(intraday_file)
+            # Load intraday data from file
+            intraday_file.seek(0)  # Reset file pointer
+            if intraday_file.name.endswith('.csv'):
+                intraday_df = pd.read_csv(intraday_file)
+            else:
+                intraday_df = pd.read_excel(intraday_file)
         
         # Validate that we actually loaded data
         if daily_df.empty:
@@ -190,6 +200,15 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         # Store processed data in session state
         st.session_state['debug_daily_with_atr'] = daily_with_atr.copy()
         
+        # Check for data validation info and propagate warnings
+        if hasattr(daily_df, 'attrs') and 'completeness' in daily_df.attrs:
+            completeness = daily_df.attrs['completeness']
+            if completeness < 95:
+                st.warning(f"⚠️ **Data Quality Alert**: Base timeframe has {completeness:.1f}% completeness")
+                st.warning(f"Original request: {daily_df.attrs['requested_start']} to {daily_df.attrs['requested_end']}")
+                st.warning(f"Actual data: {daily_df.attrs['actual_start']} to {daily_df.attrs['actual_end']}")
+                st.warning("🚨 **ATR calculation may be based on insufficient historical data**")
+        
         # Validate ATR calculation
         valid_atr = daily_with_atr[daily_with_atr['ATR'].notna()]
         if valid_atr.empty:
@@ -199,6 +218,15 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             return None
         
         st.success(f"✅ ATR calculated successfully: {len(valid_atr)} valid ATR values")
+        
+        # ATR quality check
+        if len(valid_atr) < atr_period * 4:  # Less than 4x the ATR period
+            st.error(f"🚨 **CRITICAL ATR WARNING**: Only {len(valid_atr)} valid ATR values")
+            st.error(f"Recommended minimum: {atr_period * 4} values for {atr_period}-period ATR")
+            st.error("**ATR values may be unreliable - consider longer data history**")
+        elif len(valid_atr) < atr_period * 10:  # Less than 10x the ATR period
+            st.warning(f"⚠️ **ATR Quality Warning**: Only {len(valid_atr)} valid ATR values")
+            st.warning(f"Recommended: {atr_period * 10}+ values for robust {atr_period}-period ATR")
         
         # Store valid ATR data
         st.session_state['debug_valid_atr'] = valid_atr.copy()
@@ -1118,6 +1146,24 @@ if mode == "📁 Multi-CSV Processor":
                         type="primary"
                     )
                     
+                    # Option to use as Multi-Timeframe ATR Combiner input
+                    st.markdown("### 🔄 Or Use in Multi-Timeframe ATR Combiner")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if st.button("📊 Use as Base Timeframe (ATR Source)", key="use_as_base"):
+                            st.session_state['atr_combiner_base_data'] = combined_data
+                            st.session_state['atr_combiner_base_filename'] = combined_filename
+                            st.success("✅ Data saved as Base Timeframe for ATR Combiner!")
+                            st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
+                    
+                    with col2:
+                        if st.button("📈 Use as Analysis Timeframe (Intraday)", key="use_as_analysis"):
+                            st.session_state['atr_combiner_analysis_data'] = combined_data
+                            st.session_state['atr_combiner_analysis_filename'] = combined_filename
+                            st.success("✅ Data saved as Analysis Timeframe for ATR Combiner!")
+                            st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
+                    
                     st.success(f"✅ Ready to download: **{combined_filename}**")
                     
                     # Show sample of custom candle output if applicable
@@ -1289,7 +1335,59 @@ elif mode == "📈 Public Data Download":
                         if 'Date' not in daily_data.columns and len(daily_data.columns) > 0:
                             daily_data.rename(columns={daily_data.columns[0]: 'Date'}, inplace=True)
                         
+                        # Validate date completeness
+                        daily_data['Date'] = pd.to_datetime(daily_data['Date'])
+                        actual_start = daily_data['Date'].min().date()
+                        actual_end = daily_data['Date'].max().date()
+                        
                         st.success(f"✅ Downloaded {len(daily_data)} daily records")
+                        st.info(f"📅 **Requested range**: {daily_start} to {daily_end}")
+                        st.info(f"📅 **Actual range**: {actual_start} to {actual_end}")
+                        
+                        # Check for date gaps
+                        if actual_start > daily_start:
+                            missing_days = (actual_start - daily_start).days
+                            st.warning(f"⚠️ **Missing early data**: {missing_days} days missing from start of requested range")
+                            st.warning(f"Data starts {actual_start} instead of {daily_start}")
+                        
+                        if actual_end < daily_end:
+                            missing_days = (daily_end - actual_end).days
+                            st.warning(f"⚠️ **Missing recent data**: {missing_days} days missing from end of requested range")
+                            st.warning(f"Data ends {actual_end} instead of {daily_end}")
+                        
+                        # Check for weekends/holidays vs actual gaps
+                        expected_trading_days = pd.bdate_range(start=daily_start, end=daily_end)
+                        actual_trading_days = pd.to_datetime(daily_data['Date']).dt.date
+                        
+                        missing_trading_days = len(expected_trading_days) - len(actual_trading_days)
+                        if missing_trading_days > 0:
+                            st.info(f"📊 **Trading days analysis**: {missing_trading_days} trading days missing (may include holidays/market closures)")
+                        
+                        # Overall completeness
+                        requested_days = (daily_end - daily_start).days
+                        actual_days = len(daily_data)
+                        completeness = (actual_days / requested_days) * 100 if requested_days > 0 else 100
+                        
+                        # Store data validation info for downstream use
+                        daily_data['_data_validation'] = f"Requested: {daily_start} to {daily_end}, Actual: {actual_start} to {actual_end}, Completeness: {completeness:.1f}%"
+                        
+                        if completeness < 90:
+                            st.error(f"❌ **Low data completeness**: {completeness:.1f}% of requested date range")
+                            st.error("🚨 **CRITICAL**: This data may be insufficient for reliable analysis!")
+                            st.error("**Recommendation**: Check ticker symbol, adjust date range, or use alternative data source")
+                        elif completeness < 95:
+                            st.warning(f"⚠️ **Partial data completeness**: {completeness:.1f}% of requested date range")
+                            st.warning("⚠️ **CAUTION**: Analysis results may be affected by missing data")
+                        else:
+                            st.success(f"✅ **Good data completeness**: {completeness:.1f}% of requested date range")
+                        
+                        # Add data quality metrics to the dataframe for later reference
+                        daily_data.attrs['requested_start'] = daily_start
+                        daily_data.attrs['requested_end'] = daily_end
+                        daily_data.attrs['actual_start'] = actual_start
+                        daily_data.attrs['actual_end'] = actual_end
+                        daily_data.attrs['completeness'] = completeness
+                        daily_data.attrs['data_source'] = f"Yahoo Finance ({mapped_ticker})"
                         
                         # Show preview
                         st.subheader("📋 Data Preview")
@@ -1303,6 +1401,24 @@ elif mode == "📈 Public Data Download":
                             file_name=filename,
                             mime="text/csv"
                         )
+                        
+                        # Option to use in Multi-Timeframe ATR Combiner
+                        st.markdown("### 🔄 Or Use in Multi-Timeframe ATR Combiner")
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            if st.button("📊 Use as Base Timeframe (ATR Source)", key="yahoo_use_as_base"):
+                                st.session_state['atr_combiner_base_data'] = daily_data
+                                st.session_state['atr_combiner_base_filename'] = filename
+                                st.success("✅ Data saved as Base Timeframe for ATR Combiner!")
+                                st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
+                        
+                        with col2:
+                            if st.button("📈 Use as Analysis Timeframe (Intraday)", key="yahoo_use_as_analysis"):
+                                st.session_state['atr_combiner_analysis_data'] = daily_data
+                                st.session_state['atr_combiner_analysis_filename'] = filename
+                                st.success("✅ Data saved as Analysis Timeframe for ATR Combiner!")
+                                st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
                     else:
                         st.error("❌ No data available for this ticker/range")
                         
@@ -1433,6 +1549,24 @@ elif mode == "🔧 Single File Resampler":
                             mime="text/csv"
                         )
                         
+                        # Option to use in Multi-Timeframe ATR Combiner
+                        st.markdown("### 🔄 Or Use in Multi-Timeframe ATR Combiner")
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            if st.button("📊 Use as Base Timeframe (ATR Source)", key="resample_use_as_base"):
+                                st.session_state['atr_combiner_base_data'] = resampled_data
+                                st.session_state['atr_combiner_base_filename'] = resampled_filename
+                                st.success("✅ Data saved as Base Timeframe for ATR Combiner!")
+                                st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
+                        
+                        with col2:
+                            if st.button("📈 Use as Analysis Timeframe (Intraday)", key="resample_use_as_analysis"):
+                                st.session_state['atr_combiner_analysis_data'] = resampled_data
+                                st.session_state['atr_combiner_analysis_filename'] = resampled_filename
+                                st.success("✅ Data saved as Analysis Timeframe for ATR Combiner!")
+                                st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
+                        
                 except Exception as e:
                     st.error(f"❌ Resampling failed: {str(e)}")
             
@@ -1468,15 +1602,28 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
         st.subheader("📊 Base Timeframe (ATR Source)")
         st.write("**This timeframe will be used for ATR calculation**")
         
-        base_file = st.file_uploader(
-            "Upload Base Timeframe Data",
-            type=['csv', 'xlsx', 'xls'],
-            help="Upload the timeframe you want to calculate ATR on (usually daily)",
-            key="base_timeframe"
-        )
+        # Check if we have saved data from other modes
+        if 'atr_combiner_base_data' in st.session_state:
+            st.success(f"✅ Using saved data: {st.session_state.get('atr_combiner_base_filename', 'Processed Data')}")
+            st.info("💡 This data was saved from another mode in this session.")
+            
+            if st.button("🗑️ Clear Saved Base Data", key="clear_base"):
+                del st.session_state['atr_combiner_base_data']
+                del st.session_state['atr_combiner_base_filename']
+                st.rerun()
+            
+            base_file = None  # Use session state data
+        else:
+            base_file = st.file_uploader(
+                "Upload Base Timeframe Data",
+                type=['csv', 'xlsx', 'xls'],
+                help="Upload the timeframe you want to calculate ATR on (usually daily)",
+                key="base_timeframe"
+            )
         
-        if base_file:
-            st.success(f"✅ Base file: {base_file.name}")
+        if base_file or 'atr_combiner_base_data' in st.session_state:
+            if base_file:
+                st.success(f"✅ Base file: {base_file.name}")
             
             # ATR period selection
             atr_period = st.number_input(
@@ -1493,15 +1640,28 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
         st.subheader("📈 Analysis Timeframe (Intraday)")
         st.write("**This timeframe will be used for trigger/goal analysis**")
         
-        analysis_file = st.file_uploader(
-            "Upload Analysis Timeframe Data",
-            type=['csv', 'xlsx', 'xls'],
-            help="Upload the timeframe you want to analyze (usually intraday)",
-            key="analysis_timeframe"
-        )
+        # Check if we have saved data from other modes
+        if 'atr_combiner_analysis_data' in st.session_state:
+            st.success(f"✅ Using saved data: {st.session_state.get('atr_combiner_analysis_filename', 'Processed Data')}")
+            st.info("💡 This data was saved from another mode in this session.")
+            
+            if st.button("🗑️ Clear Saved Analysis Data", key="clear_analysis"):
+                del st.session_state['atr_combiner_analysis_data']
+                del st.session_state['atr_combiner_analysis_filename']
+                st.rerun()
+            
+            analysis_file = None  # Use session state data
+        else:
+            analysis_file = st.file_uploader(
+                "Upload Analysis Timeframe Data",
+                type=['csv', 'xlsx', 'xls'],
+                help="Upload the timeframe you want to analyze (usually intraday)",
+                key="analysis_timeframe"
+            )
         
-        if analysis_file:
-            st.success(f"✅ Analysis file: {analysis_file.name}")
+        if analysis_file or 'atr_combiner_analysis_data' in st.session_state:
+            if analysis_file:
+                st.success(f"✅ Analysis file: {analysis_file.name}")
             
             # Alignment method
             align_method = st.selectbox(
@@ -1513,17 +1673,23 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             st.info("📅 Will match ATR values by date")
     
     # Processing section
-    if base_file and analysis_file:
+    if (base_file or 'atr_combiner_base_data' in st.session_state) and (analysis_file or 'atr_combiner_analysis_data' in st.session_state):
         st.markdown("---")
         st.subheader("⚙️ Processing Configuration")
         
         # Show file details
         col1, col2 = st.columns(2)
         with col1:
-            st.write(f"**Base File**: {base_file.name}")
+            if base_file:
+                st.write(f"**Base File**: {base_file.name}")
+            else:
+                st.write(f"**Base Data**: {st.session_state.get('atr_combiner_base_filename', 'Saved Data')}")
             st.write(f"**ATR Period**: {atr_period}")
         with col2:
-            st.write(f"**Analysis File**: {analysis_file.name}")
+            if analysis_file:
+                st.write(f"**Analysis File**: {analysis_file.name}")
+            else:
+                st.write(f"**Analysis Data**: {st.session_state.get('atr_combiner_analysis_filename', 'Saved Data')}")
             st.write(f"**Alignment**: {align_method}")
         
         # Data preview option
@@ -1534,36 +1700,46 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             
             # Preview base file
             try:
-                if base_file.name.endswith('.csv'):
-                    base_preview = pd.read_csv(base_file).head()
+                if base_file:
+                    if base_file.name.endswith('.csv'):
+                        base_preview = pd.read_csv(base_file).head()
+                    else:
+                        base_preview = pd.read_excel(base_file).head()
                 else:
-                    base_preview = pd.read_excel(base_file).head()
+                    base_preview = st.session_state['atr_combiner_base_data'].head()
                 
                 st.write("**Base Timeframe Preview:**")
                 st.dataframe(base_preview, use_container_width=True)
                 
             except Exception as e:
-                st.error(f"Error previewing base file: {str(e)}")
+                st.error(f"Error previewing base data: {str(e)}")
             
             # Preview analysis file
             try:
-                if analysis_file.name.endswith('.csv'):
-                    analysis_preview = pd.read_csv(analysis_file).head()
+                if analysis_file:
+                    if analysis_file.name.endswith('.csv'):
+                        analysis_preview = pd.read_csv(analysis_file).head()
+                    else:
+                        analysis_preview = pd.read_excel(analysis_file).head()
                 else:
-                    analysis_preview = pd.read_excel(analysis_file).head()
+                    analysis_preview = st.session_state['atr_combiner_analysis_data'].head()
                 
                 st.write("**Analysis Timeframe Preview:**")
                 st.dataframe(analysis_preview, use_container_width=True)
                 
             except Exception as e:
-                st.error(f"Error previewing analysis file: {str(e)}")
+                st.error(f"Error previewing analysis data: {str(e)}")
         
         # Process button
         if st.button("🚀 **Combine Timeframes with ATR**", type="primary", use_container_width=True):
             with st.spinner("Processing multi-timeframe ATR combination..."):
+                # Use session state data if available, otherwise use uploaded files
+                daily_file_to_use = base_file if base_file else st.session_state['atr_combiner_base_data']
+                intraday_file_to_use = analysis_file if analysis_file else st.session_state['atr_combiner_analysis_data']
+                
                 combined_data = combine_timeframes_with_atr(
-                    base_file, 
-                    analysis_file, 
+                    daily_file_to_use, 
+                    intraday_file_to_use, 
                     atr_period=atr_period,
                     align_method=align_method
                 )
@@ -1773,4 +1949,25 @@ st.markdown("""
 - Apply custom time filters
 
 💾 **Next Step:** Use processed files in the ATR Analysis tool!
+
+---
+
+## 🎯 Ready for ATR Level Analysis?
+
+Once you have your ATR-ready files, proceed to systematic trigger/goal analysis:
+
+### 🔗 [**ATR Level Analyzer**](https://atr-dashboard-ekuggfmlyg4gmtw85ksacm.streamlit.app/)
+
+**What it does:**
+- ✅ **Single file input** - Upload your ATR-ready CSV
+- ✅ **Systematic analysis** - Trigger/goal detection using pre-calculated ATR
+- ✅ **Professional results** - Export-ready analysis data
+- ✅ **No file juggling** - Pure analysis, no data preparation
+
+**Perfect workflow:**
+1. **Process your data here** → Get ATR-ready file
+2. **Upload to ATR Level Analyzer** → Get systematic analysis
+3. **Download results** → Professional analysis output
+
+🚀 **[Launch ATR Level Analyzer →](https://atr-dashboard-ekuggfmlyg4gmtw85ksacm.streamlit.app/)**
 """)
