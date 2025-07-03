@@ -92,23 +92,15 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             # Data from session state
             daily_df = daily_file.copy()
         else:
-            # Load daily data from file
-            daily_file.seek(0)  # Reset file pointer
-            if daily_file.name.endswith('.csv') or daily_file.name.endswith('.txt'):
-                daily_df = pd.read_csv(daily_file)
-            else:
-                daily_df = pd.read_excel(daily_file)
+            # Load daily data from file with robust reader
+            daily_df = CSVProcessor.robust_csv_reader(daily_file, daily_file.name if hasattr(daily_file, 'name') else "daily_file")
         
         if isinstance(intraday_file, pd.DataFrame):
             # Data from session state
             intraday_df = intraday_file.copy()
         else:
-            # Load intraday data from file
-            intraday_file.seek(0)  # Reset file pointer
-            if intraday_file.name.endswith('.csv') or intraday_file.name.endswith('.txt'):
-                intraday_df = pd.read_csv(intraday_file)
-            else:
-                intraday_df = pd.read_excel(intraday_file)
+            # Load intraday data from file with robust reader
+            intraday_df = CSVProcessor.robust_csv_reader(intraday_file, intraday_file.name if hasattr(intraday_file, 'name') else "intraday_file")
         
         # Validate that we actually loaded data
         if daily_df.empty:
@@ -716,6 +708,98 @@ class CSVProcessor:
         return None
     
     @staticmethod
+    def robust_csv_reader(file_input, filename="file"):
+        """
+        Robust CSV reader that handles various delimiter and encoding issues
+        Tries multiple approaches to successfully read the file
+        """
+        # Common delimiters to try
+        delimiters = [',', ';', '\t', '|']
+        
+        # Common encodings to try
+        encodings = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
+        
+        # Try different combinations
+        for encoding in encodings:
+            for delimiter in delimiters:
+                try:
+                    # Try with header=None first (for unlabeled data)
+                    df = pd.read_csv(file_input, delimiter=delimiter, encoding=encoding, header=None)
+                    
+                    # Check if we got multiple columns
+                    if df.shape[1] > 1:
+                        st.info(f"✅ **File read successfully**: {filename}")
+                        st.info(f"📊 **Format detected**: {df.shape[1]} columns, delimiter='{delimiter}', encoding='{encoding}'")
+                        
+                        # If we have many columns, let's see if first row looks like headers
+                        if df.shape[1] >= 4:
+                            first_row = df.iloc[0].astype(str)
+                            
+                            # Check if first row contains header-like text
+                            header_indicators = ['date', 'time', 'open', 'high', 'low', 'close', 'volume', 'datetime', 'timestamp']
+                            looks_like_header = any(
+                                any(indicator in str(cell).lower() for indicator in header_indicators)
+                                for cell in first_row
+                            )
+                            
+                            if looks_like_header:
+                                st.info("🔍 **First row appears to be headers** - re-reading with header=0")
+                                # Re-read with headers
+                                file_input.seek(0)
+                                df = pd.read_csv(file_input, delimiter=delimiter, encoding=encoding, header=0)
+                            else:
+                                st.info("🔍 **No headers detected** - treating first row as data")
+                                
+                        return df
+                    
+                except Exception as e:
+                    # Try next combination
+                    continue
+                finally:
+                    # Reset file pointer for next attempt
+                    if hasattr(file_input, 'seek'):
+                        file_input.seek(0)
+        
+        # If all else fails, try pandas' built-in delimiter detection
+        try:
+            file_input.seek(0)
+            df = pd.read_csv(file_input, delimiter=None, engine='python', header=None)
+            if df.shape[1] > 1:
+                st.warning(f"⚠️ **Fallback successful**: {filename} read with pandas auto-detection")
+                return df
+        except:
+            pass
+        
+        # Final fallback - try reading as single column and check content
+        try:
+            file_input.seek(0)
+            df = pd.read_csv(file_input, header=None)
+            
+            if df.shape[1] == 1:
+                # Check if single column contains comma-separated data
+                sample_row = str(df.iloc[0, 0])
+                if ',' in sample_row and len(sample_row.split(',')) >= 4:
+                    st.info(f"🔍 **Single column with comma-separated data detected**: {filename}")
+                    st.info(f"📋 **Sample**: {sample_row[:100]}...")
+                    
+                    # Split the single column into multiple columns
+                    split_data = []
+                    for idx, row in df.iterrows():
+                        row_data = str(row.iloc[0]).split(',')
+                        split_data.append(row_data)
+                    
+                    # Create new DataFrame with split data
+                    df_split = pd.DataFrame(split_data)
+                    st.success(f"✅ **Column splitting successful**: {df_split.shape[1]} columns created")
+                    
+                    return df_split
+        except:
+            pass
+        
+        # If nothing worked, raise an error
+        raise ValueError(f"Could not read {filename} with any delimiter/encoding combination")
+
+    @staticmethod
     def smart_column_detection(df):
         """
         Smart detection for unlabeled columns
@@ -1121,14 +1205,8 @@ class CSVProcessor:
             try:
                 status_text.text(f"Processing {uploaded_file.name} ({i+1}/{len(uploaded_files)})...")
                 
-                # Load the file
-                if uploaded_file.name.endswith(('.csv', '.txt')):
-                    df = pd.read_csv(uploaded_file)
-                elif uploaded_file.name.endswith(('.xlsx', '.xls')):
-                    df = pd.read_excel(uploaded_file)
-                else:
-                    st.warning(f"Skipping {uploaded_file.name} - unsupported format")
-                    continue
+                # Load the file with robust CSV reader
+                df = CSVProcessor.robust_csv_reader(uploaded_file, uploaded_file.name)
                 
                 # Standardize columns
                 df = CSVProcessor.standardize_columns(df)
@@ -1906,10 +1984,7 @@ elif mode == "🔧 Single File Resampler":
         
         # Load and preview the file
         try:
-            if single_file.name.endswith(('.csv', '.txt')):
-                df = pd.read_csv(single_file)
-            else:
-                df = pd.read_excel(single_file)
+            df = CSVProcessor.robust_csv_reader(single_file, single_file.name)
             
             df = CSVProcessor.standardize_columns(df)
             
