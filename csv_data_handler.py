@@ -38,10 +38,11 @@ def calculate_atr(df, period=14):
     
     return df
 
-def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_method='date_match'):
+def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_method='date_match', asset_type='STOCKS'):
     """
     Combine daily and intraday data with ATR calculation
     Handles both file uploads and session state data
+    Now supports futures date boundary handling
     """
     results = []
     
@@ -162,10 +163,32 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             st.error("❌ No valid intraday OHLC data remaining after cleaning")
             return None
         
-        # Process dates
-        daily_df['Date'] = pd.to_datetime(daily_df['Date']).dt.date
+        # Process dates with futures-aware logic
+        def assign_trading_date(datetime_val, asset_type):
+            """
+            Assign proper trading date based on asset type
+            For futures: 18:00 Monday = Tuesday session
+            For stocks: Use calendar date
+            """
+            if asset_type == 'FUTURES':
+                # For futures, session starts at 18:00 (6 PM)
+                # If time is 18:00 or later, it belongs to next calendar day's session
+                if datetime_val.hour >= 18:
+                    return (datetime_val + timedelta(days=1)).date()
+                else:
+                    return datetime_val.date()
+            else:
+                # For stocks and other assets, use calendar date
+                return datetime_val.date()
         
-        # Handle intraday datetime
+        # Process daily data dates
+        daily_df['Date'] = pd.to_datetime(daily_df['Date'])
+        if asset_type == 'FUTURES':
+            daily_df['Date'] = daily_df['Date'].apply(lambda x: assign_trading_date(x, asset_type))
+        else:
+            daily_df['Date'] = daily_df['Date'].dt.date
+        
+        # Handle intraday datetime with futures-aware date assignment
         if 'Datetime' not in intraday_df.columns:
             if 'Date' in intraday_df.columns and 'Time' in intraday_df.columns:
                 intraday_df['Datetime'] = pd.to_datetime(intraday_df['Date'].astype(str) + ' ' + intraday_df['Time'].astype(str))
@@ -174,7 +197,13 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         else:
             intraday_df['Datetime'] = pd.to_datetime(intraday_df['Datetime'])
         
-        intraday_df['Date'] = intraday_df['Datetime'].dt.date
+        # Assign proper trading dates for intraday data
+        intraday_df['Date'] = intraday_df['Datetime'].apply(lambda x: assign_trading_date(x, asset_type))
+        
+        # Show futures date assignment info
+        if asset_type == 'FUTURES':
+            st.info("🕐 **Futures Date Assignment**: Times 18:00+ assigned to next day's session")
+            st.info("Example: Monday 18:00 → Tuesday session, Monday 17:00 → Monday session")
         
         # Sort data and handle duplicates
         daily_df = daily_df.sort_values('Date').reset_index(drop=True)
@@ -1663,6 +1692,16 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             if analysis_file:
                 st.success(f"✅ Analysis file: {analysis_file.name}")
             
+            # Asset type for futures date handling
+            asset_type = st.selectbox(
+                "Asset Type",
+                ["STOCKS", "FUTURES", "CRYPTO", "FOREX", "COMMODITIES"],
+                help="Select asset type for proper date/session handling"
+            )
+            
+            if asset_type == 'FUTURES':
+                st.info("🕐 **Futures Mode**: Will handle 18:00+ times as next day's session")
+            
             # Alignment method
             align_method = st.selectbox(
                 "Alignment Method",
@@ -1741,7 +1780,8 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     daily_file_to_use, 
                     intraday_file_to_use, 
                     atr_period=atr_period,
-                    align_method=align_method
+                    align_method=align_method,
+                    asset_type=asset_type
                 )
                 
                 if combined_data is not None:
@@ -1956,7 +1996,7 @@ st.markdown("""
 
 Once you have your ATR-ready files, proceed to systematic trigger/goal analysis:
 
-### 🔗 [**ATR Level Analyzer**](https://landing-eqx2wzbcgekusd6ynfqb7h.streamlit.app/)
+### 🔗 [**ATR Level Analyzer**](https://atr-dashboard-ekuggfmlyg4gmtw85ksacm.streamlit.app/)
 
 **What it does:**
 - ✅ **Single file input** - Upload your ATR-ready CSV
@@ -1969,5 +2009,5 @@ Once you have your ATR-ready files, proceed to systematic trigger/goal analysis:
 2. **Upload to ATR Level Analyzer** → Get systematic analysis
 3. **Download results** → Professional analysis output
 
-🚀 **[Launch ATR Level Analyzer →](https://landing-eqx2wzbcgekusd6ynfqb7h.streamlit.app/)**
+🚀 **[Launch ATR Level Analyzer →](https://atr-dashboard-ekuggfmlyg4gmtw85ksacm.streamlit.app/)**
 """)
