@@ -333,14 +333,39 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         
         st.success(f"✅ ATR calculated successfully: {len(valid_atr)} valid ATR values")
         
-        # ATR quality check
+        # ATR quality check with realistic period requirements
         if len(valid_atr) < atr_period * 4:  # Less than 4x the ATR period
             st.error(f"🚨 **CRITICAL ATR WARNING**: Only {len(valid_atr)} valid ATR values")
-            st.error(f"Recommended minimum: {atr_period * 4} values for {atr_period}-period ATR")
+            st.error(f"Minimum recommended: {atr_period * 4} periods for {atr_period}-period ATR")
             st.error("**ATR values may be unreliable - consider longer data history**")
-        elif len(valid_atr) < atr_period * 10:  # Less than 10x the ATR period
+        elif len(valid_atr) < atr_period * 4:  # Less than 4x the ATR period (84 periods for 21-period ATR)
             st.warning(f"⚠️ **ATR Quality Warning**: Only {len(valid_atr)} valid ATR values")
-            st.warning(f"Recommended: {atr_period * 10}+ values for robust {atr_period}-period ATR")
+            st.warning(f"Recommended minimum: {atr_period * 4} periods for robust {atr_period}-period ATR")
+            
+            # Show timeframe-specific guidance
+            if atr_period == 14:  # Standard daily ATR
+                st.info("📊 **Daily ATR**: Need ~56 days (2.8 months) minimum, prefer 84+ days (4 months)")
+            elif atr_period == 21:  # Common daily ATR
+                st.info("📊 **Daily ATR**: Need ~84 days (4 months) minimum")
+            
+        # Enhanced quality check based on your 84-period rule
+        optimal_periods = max(84, atr_period * 4)  # Use 84 or 4x ATR period, whichever is higher
+        
+        if len(valid_atr) >= optimal_periods:
+            st.success(f"✅ **Excellent ATR Quality**: {len(valid_atr)} periods (optimal: {optimal_periods}+)")
+        elif len(valid_atr) >= atr_period * 4:
+            st.info(f"✅ **Good ATR Quality**: {len(valid_atr)} periods (minimum: {atr_period * 4})")
+        elif len(valid_atr) >= atr_period * 2:
+            st.warning(f"⚠️ **Marginal ATR Quality**: {len(valid_atr)} periods (recommended: {optimal_periods})")
+        else:
+            st.error(f"❌ **Poor ATR Quality**: {len(valid_atr)} periods (need: {optimal_periods}+)")
+            
+        # Show timeframe-specific requirements
+        st.info("📋 **ATR Quality Requirements by Timeframe:**")
+        st.info("   • **Daily ATR**: 84+ days (4 months) for reliable calculation")
+        st.info("   • **Weekly ATR**: 84+ weeks (1.6 years) for reliable calculation") 
+        st.info("   • **Monthly ATR**: 84+ months (7 years) for reliable calculation")
+        st.info("   • **Quarterly ATR**: 84+ quarters (21 years) for reliable calculation")
         
         # Store valid ATR data
         st.session_state['debug_valid_atr'] = valid_atr.copy()
@@ -2091,13 +2116,42 @@ elif mode == "📈 Public Data Download":
             )
         
         with col2:
-            # Auto-calculate buffer
-            buffer_months = st.slider("Buffer Months for Daily Data", 3, 12, 6)
+            # Auto-calculate buffer with extended range for larger timeframes
+            buffer_months = st.slider(
+                "Buffer for ATR Calculation", 
+                4, 300, 12,  # 4 months to 25 years, default 1 year
+                help="Historical data buffer based on target ATR timeframe"
+            )
             daily_start = intraday_start - timedelta(days=buffer_months * 30)
             daily_end = intraday_end + timedelta(days=5)
             
+            buffer_years = buffer_months / 12
             st.info(f"📊 Daily data will span: {daily_start} to {daily_end}")
-            st.info(f"📈 Buffer: {buffer_months} months before intraday start")
+            st.info(f"📈 Buffer: {buffer_months} months ({buffer_years:.1f} years)")
+            
+            # Show ATR calculation guidance based on 84-period rule
+            if buffer_months >= 84:  # 7 years for monthly ATR
+                st.success("✅ **Excellent** for monthly ATR calculations (7+ years)")
+            elif buffer_months >= 20:  # ~1.6 years for weekly ATR  
+                st.success("✅ **Good** for weekly ATR calculations (1.6+ years)")
+            elif buffer_months >= 4:  # 4 months for daily ATR
+                st.success("✅ **Adequate** for daily ATR calculations (4+ months)")
+            else:
+                st.error("❌ **Insufficient** - Less than 4 months not recommended for any ATR calculation")
+                
+            # Educational guidance
+            st.info("🎓 **ATR Buffer Requirements (84-period rule):**")
+            st.info("   • **Daily ATR**: 4+ months (84 days minimum)")
+            st.info("   • **Weekly ATR**: 20+ months (84 weeks ≈ 1.6 years)")
+            st.info("   • **Monthly ATR**: 84+ months (7 years)")  
+            st.info("   • **Quarterly ATR**: 252+ months (21 years)")
+            
+            if buffer_months >= 84:
+                st.info("🎯 **Your selection supports all ATR timeframes**")
+            elif buffer_months >= 20:
+                st.info("🎯 **Your selection supports daily & weekly ATR**")
+            elif buffer_months >= 4:
+                st.info("🎯 **Your selection supports daily ATR only**")
     
     else:
         # Manual date range
@@ -2164,12 +2218,57 @@ elif mode == "📈 Public Data Download":
                             st.warning(f"Data ends {actual_end} instead of {daily_end}")
                         
                         # Check for weekends/holidays vs actual gaps
-                        expected_trading_days = pd.bdate_range(start=daily_start, end=daily_end)
+                        requested_trading_days = pd.bdate_range(start=daily_start, end=daily_end)
                         actual_trading_days = pd.to_datetime(daily_data['Date']).dt.date
                         
-                        missing_trading_days = len(expected_trading_days) - len(actual_trading_days)
-                        if missing_trading_days > 0:
-                            st.info(f"📊 **Trading days analysis**: {missing_trading_days} trading days missing (may include holidays/market closures)")
+                        # Calculate trading day completeness (more accurate)
+                        trading_day_completeness = (len(actual_trading_days) / len(requested_trading_days)) * 100 if len(requested_trading_days) > 0 else 100
+                        
+                        # Calculate calendar day completeness (original method)
+                        requested_calendar_days = (daily_end - daily_start).days
+                        actual_calendar_days = len(daily_data)
+                        calendar_completeness = (actual_calendar_days / requested_calendar_days) * 100 if requested_calendar_days > 0 else 100
+                        
+                        st.info(f"📊 **Trading days analysis**: {len(actual_trading_days)} of {len(requested_trading_days)} trading days ({trading_day_completeness:.1f}%)")
+                        st.info(f"📅 **Calendar days analysis**: {actual_calendar_days} of {requested_calendar_days} calendar days ({calendar_completeness:.1f}%)")
+                        
+                        # Show the difference
+                        if abs(trading_day_completeness - calendar_completeness) > 10:
+                            st.info("💡 **Note**: Large difference between trading day vs calendar day completeness is normal (weekends/holidays)")
+                        
+                        # Use trading day completeness for quality assessment
+                        completeness = trading_day_completeness
+                        
+                        # More nuanced quality assessment
+                        if completeness >= 95:
+                            st.success(f"✅ **Excellent trading day completeness**: {completeness:.1f}%")
+                        elif completeness >= 85:
+                            st.info(f"✅ **Good trading day completeness**: {completeness:.1f}% - Some holidays/market closures missing")
+                        elif completeness >= 70:
+                            st.warning(f"⚠️ **Moderate trading day completeness**: {completeness:.1f}% - May include extended market closures")
+                        else:
+                            st.error(f"❌ **Low trading day completeness**: {completeness:.1f}% - Significant data gaps present")
+                            st.error("🚨 **CRITICAL**: This data may be insufficient for reliable analysis!")
+                            st.error("**Recommendation**: Check ticker symbol, adjust date range, or use alternative data source")
+                        
+                        # Show what might be missing
+                        if completeness < 95:
+                            missing_trading_days = len(requested_trading_days) - len(actual_trading_days)
+                            st.info(f"📊 **Missing trading days**: ~{missing_trading_days} days")
+                            
+                            # Common reasons for missing data
+                            st.info("**Common reasons for missing trading days:**")
+                            st.info("   • Market holidays (Christmas, New Year, etc.)")
+                            st.info("   • Extended market closures (9/11, extreme weather)")
+                            st.info("   • Data source limitations for older dates")
+                            st.info("   • Instrument-specific trading schedules")
+                            
+                            if ticker.upper() in ['SPX', '^GSPC', 'SPY']:
+                                st.info("   • S&P 500 index: Limited historical data availability")
+                            elif ticker.upper() in ['BTC', 'ETH', 'BTC-USD', 'ETH-USD']:
+                                st.info("   • Crypto: 24/7 trading, gaps likely indicate data source issues")
+                            elif '=F' in mapped_ticker:
+                                st.info("   • Futures: May have different trading schedules or contract rollovers")
                         
                         # Overall completeness
                         requested_days = (daily_end - daily_start).days
