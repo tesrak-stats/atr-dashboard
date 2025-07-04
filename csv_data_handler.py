@@ -2791,14 +2791,14 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        st.write("**ATR Column (Daily Session)**")
+                        st.write("**ATR Column (Current Day)**")
                         recent_atr = combined_data['ATR'].tail(10)
                         st.dataframe(recent_atr.round(2))
                     
                     with col2:
-                        st.write("**ATR_8Hour Column (8-Hour Rolling)**")
-                        recent_8hr_atr = combined_data['ATR_8Hour'].tail(10)
-                        st.dataframe(recent_8hr_atr.round(2))
+                        st.write("**ATR_Previous Column (Prior Day)**")
+                        recent_prev_atr = combined_data['ATR_Previous'].tail(10)
+                        st.dataframe(recent_prev_atr.round(2))
                     
                     # ATR Statistics
                     st.subheader("📈 ATR Statistics")
@@ -2825,9 +2825,9 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                         'Datetime': 'Analysis timeframe timestamp',
                         'Date': 'Date for matching',
                         'Open/High/Low/Close': 'Analysis timeframe OHLC',
-                        'ATR': 'Current day ATR (Daily Session analysis)',
-                        'ATR_8Hour': 'Rolling 8-hour ATR (8-Hour Rolling analysis)',
-                        'Previous_ATR': 'Previous day ATR (commonly used for analysis)',
+                        'ATR': 'Current day ATR (calculated through yesterday)',
+                        'ATR_Previous': 'Previous day ATR (for rolling 8-hour analysis)',
+                        'ATR_Trading_Days': 'Number of trading days used in ATR calculation',
                         'Daily_Open/High/Low/Close': 'Base timeframe OHLC for reference'
                     }
                     
@@ -2873,19 +2873,19 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     🚀 **Ready for Dual Analysis!**
                     
                     **Your file now contains:**
-                    - ✅ **ATR** column for Daily Session analysis
-                    - ✅ **ATR_8Hour** column for 8-Hour Rolling analysis
-                    - ✅ **Previous_ATR** for reference
+                    - ✅ **ATR** column for current day analysis
+                    - ✅ **ATR_Previous** column for rolling 8-hour analysis
+                    - ✅ **ATR_Trading_Days** for reference
                     - ✅ Both timeframes aligned perfectly
                     
                     **Next:**
                     1. **Download** the ATR-ready file above
                     2. **Open** the ATR Level Analyzer tool
                     3. **Upload** this single file
-                    4. **Choose** Daily or 8-Hour Rolling analysis mode
+                    4. **Choose** Daily or Rolling 8-Hour analysis mode
                     5. **Get** systematic trigger/goal analysis results
                     
-                    💡 **One file, multiple analysis modes!**
+                    💡 **One file, dual analysis capability!**
                     """)
                     
                 else:
