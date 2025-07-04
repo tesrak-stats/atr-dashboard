@@ -429,9 +429,14 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             st.info("📊 Mapping ATR values to intraday data...")
             intraday_df['ATR'] = intraday_df['Date'].map(atr_lookup)
             
+            # Add trading days count for downstream apps
+            unique_trading_days = daily_with_atr['Date'].nunique()
+            intraday_df['Trading_Days_Count'] = unique_trading_days
+            
             # Show ATR calculation info
             st.info(f"✅ Single ATR column calculated:")
             st.info("📊 **ATR**: Currently used ATR (from last complete base time period)")
+            st.info(f"📊 **Trading_Days_Count**: {unique_trading_days} unique trading days (for downstream apps)")
             
             # Check how many matches we got
             matched_atr = intraday_df['ATR'].notna().sum()
@@ -1836,8 +1841,10 @@ if mode == "📁 Multi-CSV Processor":
                     col1, col2, col3 = st.columns(3)
                     
                     with col1:
+                        unique_days = combined_data['Date'].nunique()
                         date_span = (combined_data['Date'].max() - combined_data['Date'].min()).days
-                        st.metric("📅 Date Span", f"{date_span} days")
+                        st.metric("📅 Total Days", f"{unique_days:,}")
+                        st.caption(f"Span: {date_span} calendar days")
                     
                     with col2:
                         if processing_config['processing_type'] == 'standard_resample':
@@ -1848,6 +1855,7 @@ if mode == "📁 Multi-CSV Processor":
                     with col3:
                         unique_days = combined_data['Date'].nunique()
                         avg_daily_records = len(combined_data) / max(1, unique_days)
+                        st.metric("📊 Avg Records/Day", f"{avg_daily_records:.1f}")records = len(combined_data) / max(1, unique_days)
                         st.metric("📊 Avg Records/Day", f"{avg_daily_records:.1f}")
                     
                     # Show what's ready for ATR analysis
@@ -3089,6 +3097,7 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                         'Date': 'Date for matching timeframes',
                         'Open/High/Low/Close': 'Analysis timeframe OHLC data',
                         'ATR': 'Currently used ATR (calculated from base timeframe)',
+                        'Trading_Days_Count': 'Number of unique trading days used in ATR calculation (for downstream apps)',
                         'Volume': 'Volume (if available in original data)'
                     }
                     
