@@ -393,15 +393,24 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         if align_method == 'date_match':
             st.info("🔄 Combining data using date matching...")
             
-            # SIMPLIFIED: Only create current ATR lookup (no dual ATR)
-            st.info("🔧 Creating ATR lookup dictionary...")
+            # SIMPLIFIED: Create ATR and Prior Base Close lookups
+            st.info("🔧 Creating ATR and Prior Base Close lookup dictionaries...")
             atr_lookup = {}
+            prior_base_close_lookup = {}
             
-            # Create current ATR lookup - this is the "currently used" ATR
+            # Create current ATR lookup and prior base close lookup
             for i, row in daily_with_atr.iterrows():
                 atr_lookup[row['Date']] = row['ATR']
+                
+                # Prior base close is the close from the previous row
+                if i > 0:
+                    prior_base_close_lookup[row['Date']] = daily_with_atr.iloc[i-1]['Close']
+                else:
+                    # For the first row, use the same day's close (no previous data)
+                    prior_base_close_lookup[row['Date']] = row['Close']
             
             st.info(f"📊 ATR lookup created with {len(atr_lookup)} entries")
+            st.info(f"📊 Prior Base Close lookup created with {len(prior_base_close_lookup)} entries")
             
             # Debug the lookup process
             sample_intraday_dates = intraday_df['Date'].head(5).tolist()
@@ -425,23 +434,27 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
                 sample_lookups.append(f"{date}: {atr_val}")
             st.info(f"🔍 Sample ATR lookups: {sample_lookups}")
             
-            # SIMPLIFIED: Add only single ATR column to intraday data
-            st.info("📊 Mapping ATR values to intraday data...")
+            # SIMPLIFIED: Add ATR, Prior Base Close, and Trading Days Count to analysis data
+            st.info("📊 Mapping ATR and Prior Base Close values to analysis data...")
             intraday_df['ATR'] = intraday_df['Date'].map(atr_lookup)
+            intraday_df['Prior_Base_Close'] = intraday_df['Date'].map(prior_base_close_lookup)
             
             # Add trading days count for downstream apps
             unique_trading_days = daily_with_atr['Date'].nunique()
             intraday_df['Trading_Days_Count'] = unique_trading_days
             
-            # Show ATR calculation info
-            st.info(f"✅ Single ATR column calculated:")
-            st.info("📊 **ATR**: Currently used ATR (from last complete base time period)")
+            # Show mapping info
+            st.info(f"✅ Data columns mapped:")
+            st.info("📊 **ATR**: Currently used ATR (from base timeframe)")
+            st.info("📊 **Prior_Base_Close**: Previous period close from base timeframe (for level calculation)")
             st.info(f"📊 **Trading_Days_Count**: {unique_trading_days} unique trading days (for downstream apps)")
             
             # Check how many matches we got
             matched_atr = intraday_df['ATR'].notna().sum()
+            matched_prior_close = intraday_df['Prior_Base_Close'].notna().sum()
             total_intraday = len(intraday_df)
-            st.info(f"✅ ATR mapping result: {matched_atr}/{total_intraday} intraday records got ATR values")
+            st.info(f"✅ Mapping result: {matched_atr}/{total_intraday} records got ATR values")
+            st.info(f"✅ Mapping result: {matched_prior_close}/{total_intraday} records got Prior Base Close values")
             
             # Store final mapped data
             st.session_state['debug_intraday_with_atr'] = intraday_df.copy()
@@ -1855,6 +1868,7 @@ if mode == "📁 Multi-CSV Processor":
                     with col3:
                         unique_days = combined_data['Date'].nunique()
                         avg_daily_records = len(combined_data) / max(1, unique_days)
+                        st.metric("📊 Avg Records/Day", f"{avg_daily_records:.1f}")records = len(combined_data) / max(1, unique_days)
                         st.metric("📊 Avg Records/Day", f"{avg_daily_records:.1f}")
                     
                     # Show what's ready for ATR analysis
@@ -1885,113 +1899,113 @@ if mode == "📁 Multi-CSV Processor":
                     st.error("❌ Failed to process CSV files. Please check the file processing summary above.")
 
 # FIXED: Show persistent actions for last processed data
-    if st.session_state.get('last_processed_data') is not None:
-        st.markdown("---")
-        st.subheader("🔄 **Continue with Last Processed Data**")
+if st.session_state.get('last_processed_data') is not None:
+    st.markdown("---")
+    st.subheader("🔄 **Continue with Last Processed Data**")
     
-        last_data = st.session_state['last_processed_data']
-        last_filename = st.session_state['last_processed_filename']
+    last_data = st.session_state['last_processed_data']
+    last_filename = st.session_state['last_processed_filename']
     
-        st.info(f"📊 **Available**: {last_filename} ({len(last_data):,} records)")
+    st.info(f"📊 **Available**: {last_filename} ({len(last_data):,} records)")
     
-        col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
     
-        with col1:
+    with col1:
         # Persistent download button
-            st.download_button(
-                "📥 **Download Again**",
-                data=last_data.to_csv(index=False),
-                file_name=last_filename,
-                mime="text/csv",
-                key="download_persistent",
-                use_container_width=True
-            )
+        st.download_button(
+            "📥 **Download Again**",
+            data=last_data.to_csv(index=False),
+            file_name=last_filename,
+            mime="text/csv",
+            key="download_persistent",
+            use_container_width=True
+        )
     
-        with col2:
+    with col2:
         # Persistent hold as base
-            if st.button("📊 **Hold as Base**", key="hold_base_persistent", use_container_width=True):
-                st.session_state['atr_combiner_base_data'] = last_data.copy()
-                st.session_state['atr_combiner_base_filename'] = last_filename
-                st.success("✅ Held as Base!")
-                st.rerun()
+        if st.button("📊 **Hold as Base**", key="hold_base_persistent", use_container_width=True):
+            st.session_state['atr_combiner_base_data'] = last_data.copy()
+            st.session_state['atr_combiner_base_filename'] = last_filename
+            st.success("✅ Held as Base!")
+            st.rerun()
     
-        with col3:
+    with col3:
         # Persistent hold as analysis
-            if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent", use_container_width=True):
-                st.session_state['atr_combiner_analysis_data'] = last_data.copy()
-                st.session_state['atr_combiner_analysis_filename'] = last_filename
-                st.success("✅ Held as Analysis!")
-                st.rerun()
+        if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent", use_container_width=True):
+            st.session_state['atr_combiner_analysis_data'] = last_data.copy()
+            st.session_state['atr_combiner_analysis_filename'] = last_filename
+            st.success("✅ Held as Analysis!")
+            st.rerun()
 
     else:
         # Show helpful instructions when no file is uploaded
-            st.info("👆 **Please upload a single CSV file to get started**")
+        st.info("👆 **Please upload a single CSV file to get started**")
         
         # Show example of what the file should look like
-            with st.expander("📋 Expected File Format", expanded=False):
-                st.markdown("""
-                **Your CSV file should contain these columns (any format):**
+        with st.expander("📋 Expected File Format", expanded=False):
+            st.markdown("""
+            **Your CSV file should contain these columns (any format):**
             
-                **Standard Format:**
-                - **Date** (or Datetime, Time)
-                - **Open**, **High**, **Low**, **Close**
-                - **Volume** (optional)
+            **Standard Format:**
+            - **Date** (or Datetime, Time)
+            - **Open**, **High**, **Low**, **Close**
+            - **Volume** (optional)
             
-                **Short Format (also supported):**
-                - **Date** (or Datetime, Time)  
-                - **o**, **h**, **l**, **c** (lowercase single letters)
-                - **v** (volume - optional)
+            **Short Format (also supported):**
+            - **Date** (or Datetime, Time)  
+            - **o**, **h**, **l**, **c** (lowercase single letters)
+            - **v** (volume - optional)
             
-                **Unlabeled Format (Smart Detection):**
-                - **Column 1**: Date/Datetime (any format)
-                - **Column 2**: Open price
-                - **Column 3**: High price
-                - **Column 4**: Low price
-                - **Column 5**: Close price
-                - **Column 6**: Volume (optional)
+            **Unlabeled Format (Smart Detection):**
+            - **Column 1**: Date/Datetime (any format)
+            - **Column 2**: Open price
+            - **Column 3**: High price
+            - **Column 4**: Low price
+            - **Column 5**: Close price
+            - **Column 6**: Volume (optional)
             
-                **Mixed Format Examples:**
-                - `Date, o, h, l, c, v`
-                - `datetime, Open, High, Low, Close, Volume`
-                - `date, time, O, H, L, C`
-                - `9/23/2012 20:35, 4100, 4110, 4095, 4105, 1000` (unlabeled)
+            **Mixed Format Examples:**
+            - `Date, o, h, l, c, v`
+            - `datetime, Open, High, Low, Close, Volume`
+            - `date, time, O, H, L, C`
+            - `9/23/2012 20:35, 4100, 4110, 4095, 4105, 1000` (unlabeled)
             
-                **The system will:**
-                - ✅ Auto-detect column formats
-                - ✅ Handle various date/time formats
-                - ✅ Smart detect unlabeled columns
-                - ✅ Convert to standard format automatically
-                """)
+            **The system will:**
+            - ✅ Auto-detect column formats
+            - ✅ Handle various date/time formats
+            - ✅ Smart detect unlabeled columns
+            - ✅ Convert to standard format automatically
+            """)
         
         # Show sample workflows
-            with st.expander("🔧 Sample Workflows", expanded=False):
-                st.markdown("""
-                **🎯 Standard Resampling Examples:**
-                - Upload 1-minute data → Convert to 10-minute bars
-                - Upload daily data → Convert to weekly bars
-                - Upload 5-minute data → Convert to 1-hour bars
-                - Apply time filters (e.g., 9:30-16:00 market hours)
+        with st.expander("🔧 Sample Workflows", expanded=False):
+            st.markdown("""
+            **🎯 Standard Resampling Examples:**
+            - Upload 1-minute data → Convert to 10-minute bars
+            - Upload daily data → Convert to weekly bars
+            - Upload 5-minute data → Convert to 1-hour bars
+            - Apply time filters (e.g., 9:30-16:00 market hours)
             
-                **🕯️ Custom Candle Examples:**
-                - **Morning/Afternoon Split**: Create 2 candles per day (9:30-12:00, 12:00-16:00)
-                - **3-Period Day**: Create 3 candles per day (9:00-11:00, 11:00-14:00, 14:00-16:00)
-                - **Session-Based**: Create candles for different trading sessions
-                - **Flexible Periods**: Any time combination you need
+            **🕯️ Custom Candle Examples:**
+            - **Morning/Afternoon Split**: Create 2 candles per day (9:30-12:00, 12:00-16:00)
+            - **3-Period Day**: Create 3 candles per day (9:00-11:00, 11:00-14:00, 14:00-16:00)
+            - **Session-Based**: Create candles for different trading sessions
+            - **Flexible Periods**: Any time combination you need
             
-                **Custom Candle Output Example:**
-                ```
-                Date        Period_Name  Period_Start  Period_End  Open   High   Low    Close
-                2024-01-01  Morning      09:30        12:00       4100   4150   4090   4140
-                2024-01-01  Afternoon    12:00        16:00       4140   4180   4130   4175
-                2024-01-02  Morning      09:30        12:00       4175   4200   4160   4190
-                2024-01-02  Afternoon    12:00        16:00       4190   4210   4180   4205
-                ```
-                """)
+            **Custom Candle Output Example:**
+            ```
+            Date        Period_Name  Period_Start  Period_End  Open   High   Low    Close
+            2024-01-01  Morning      09:30        12:00       4100   4150   4090   4140
+            2024-01-01  Afternoon    12:00        16:00       4140   4180   4130   4175
+            2024-01-02  Morning      09:30        12:00       4175   4200   4160   4190
+            2024-01-02  Afternoon    12:00        16:00       4190   4210   4180   4205
+            ```
+            """)
 
 # ========================================================================================
 # MULTI-TIMEFRAME ATR COMBINER (SIMPLIFIED - Single ATR Column)
 # ========================================================================================
-elif mode == "Multi-Timeframe ATR Combiner":
+elif mode == "🎯 Multi-Timeframe ATR Combiner":
     st.header("📈 Public Data Download")
     st.write("Download financial data from public sources and export as CSV")
     
@@ -2737,7 +2751,7 @@ elif mode == "🔧 Single File Resampler":
                                 resampled_filename = custom_filename
                             else:
                                 st.error("❌ Failed to create custom candles")
-                                st.stop()
+                                return
                         
                         # Download section
                         st.markdown("---")
@@ -3096,6 +3110,7 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                         'Date': 'Date for matching timeframes',
                         'Open/High/Low/Close': 'Analysis timeframe OHLC data',
                         'ATR': 'Currently used ATR (calculated from base timeframe)',
+                        'Prior_Base_Close': 'Previous period close from base timeframe (reference for level calculation)',
                         'Trading_Days_Count': 'Number of unique trading days used in ATR calculation (for downstream apps)',
                         'Volume': 'Volume (if available in original data)'
                     }
@@ -3139,28 +3154,28 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     st.markdown("---")
                     st.subheader("🎯 Next Steps")
                     st.info("""
-                    🚀 **Ready for Analysis!**
+                    🚀 **Ready for Level Calculation Analysis!**
                     
                     **Your file now contains:**
                     - ✅ **ATR** column with currently used ATR value from base timeframe
+                    - ✅ **Prior_Base_Close** column with previous period close from base timeframe
+                    - ✅ **Trading_Days_Count** column for downstream apps
                     - ✅ Both timeframes aligned perfectly
                     - ✅ Clean, validated OHLC data from analysis timeframe
-                    - ✅ Single file, ready for systematic analysis
+                    - ✅ Single file, ready for systematic level calculation
                     
-                    **Works with any timeframe combination:**
-                    - Monthly ATR applied to daily analysis bars
-                    - Daily ATR applied to 10-minute analysis bars
-                    - 4-Hour ATR applied to 1-minute analysis bars
-                    - Weekly ATR applied to hourly analysis bars
-                    - Or any combination you chose!
+                    **Perfect for ATR level calculations:**
+                    - Support Level = Prior_Base_Close - (ATR × multiplier)
+                    - Resistance Level = Prior_Base_Close + (ATR × multiplier)
+                    - Works with any timeframe combination you chose!
                     
                     **Next:**
                     1. **Download** the ATR-ready file above
                     2. **Open** the ATR Level Analyzer tool
                     3. **Upload** this single file
-                    4. **Get** systematic trigger/goal analysis results
+                    4. **Get** systematic trigger/goal analysis with proper level calculation
                     
-                    💡 **Ultimate flexibility - any timeframe combination works!**
+                    💡 **Complete level calculation data - everything the analyzer needs!**
                     """)
                     
                 else:
