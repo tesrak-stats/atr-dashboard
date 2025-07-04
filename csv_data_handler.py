@@ -48,35 +48,38 @@ def calculate_atr(df, period=14):
 
 def calculate_8hour_atr(datetime_val, current_atr, previous_atr, asset_type):
     """
-    Calculate 8-hour rolling ATR logic
-    Returns previous_atr for first 7 hours of session, current_atr after that
+    Calculate 8-hour rolling ATR logic for futures sessions
+    Returns previous_atr for first 8 hours of session, current_atr after that
     """
-    session_start = SESSION_STARTS.get(asset_type, 9)  # Default to stocks
-    
-    # Get hour from datetime
-    hour = datetime_val.hour
-    
-    # Calculate hours into session
     if asset_type == 'FUTURES':
-        # Futures session starts at 18:00 (6 PM)
+        # Futures session: 18:00 to 17:00 next day
+        hour = datetime_val.hour
+        
+        # Session starts at 18:00 (6 PM)
+        # First 8 hours: 18:00-02:00 (next day) use previous ATR
+        # Remaining hours: 02:00-17:00 use current ATR
+        
         if hour >= 18:
+            # Same day, hours since 18:00
             hours_into_session = hour - 18
         else:
             # Next day, hours since 18:00 yesterday
             hours_into_session = (24 - 18) + hour
+        
+        # Use previous ATR for first 8 hours, current ATR after
+        return previous_atr if hours_into_session < 8 else current_atr
+    
     else:
-        # Other assets use standard session start
+        # Other assets use standard session logic
+        session_start = SESSION_STARTS.get(asset_type, 9)
+        hour = datetime_val.hour
+        
         if hour >= session_start:
             hours_into_session = hour - session_start
         else:
-            # Assume next day session
             hours_into_session = (24 - session_start) + hour
-    
-    # Return appropriate ATR based on hours into session
-    if hours_into_session <= 7:
-        return previous_atr  # Use previous day's ATR
-    else:
-        return current_atr   # Use current day's ATR
+        
+        return previous_atr if hours_into_session < 8 else current_atr
 
 def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_method='date_match', asset_type='STOCKS'):
     """
@@ -446,7 +449,7 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             atr_lookup = {}
             previous_atr_lookup = {}
             
-            # Create both current and previous ATR lookups
+            # Create both current and previous ATR lookups with trading days count
             for i, row in daily_with_atr.iterrows():
                 atr_lookup[row['Date']] = row['ATR']
                 
@@ -455,6 +458,13 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
                     previous_atr_lookup[row['Date']] = daily_with_atr.iloc[i-1]['ATR']
                 else:
                     previous_atr_lookup[row['Date']] = row['ATR']  # First row uses same ATR
+            
+            # Calculate trading days used for each ATR calculation
+            trading_days_lookup = {}
+            for i, row in daily_with_atr.iterrows():
+                # Count non-null ATR values up to this point
+                valid_atr_count = daily_with_atr.iloc[:i+1]['ATR'].notna().sum()
+                trading_days_lookup[row['Date']] = min(valid_atr_count, atr_period + 50)  # Cap at reasonable number
             
             st.info(f"📊 ATR lookup created with {len(atr_lookup)} entries")
             
@@ -488,10 +498,11 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
                 sample_lookups.append(f"{date}: {atr_val}")
             st.info(f"🔍 Sample ATR lookups: {sample_lookups}")
             
-            # Add ATR columns to intraday data
+            # Add all ATR columns to intraday data
             st.info("📊 Mapping ATR values to intraday data...")
             intraday_df['ATR_Current'] = intraday_df['Date'].map(atr_lookup)
             intraday_df['Previous_ATR'] = intraday_df['Date'].map(previous_atr_lookup)
+            intraday_df['ATR_Trading_Days'] = intraday_df['Date'].map(trading_days_lookup)
             
             # Calculate ATR_8Hour for each intraday record
             st.info("🕐 Calculating 8-hour rolling ATR...")
@@ -507,7 +518,7 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             # Show 8-hour ATR calculation info
             st.info(f"✅ 8-hour rolling ATR calculated for {asset_type}")
             if asset_type == 'FUTURES':
-                st.info("🕐 **Futures 8-hour logic**: Hours 0-7 use previous ATR, hours 8+ use current ATR")
+                st.info("🕐 **Futures 8-hour logic**: 18:00-02:00 use previous ATR, 02:00-17:00 use current ATR")
             else:
                 st.info(f"🕐 **{asset_type} 8-hour logic**: Session starts at {SESSION_STARTS.get(asset_type, 9)}:00")
             
@@ -519,11 +530,20 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             # Store final mapped data
             st.session_state['debug_intraday_with_atr'] = intraday_df.copy()
             
-            # Filter to only intraday records with ATR
+            # Filter to only intraday records with ATR - KEEP ALL COLUMNS
             combined_df = intraday_df[intraday_df['ATR_Current'].notna()].copy()
             
-            # Rename columns for consistency with roadmap
+            # Rename ATR_Current to ATR for backwards compatibility, but KEEP ATR_8Hour
             combined_df = combined_df.rename(columns={'ATR_Current': 'ATR'})
+            
+            # Ensure we have both ATR columns in final output
+            required_columns = ['ATR', 'ATR_8Hour', 'Previous_ATR', 'ATR_Trading_Days']
+            for col in required_columns:
+                if col not in combined_df.columns:
+                    st.error(f"❌ Missing required column: {col}")
+            
+            st.success(f"✅ **Dual ATR columns preserved**: ATR (daily) and ATR_8Hour (rolling)")
+            st.success(f"✅ **Trading days tracking**: ATR_Trading_Days column added")
             
             if combined_df.empty:
                 st.error("❌ No date overlap between daily and intraday data")
