@@ -99,27 +99,10 @@ def generate_atr_levels(close_price, atr_value, custom_ratios=None):
     
     return levels
 
-# ==============================================================================================
-# CRITICAL SECTION: DO NOT MODIFY THE CORE TRIGGER AND GOAL DETECTION LOGIC
-# This section contains the validated systematic logic from run_generate.py
-# MODIFICATION: Added early exit optimization to reduce processing time
-# WARNING: This modification changes the order of trigger checking and adds break statements
-# WARNING: Only triggered levels will be recorded (untriggered levels are skipped)
-# ==============================================================================================
-
-def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
+def detect_triggers_and_goals_batch(daily, intraday, custom_ratios=None, start_index=0, batch_size=50):
     """
-    PERFECT SYSTEMATIC LOGIC FROM run_generate.py WITH EARLY EXIT OPTIMIZATION:
-    For each trigger level:
-    1. Check if LOW <= trigger (Below direction) → check all 12 goals
-    2. Check if HIGH >= trigger (Above direction) → check all 12 goals
-    
-    OPTIMIZATION: Early exit when triggers don't hit to reduce processing time
-    - Below direction: Start at +1.0 (easiest to hit) and work toward -1.0
-    - Above direction: Start at -1.0 (easiest to hit) and work toward +1.0
-    - Break when a level doesn't trigger (skip remaining levels)
-    
-    FIXED: 0930 candle goal completion logic
+    Batch version of systematic analysis with session state checkpointing
+    Processes batch_size periods at a time to avoid timeouts
     """
     if custom_ratios is None:
         fib_levels = [0.236, 0.382, 0.500, 0.618, 0.786, 1.000, 
@@ -127,40 +110,21 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
     else:
         fib_levels = custom_ratios
     
-    # OPTIMIZATION: Sort levels for early exit logic
-    # Below direction: Start from +1.0 and work toward -1.0
-    below_order = [1.000, 0.786, 0.618, 0.500, 0.382, 0.236, 0.000, -0.236, -0.382, -0.500, -0.618, -0.786, -1.000]
-    # Above direction: Start from -1.0 and work toward +1.0  
-    above_order = [-1.000, -0.786, -0.618, -0.500, -0.382, -0.236, 0.000, 0.236, 0.382, 0.500, 0.618, 0.786, 1.000]
-    
-    # Filter to only include levels that exist in fib_levels
-    below_order = [level for level in below_order if level in fib_levels]
-    above_order = [level for level in above_order if level in fib_levels]
-    
-    # Standard trading hours for zero-fill
-    standard_hours = ['OPEN', '0930', '0940', '0950', '1000', '1010', '1020', '1030', 
-                      '1040', '1050', '1100', '1110', '1120', '1130', '1140', '1150',
-                      '1200', '1210', '1220', '1230', '1240', '1250', '1300', '1310', 
-                      '1320', '1330', '1340', '1350', '1400', '1410', '1420', '1430',
-                      '1440', '1450', '1500', '1510', '1520', '1530', '1540', '1550', '1600']
-    
     results = []
     
     # Progress tracking
-    total_days = len(daily)
-    progress_bar = st.progress(0)
+    total_periods = len(daily)
+    end_index = min(start_index + batch_size, total_periods)
+    
+    progress_bar = st.progress(start_index / total_periods)
     status_text = st.empty()
     
-    for i in range(len(daily)):
+    for i in range(start_index, end_index):
         try:
             # Update progress
-            progress = (i + 1) / total_days
+            progress = (i + 1) / total_periods
             progress_bar.progress(progress)
-            status_text.text(f"Processing day {i+1}/{total_days}...")
-            
-            # Keep Streamlit alive - output every 100 days
-            if i % 100 == 0:
-                st.write(f"Processed {i} days...")
+            status_text.text(f"Processing period {i+1}/{total_periods}...")
             
             # Use CURRENT day's Pre-calculated Prior_Base_Close and ATR
             current_row = daily.iloc[i]     
@@ -168,16 +132,6 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
             previous_close = current_row['Prior_Base_Close']  # Pre-calculated previous close
             previous_atr = current_row['ATR']                 # Pre-calculated ATR
             trading_date = current_row['Date']
-            
-            # Date filtering - start from first available intraday data
-            if hasattr(trading_date, 'strftime'):
-                date_str = trading_date.strftime('%Y-%m-%d')
-            elif isinstance(trading_date, str):
-                date_str = trading_date[:10]
-            else:
-                date_str = str(trading_date)[:10]
-            
-            # No hardcoded date filter - process all available data
             
             # Skip if no valid ATR (early days before period completion)
             if pd.isna(previous_atr) or pd.isna(previous_close):
@@ -197,11 +151,11 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
             open_candle = day_data.iloc[0]
             open_price = open_candle['Open']
             
-            # OPTIMIZED SYSTEMATIC APPROACH: Early exit for non-triggered levels
-            # 1. CHECK BELOW DIRECTION: LOW <= trigger level (Start from +1.0, work toward -1.0)
-            for trigger_level in below_order:
+            # PERFECT SYSTEMATIC APPROACH: Each level checked in both directions
+            for trigger_level in fib_levels:
                 trigger_price = level_map[trigger_level]
                 
+                # 1. CHECK BELOW DIRECTION: LOW <= trigger level
                 below_triggered = False
                 below_trigger_time = None
                 below_trigger_row = None
@@ -226,10 +180,6 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                             below_trigger_time = row['Time']
                             below_trigger_row = idx
                             break
-                
-                # EARLY EXIT: If this level didn't trigger, skip all remaining levels
-                if not below_triggered:
-                    break
                 
                 # Process all goals for BELOW trigger
                 if below_triggered:
@@ -347,10 +297,7 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                             'RetestedTrigger': 'No'
                         })
                 
-                # 2. CHECK ABOVE DIRECTION: HIGH >= trigger level (Start from -1.0, work toward +1.0)
-            for trigger_level in above_order:
-                trigger_price = level_map[trigger_level]
-                
+                # 2. CHECK ABOVE DIRECTION: HIGH >= trigger level
                 above_triggered = False
                 above_trigger_time = None
                 above_trigger_row = None
@@ -376,9 +323,383 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
                             above_trigger_row = idx
                             break
                 
-                # EARLY EXIT: If this level didn't trigger, skip all remaining levels
+                # Process all goals for ABOVE trigger
+                if above_triggered:
+                    trigger_candle = day_data.iloc[above_trigger_row]
+                    
+                    for goal_level in fib_levels:
+                        goal_price = level_map[goal_level]
+                        goal_hit = False
+                        goal_time = ''
+                        is_same_time = False
+                        
+                        # Determine goal type for ABOVE trigger
+                        if goal_level == trigger_level:
+                            goal_type = 'Retest'  # Same level retest
+                        elif goal_level > trigger_level:
+                            goal_type = 'Continuation'  # Further above
+                        else:
+                            goal_type = 'Retracement'   # Back below (includes cross-zero)
+                        
+                        # Check for goal completion - FIXED LOGIC (including same-level retests)
+                        if above_trigger_time == 'OPEN':
+                            # Step 1: Check if goal completes at OPEN price first (takes precedence)
+                            if goal_level == trigger_level:  # Same level retest
+                                # For same-level retest, we need opposite direction movement
+                                # Above trigger at OPEN, so retest needs Below movement
+                                if open_price <= goal_price:
+                                    goal_hit = True
+                                    goal_time = 'OPEN'
+                                    is_same_time = True
+                            elif goal_level > trigger_level:  # Above goal (CONTINUATION)
+                                if open_price >= goal_price:
+                                    goal_hit = True
+                                    goal_time = 'OPEN'
+                                    is_same_time = True
+                            else:  # Below goal (RETRACEMENT)
+                                if open_price <= goal_price:
+                                    goal_hit = True
+                                    goal_time = 'OPEN'
+                                    is_same_time = True
+                            
+                            # Step 2: Only if OPEN missed, check ALL candles including 0930 (but use High/Low, not Open)
+                            if not goal_hit:
+                                for _, row in day_data.iterrows():  # FIXED: Include 0930 candle
+                                    if goal_level == trigger_level:  # Same level retest (opposite direction)
+                                        if row['Low'] <= goal_price:  # Above trigger needs Low to retest
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    elif goal_level > trigger_level:  # Above goal
+                                        if row['High'] >= goal_price:  # Use High, not Open
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    else:  # Below goal
+                                        if row['Low'] <= goal_price:  # Use Low, not Open
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                        
+                        else:  # Intraday above trigger (e.g., 1000, 1100, etc.)
+                            if goal_level == trigger_level:  # RETEST - Skip same candle entirely
+                                # DO NOT check trigger candle - start from next candle only
+                                pass  # Skip same-candle check for retests
+                            elif goal_level < trigger_level:  # RETRACEMENT - Skip same candle entirely
+                                # DO NOT check trigger candle - start from next candle only
+                                pass  # Skip same-candle check for retracements
+                            else:  # CONTINUATION - Can check same candle
+                                if goal_level > trigger_level:  # Above goal
+                                    if trigger_candle['High'] >= goal_price:
+                                        goal_hit = True
+                                        goal_time = above_trigger_time
+                            
+                            # Check subsequent candles if not completed on trigger candle
+                            if not goal_hit:
+                                for _, row in day_data.iloc[above_trigger_row + 1:].iterrows():
+                                    if goal_level == trigger_level:  # Same level retest (opposite direction)
+                                        if row['Low'] <= goal_price:  # Above trigger needs Low to retest
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    elif goal_level > trigger_level:  # Above goal
+                                        if row['High'] >= goal_price:
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    else:  # Below goal
+                                        if row['Low'] <= goal_price:
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                        
+                        # Record this ABOVE trigger-goal combination
+                        results.append({
+                            'Date': trading_date,
+                            'Direction': 'Above',
+                            'TriggerLevel': trigger_level,
+                            'TriggerTime': above_trigger_time,
+                            'TriggerPrice': round(trigger_price, 2),
+                            'GoalLevel': goal_level,
+                            'GoalPrice': round(goal_price, 2),
+                            'GoalHit': 'Yes' if goal_hit else 'No',
+                            'GoalTime': goal_time if goal_hit else '',
+                            'GoalClassification': goal_type,
+                            'PreviousClose': round(previous_close, 2),
+                            'PreviousATR': round(previous_atr, 2),
+                            'SameTime': is_same_time,
+                            'RetestedTrigger': 'No'
+                        })
+
+        except Exception as e:
+            st.warning(f"Error processing {trading_date}: {str(e)}")
+            continue
+    
+    # Update session state
+    st.session_state.atr_processing['last_processed_index'] = end_index
+    
+    # Check if we're done
+    if end_index >= total_periods:
+        st.session_state.atr_processing['is_complete'] = True
+        status_text.text("Processing complete!")
+    else:
+        status_text.text(f"Batch complete. Next batch will start at period {end_index + 1}")
+    
+    # Clear progress bar after batch
+    progress_bar.empty()
+    
+    return pd.DataFrame(results)
+
+def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
+    """
+    PERFECT SYSTEMATIC LOGIC FROM run_generate.py:
+    For each trigger level:
+    1. Check if LOW <= trigger (Below direction) → check all 12 goals
+    2. Check if HIGH >= trigger (Above direction) → check all 12 goals
+    
+    For goals:
+    - Above goals: check HIGH >= goal
+    - Below goals: check LOW <= goal
+    
+    FIXED: 0930 candle goal completion logic
+    """
+    if custom_ratios is None:
+        fib_levels = [0.236, 0.382, 0.500, 0.618, 0.786, 1.000, 
+                     -0.236, -0.382, -0.500, -0.618, -0.786, -1.000, 0.000]
+    else:
+        fib_levels = custom_ratios
+    
+    # Standard trading hours for zero-fill
+    standard_hours = ['OPEN', '0930', '0940', '0950', '1000', '1010', '1020', '1030', 
+                      '1040', '1050', '1100', '1110', '1120', '1130', '1140', '1150',
+                      '1200', '1210', '1220', '1230', '1240', '1250', '1300', '1310', 
+                      '1320', '1330', '1340', '1350', '1400', '1410', '1420', '1430',
+                      '1440', '1450', '1500', '1510', '1520', '1530', '1540', '1550', '1600']
+    
+    results = []
+    
+    # Progress tracking
+    total_periods = len(daily)
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    for i in range(len(daily)):
+        try:
+            # Update progress
+            progress = (i + 1) / total_periods
+            progress_bar.progress(progress)
+            status_text.text(f"Processing period {i+1}/{total_periods}...")
+            
+            # Keep Streamlit alive - output every 100 periods
+            if i % 100 == 0:
+                st.write(f"Processed {i} periods...")
+            
+            # Use CURRENT day's Pre-calculated Prior_Base_Close and ATR
+            current_row = daily.iloc[i]     
+            
+            previous_close = current_row['Prior_Base_Close']  # Pre-calculated previous close
+            previous_atr = current_row['ATR']                 # Pre-calculated ATR
+            trading_date = current_row['Date']
+            
+            # Date filtering - start from first available intraday data
+            if hasattr(trading_date, 'strftime'):
+                date_str = trading_date.strftime('%Y-%m-%d')
+            elif isinstance(trading_date, str):
+                date_str = trading_date[:10]
+            else:
+                date_str = str(trading_date)[:10]
+            
+            # No hardcoded date filter - process all available data
+            
+            # Skip if no valid ATR (early days before period completion)
+            if pd.isna(previous_atr) or pd.isna(previous_close):
+                continue
+            
+            # Generate levels using PREVIOUS day's close + ATR
+            level_map = generate_atr_levels(previous_close, previous_atr, custom_ratios)
+            
+            # Get intraday data for trading date
+            day_data = intraday[intraday['Date'] == pd.to_datetime(trading_date).date()].copy()
+            if day_data.empty:
+                continue
+
+            day_data['Time'] = day_data['Datetime'].dt.strftime('%H%M')
+            day_data.reset_index(drop=True, inplace=True)
+
+            open_candle = day_data.iloc[0]
+            open_price = open_candle['Open']
+            
+            # PERFECT SYSTEMATIC APPROACH: Each level checked in both directions
+            for trigger_level in fib_levels:
+                trigger_price = level_map[trigger_level]
+                
+                # 1. CHECK BELOW DIRECTION: LOW <= trigger level
+                below_triggered = False
+                below_trigger_time = None
+                below_trigger_row = None
+                
+                # Check OPEN candle for below trigger
+                if open_price <= trigger_price:
+                    below_triggered = True
+                    below_trigger_time = 'OPEN'
+                    below_trigger_row = 0
+                
+                # If OPEN didn't trigger, check 0930 candle High/Low
+                elif day_data.iloc[0]['Low'] <= trigger_price:
+                    below_triggered = True
+                    below_trigger_time = '0930'
+                    below_trigger_row = 0
+                
+                # Check intraday candles for below trigger (only if neither OPEN nor 0930 triggered)
+                if not below_triggered:
+                    for idx, row in day_data.iloc[1:].iterrows():
+                        if row['Low'] <= trigger_price:
+                            below_triggered = True
+                            below_trigger_time = row['Time']
+                            below_trigger_row = idx
+                            break
+                
+                # Process all goals for BELOW trigger
+                if below_triggered:
+                    trigger_candle = day_data.iloc[below_trigger_row]
+                    
+                    for goal_level in fib_levels:
+                        goal_price = level_map[goal_level]
+                        goal_hit = False
+                        goal_time = ''
+                        is_same_time = False
+                        
+                        # Determine goal type for BELOW trigger
+                        if goal_level == trigger_level:
+                            goal_type = 'Retest'  # Same level retest
+                        elif goal_level < trigger_level:
+                            goal_type = 'Continuation'  # Further below
+                        else:
+                            goal_type = 'Retracement'   # Back above (includes cross-zero)
+                        
+                        # Check for goal completion - FIXED LOGIC (including same-level retests)
+                        if below_trigger_time == 'OPEN':
+                            # Step 1: Check if goal completes at OPEN price first (takes precedence)
+                            if goal_level == trigger_level:  # Same level retest
+                                # For same-level retest, we need opposite direction movement
+                                # Below trigger at OPEN, so retest needs Above movement
+                                if open_price >= goal_price:
+                                    goal_hit = True
+                                    goal_time = 'OPEN'
+                                    is_same_time = True
+                            elif goal_level > trigger_level:  # Above goal (RETRACEMENT)
+                                if open_price >= goal_price:
+                                    goal_hit = True
+                                    goal_time = 'OPEN'
+                                    is_same_time = True
+                            else:  # Below goal (CONTINUATION)
+                                if open_price <= goal_price:
+                                    goal_hit = True
+                                    goal_time = 'OPEN'
+                                    is_same_time = True
+                            
+                            # Step 2: Only if OPEN missed, check candles based on goal type
+                            if not goal_hit:
+                                # CRITICAL: Different logic for CONTINUATION vs RETRACEMENT vs RETEST
+                                if goal_level == trigger_level:  # RETEST - must skip same candle (like retracement)
+                                    start_candles = day_data.iloc[1:].iterrows()  # Skip 0930, start from 0940
+                                elif goal_level > trigger_level:  # RETRACEMENT - must skip same candle (0930), start from 0940
+                                    start_candles = day_data.iloc[1:].iterrows()  # Skip 0930, start from 0940
+                                else:  # CONTINUATION - can check same candle (0930)
+                                    start_candles = day_data.iterrows()  # Include 0930 candle
+                                
+                                for _, row in start_candles:
+                                    if goal_level == trigger_level:  # Same level retest (opposite direction)
+                                        if row['High'] >= goal_price:  # Below trigger needs High to retest
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    elif goal_level > trigger_level:  # Above goal
+                                        if row['High'] >= goal_price:  # Use High, not Open
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    else:  # Below goal  
+                                        if row['Low'] <= goal_price:  # Use Low, not Open
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                        
+                        else:  # Intraday below trigger (e.g., 1000, 1100, etc.)
+                            if goal_level == trigger_level:  # RETEST - Skip same candle entirely
+                                # DO NOT check trigger candle - start from next candle only
+                                pass  # Skip same-candle check for retests
+                            elif goal_level > trigger_level:  # RETRACEMENT - Skip same candle entirely  
+                                # DO NOT check trigger candle - start from next candle only
+                                pass  # Skip same-candle check for retracements
+                            else:  # CONTINUATION - Can check same candle
+                                if goal_level < trigger_level:  # Below goal
+                                    if trigger_candle['Low'] <= goal_price:
+                                        goal_hit = True
+                                        goal_time = below_trigger_time
+                            
+                            # Check subsequent candles if not completed on trigger candle
+                            if not goal_hit:
+                                for _, row in day_data.iloc[below_trigger_row + 1:].iterrows():
+                                    if goal_level == trigger_level:  # Same level retest (opposite direction)
+                                        if row['High'] >= goal_price:  # Below trigger needs High to retest
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    elif goal_level > trigger_level:  # Above goal
+                                        if row['High'] >= goal_price:
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                                    else:  # Below goal
+                                        if row['Low'] <= goal_price:
+                                            goal_hit = True
+                                            goal_time = row['Time']
+                                            break
+                        
+                        # Record this BELOW trigger-goal combination
+                        results.append({
+                            'Date': trading_date,
+                            'Direction': 'Below',
+                            'TriggerLevel': trigger_level,
+                            'TriggerTime': below_trigger_time,
+                            'TriggerPrice': round(trigger_price, 2),
+                            'GoalLevel': goal_level,
+                            'GoalPrice': round(goal_price, 2),
+                            'GoalHit': 'Yes' if goal_hit else 'No',
+                            'GoalTime': goal_time if goal_hit else '',
+                            'GoalClassification': goal_type,
+                            'PreviousClose': round(previous_close, 2),
+                            'PreviousATR': round(previous_atr, 2),
+                            'SameTime': is_same_time,
+                            'RetestedTrigger': 'No'
+                        })
+                
+                # 2. CHECK ABOVE DIRECTION: HIGH >= trigger level
+                above_triggered = False
+                above_trigger_time = None
+                above_trigger_row = None
+                
+                # Check OPEN candle for above trigger
+                if open_price >= trigger_price:
+                    above_triggered = True
+                    above_trigger_time = 'OPEN'
+                    above_trigger_row = 0
+                
+                # If OPEN didn't trigger, check 0930 candle High/Low
+                elif day_data.iloc[0]['High'] >= trigger_price:
+                    above_triggered = True
+                    above_trigger_time = '0930'
+                    above_trigger_row = 0
+                
+                # Check intraday candles for above trigger (only if neither OPEN nor 0930 triggered)
                 if not above_triggered:
-                    break
+                    for idx, row in day_data.iloc[1:].iterrows():
+                        if row['High'] >= trigger_price:
+                            above_triggered = True
+                            above_trigger_time = row['Time']
+                            above_trigger_row = idx
+                            break
                 
                 # Process all goals for ABOVE trigger
                 if above_triggered:
@@ -639,56 +960,83 @@ def debug_single_day_analysis(daily, intraday, debug_date, custom_ratios=None):
 # END OF CRITICAL SECTION
 # ==============================================================================================
 
-# Main analysis function - now properly handles the CSV handler format
+# Main analysis function with session state resume capability
 def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=False, debug_date=None):
-    """Main function for pre-formatted CSV analysis"""
+    """Main function for pre-formatted CSV analysis with auto-resume"""
     debug_info = []
     
     try:
+        # Initialize or get session state
+        if 'atr_processing' not in st.session_state:
+            st.session_state.atr_processing = {
+                'results': [],
+                'last_processed_index': 0,
+                'is_complete': False,
+                'daily_data': None,
+                'intraday_data': None,
+                'custom_ratios': None,
+                'ticker': '',
+                'asset_type': '',
+                'total_periods': 0
+            }
+        
         # Debug mode check
         if debug_mode and debug_date:
             st.success(f"DEBUG MODE - Will process ONLY {debug_date}")
         else:
-            st.info("FULL MODE - Will process all days")
+            st.info("FULL MODE - Will process all periods with auto-resume capability")
         
         # Get asset configuration
         asset_config = AssetConfig.get_config(asset_type, False)
         debug_info.append(f"Asset Type: {asset_config['description']}")
         
-        # Load pre-formatted data
-        df = load_preformatted_data(data_file)
-        if df is None:
-            debug_info.append("Failed to load pre-formatted data")
-            return pd.DataFrame(), debug_info
-        
-        debug_info.append(f"Data loaded: {df.shape}")
-        debug_info.append(f"Date range: {df['Date'].min()} to {df['Date'].max()}")
-        
-        # Validate required data
-        if df['ATR'].isna().all():
-            debug_info.append("No valid ATR values found")
-            return pd.DataFrame(), debug_info
-        
-        recent_atr = df['ATR'].tail(3).round(2).tolist()
-        debug_info.append(f"ATR values found. Recent values: {recent_atr}")
-        
-        # Prepare data for systematic analysis
-        # Create daily data - one record per date with ATR and Prior_Base_Close
-        daily_data = df.groupby('Date').agg({
-            'Open': 'first',
-            'High': 'max', 
-            'Low': 'min',
-            'Close': 'last',
-            'ATR': 'first',
-            'Prior_Base_Close': 'first'
-        }).reset_index()
-        daily_data['Date'] = pd.to_datetime(daily_data['Date'])
-        
-        # Intraday data is the full dataframe
-        intraday_data = df.copy()
-        
-        debug_info.append(f"Daily data prepared: {len(daily_data)} days")
-        debug_info.append(f"Intraday data prepared: {len(intraday_data)} records")
+        # Load pre-formatted data (only if not already loaded)
+        if st.session_state.atr_processing['daily_data'] is None:
+            df = load_preformatted_data(data_file)
+            if df is None:
+                debug_info.append("Failed to load pre-formatted data")
+                return pd.DataFrame(), debug_info
+            
+            debug_info.append(f"Data loaded: {df.shape}")
+            debug_info.append(f"Date range: {df['Date'].min()} to {df['Date'].max()}")
+            
+            # Validate required data
+            if df['ATR'].isna().all():
+                debug_info.append("No valid ATR values found")
+                return pd.DataFrame(), debug_info
+            
+            recent_atr = df['ATR'].tail(3).round(2).tolist()
+            debug_info.append(f"ATR values found. Recent values: {recent_atr}")
+            
+            # Prepare data for systematic analysis
+            daily_data = df.groupby('Date').agg({
+                'Open': 'first',
+                'High': 'max', 
+                'Low': 'min',
+                'Close': 'last',
+                'ATR': 'first',
+                'Prior_Base_Close': 'first'
+            }).reset_index()
+            daily_data['Date'] = pd.to_datetime(daily_data['Date'])
+            
+            intraday_data = df.copy()
+            
+            # Store in session state
+            st.session_state.atr_processing['daily_data'] = daily_data
+            st.session_state.atr_processing['intraday_data'] = intraday_data
+            st.session_state.atr_processing['custom_ratios'] = custom_ratios
+            st.session_state.atr_processing['ticker'] = ticker
+            st.session_state.atr_processing['asset_type'] = asset_type
+            st.session_state.atr_processing['total_periods'] = len(daily_data)
+            
+            debug_info.append(f"Daily data prepared: {len(daily_data)} periods")
+            debug_info.append(f"Intraday data prepared: {len(intraday_data)} records")
+        else:
+            # Resume with existing data
+            daily_data = st.session_state.atr_processing['daily_data']
+            intraday_data = st.session_state.atr_processing['intraday_data']
+            debug_info.append(f"Resuming from period {st.session_state.atr_processing['last_processed_index']}")
+            debug_info.append(f"Total periods: {st.session_state.atr_processing['total_periods']}")
         
         # Debug Mode - single day analysis
         if debug_mode and debug_date:
@@ -696,37 +1044,73 @@ def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=
             debug_single_day_analysis(daily_data, intraday_data, debug_date, custom_ratios)
             return pd.DataFrame(), debug_info + [f"Debug analysis completed for {debug_date}"]
         
-        # Run full systematic analysis
+        # Run batch systematic analysis
         if not debug_mode:
-            debug_info.append("Running SYSTEMATIC trigger and goal detection WITH EARLY EXIT OPTIMIZATION...")
-            result_df = detect_triggers_and_goals_systematic(daily_data, intraday_data, custom_ratios)
-            debug_info.append(f"Detection complete: {len(result_df)} trigger-goal combinations found")
-            
-            # Add Trading_Days_Count to results (from last record in the dataset)
-            if not result_df.empty and 'Trading_Days_Count' in df.columns:
-                final_trading_days = df['Trading_Days_Count'].iloc[-1]
-                result_df['Trading_Days_Count'] = final_trading_days
-                debug_info.append(f"Added Trading_Days_Count: {final_trading_days}")
-            
-            # Additional statistics
-            if not result_df.empty:
-                above_triggers = len(result_df[result_df['Direction'] == 'Above'])
-                below_triggers = len(result_df[result_df['Direction'] == 'Below'])
-                debug_info.append(f"Above triggers: {above_triggers}, Below triggers: {below_triggers}")
+            if not st.session_state.atr_processing['is_complete']:
+                debug_info.append("Running SYSTEMATIC trigger and goal detection in batches...")
                 
-                goals_hit = len(result_df[result_df['GoalHit'] == 'Yes'])
-                hit_rate = goals_hit / len(result_df) * 100 if len(result_df) > 0 else 0
-                debug_info.append(f"Goals hit: {goals_hit}/{len(result_df)} ({hit_rate:.1f}%)")
+                # Process in batches to avoid timeout
+                batch_results = detect_triggers_and_goals_batch(
+                    daily_data, 
+                    intraday_data, 
+                    custom_ratios,
+                    start_index=st.session_state.atr_processing['last_processed_index']
+                )
                 
-                # Validation metrics
-                same_time_count = len(result_df[result_df['SameTime'] == True])
-                debug_info.append(f"Same-time scenarios found: {same_time_count}")
+                if batch_results is not None:
+                    # Add new results to session state
+                    if len(batch_results) > 0:
+                        st.session_state.atr_processing['results'].extend(batch_results.to_dict('records'))
+                    
+                    debug_info.append(f"Batch complete. Total combinations found: {len(st.session_state.atr_processing['results'])}")
                 
-                open_triggers = len(result_df[result_df['TriggerTime'] == 'OPEN'])
-                intraday_triggers = len(result_df[result_df['TriggerTime'] != 'OPEN'])
-                debug_info.append(f"OPEN triggers: {open_triggers}, Intraday triggers: {intraday_triggers}")
-            
-            return result_df, debug_info
+                # Check if processing is complete
+                if st.session_state.atr_processing['is_complete']:
+                    # Convert results back to DataFrame
+                    result_df = pd.DataFrame(st.session_state.atr_processing['results'])
+                    
+                    # Add Trading_Days_Count to results
+                    if not result_df.empty and 'Trading_Days_Count' in intraday_data.columns:
+                        final_trading_days = intraday_data['Trading_Days_Count'].iloc[-1]
+                        result_df['Trading_Days_Count'] = final_trading_days
+                        debug_info.append(f"Added Trading_Days_Count: {final_trading_days}")
+                    
+                    # Additional statistics
+                    if not result_df.empty:
+                        above_triggers = len(result_df[result_df['Direction'] == 'Above'])
+                        below_triggers = len(result_df[result_df['Direction'] == 'Below'])
+                        debug_info.append(f"Above triggers: {above_triggers}, Below triggers: {below_triggers}")
+                        
+                        goals_hit = len(result_df[result_df['GoalHit'] == 'Yes'])
+                        hit_rate = goals_hit / len(result_df) * 100 if len(result_df) > 0 else 0
+                        debug_info.append(f"Goals hit: {goals_hit}/{len(result_df)} ({hit_rate:.1f}%)")
+                        
+                        # Validation metrics
+                        same_time_count = len(result_df[result_df['SameTime'] == True])
+                        debug_info.append(f"Same-time scenarios found: {same_time_count}")
+                        
+                        open_triggers = len(result_df[result_df['TriggerTime'] == 'OPEN'])
+                        intraday_triggers = len(result_df[result_df['TriggerTime'] != 'OPEN'])
+                        debug_info.append(f"OPEN triggers: {open_triggers}, Intraday triggers: {intraday_triggers}")
+                    
+                    return result_df, debug_info
+                else:
+                    # Still processing - return partial results
+                    partial_df = pd.DataFrame(st.session_state.atr_processing['results'])
+                    progress_pct = (st.session_state.atr_processing['last_processed_index'] / 
+                                  st.session_state.atr_processing['total_periods']) * 100
+                    debug_info.append(f"Processing in progress: {progress_pct:.1f}% complete")
+                    debug_info.append("Page will auto-refresh to continue processing...")
+                    
+                    # Auto-refresh to continue processing
+                    st.rerun()
+                    
+                    return partial_df, debug_info
+            else:
+                # Processing already complete
+                result_df = pd.DataFrame(st.session_state.atr_processing['results'])
+                debug_info.append("Processing already complete - showing final results")
+                return result_df, debug_info
         else:
             debug_info.append("Debug mode enabled but no debug date selected")
             return pd.DataFrame(), debug_info
@@ -831,7 +1215,7 @@ def display_results(result_df, debug_messages, ticker, asset_type):
         with col1:
             # Full results
             ticker_clean = ticker.replace("^", "").replace("=", "_")
-            output_filename = f'{ticker_clean}_{asset_type}_ATR_analysis_OPTIMIZED_{datetime.now().strftime("%Y%m%d")}.csv'
+            output_filename = f'{ticker_clean}_{asset_type}_ATR_analysis_{datetime.now().strftime("%Y%m%d")}.csv'
             st.download_button(
                 'Download Full Results CSV',
                 data=result_df.to_csv(index=False),
@@ -846,7 +1230,7 @@ def display_results(result_df, debug_messages, ticker, asset_type):
                 'Value': [len(result_df), result_df['Date'].nunique(), goals_hit, f"{hit_rate:.1f}%", f"{avg_atr:.2f}", same_time_count, open_triggers, cross_zero]
             }
             summary_df = pd.DataFrame(summary_data)
-            summary_filename = f'{ticker_clean}_{asset_type}_summary_OPTIMIZED_{datetime.now().strftime("%Y%m%d")}.csv'
+            summary_filename = f'{ticker_clean}_{asset_type}_summary_{datetime.now().strftime("%Y%m%d")}.csv'
             st.download_button(
                 'Download Summary CSV',
                 data=summary_df.to_csv(index=False),
@@ -854,14 +1238,14 @@ def display_results(result_df, debug_messages, ticker, asset_type):
                 mime='text/csv'
             )
         
-        st.success(f'Analysis complete for {ticker} using OPTIMIZED SYSTEMATIC logic!')
+        st.success(f'Analysis complete for {ticker} using SYSTEMATIC logic!')
         
     else:
         st.warning('No results generated - check processing information above')
 
 # Streamlit Interface
-st.title('🎯 Optimized ATR Analysis Generator')
-st.write('**Clean, focused ATR analysis with early exit optimization**')
+st.title('🎯 Simplified ATR Analysis Generator')
+st.write('**Clean, focused ATR analysis using pre-formatted CSV data**')
 st.write('**Upload your CSV file from the CSV Data Handler to get started**')
 
 # File upload section
@@ -949,14 +1333,11 @@ if data_file:
     config = AssetConfig.get_config(asset_type, extended_hours)
     session_filter = None  # Will be handled by CSV handler if needed
     
-    # Show optimization info
-    st.info("🚀 **OPTIMIZATION ENABLED**: Early exit logic will skip impossible trigger levels for faster processing")
-    
     # Run analysis button
     st.markdown("---")
     
-    if st.button('🚀 Generate ATR Analysis (OPTIMIZED)', type="primary", use_container_width=True):
-        with st.spinner('Processing with OPTIMIZED SYSTEMATIC logic...'):
+    if st.button('🚀 Generate ATR Analysis', type="primary", use_container_width=True):
+        with st.spinner('Processing with SYSTEMATIC logic...'):
             try:
                 result_df, debug_messages = main_analysis(
                     ticker=ticker,
@@ -995,26 +1376,6 @@ else:
         - No missing OHLC data
         """)
     
-    # Show optimization info
-    with st.expander("🚀 Optimization Details", expanded=False):
-        st.markdown("""
-        **Early Exit Logic:**
-        - **Below Direction**: Starts at +1.0 ATR (easiest to hit) and works toward -1.0
-        - **Above Direction**: Starts at -1.0 ATR (easiest to hit) and works toward +1.0
-        - **Breaks early**: When a trigger level doesn't hit, skips all remaining levels
-        - **Potential speedup**: 3-5x faster processing on typical datasets
-        
-        **What's preserved:**
-        - ✅ All triggered levels are still detected
-        - ✅ All goal completion logic unchanged
-        - ✅ Same systematic approach
-        - ✅ Identical results for triggered scenarios
-        
-        **What's different:**
-        - ❌ Untriggered levels are not recorded (they never were anyway)
-        - ❌ Processing order changed (but results are identical)
-        """)
-    
     # Show workflow
     with st.expander("🔧 Analysis Workflow", expanded=False):
         st.markdown("""
@@ -1023,7 +1384,7 @@ else:
         1. **Use CSV Data Handler** - Process your raw data files first
         2. **Upload Pre-formatted File** - Upload the output from CSV Data Handler
         3. **Configure Settings** - Ticker, asset type, analysis options
-        4. **Optimized Detection** - Early exit trigger and goal analysis
+        4. **Systematic Detection** - Trigger and goal analysis
         5. **Results Export** - Download full analysis or summary
         
         **🔍 What You Get:**
@@ -1059,12 +1420,12 @@ with col1:
 
 with col2:
     st.markdown("""
-    **🚀 Performance Optimized**
-    - Early exit logic implemented
-    - 3-5x faster processing
-    - Skips impossible trigger levels
-    - Preserves all actual results
-    - Smart trigger ordering
+    **📊 Simplified Input**
+    - Single CSV file upload
+    - Pre-formatted data expected
+    - No complex data handling
+    - Uses CSV Data Handler output
+    - Streamlined processing
     """)
 
 with col3:
@@ -1083,23 +1444,19 @@ st.markdown("""
 ---
 ### 🎯 About This Tool
 
-This is an **optimized ATR analysis tool** with early exit logic for faster processing.
+This is a **simplified ATR analysis tool** that works with pre-formatted CSV data from the CSV Data Handler.
 
 **Key Features:**
 - ✅ **Single CSV input** - Uses pre-formatted data with ATR and Prior_Base_Close
-- ✅ **Early exit optimization** - Skips impossible trigger levels for 3-5x speedup
-- ✅ **Preserved accuracy** - All triggered scenarios detected identically
-- ✅ **Smart ordering** - Checks most likely triggers first
-- ✅ **Systematic logic** - Core detection logic remains unchanged
-
-**Performance Improvement:**
-- **Before**: Check all 13 trigger levels × 489,713 records = ~6.4M checks
-- **After**: Early exit reduces to ~1.5-2M checks (average 3-5x speedup)
+- ✅ **Simplified interface** - Focus on the core analysis
+- ✅ **Clean data flow** - No complex parsing or validation needed
+- ✅ **Fast processing** - Streamlined for pre-calculated data
+- ✅ **Systematic logic** - Validated trigger/goal detection remains untouched
 
 **Perfect workflow:**
 1. **CSV Data Handler** → Process and calculate ATR/Prior_Base_Close
-2. **This Optimized Tool** → Run fast systematic trigger/goal analysis  
+2. **This ATR Tool** → Run systematic trigger/goal analysis  
 3. **Export Results** → Get clean CSV files for further analysis
 
-Fast, accurate, and thoroughly tested!
+Clean, focused, and efficient!
 """)
