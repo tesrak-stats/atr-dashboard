@@ -1916,7 +1916,7 @@ if st.session_state.get('last_processed_data') is not None:
             st.success("✅ Held as Analysis!")
             st.rerun()
 
-    else:
+else:
         # Show helpful instructions when no files are uploaded
         st.info("👆 **Please upload multiple CSV files to get started**")
         
