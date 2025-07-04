@@ -46,46 +46,10 @@ def calculate_atr(df, period=14):
     
     return df
 
-def calculate_8hour_atr(datetime_val, current_atr, previous_atr, asset_type):
-    """
-    Calculate 8-hour rolling ATR logic for futures sessions
-    Returns previous_atr for first 8 hours of session, current_atr after that
-    """
-    if asset_type == 'FUTURES':
-        # Futures session: 18:00 to 17:00 next day
-        hour = datetime_val.hour
-        
-        # Session starts at 18:00 (6 PM)
-        # First 8 hours: 18:00-02:00 (next day) use previous ATR
-        # Remaining hours: 02:00-17:00 use current ATR
-        
-        if hour >= 18:
-            # Same day, hours since 18:00
-            hours_into_session = hour - 18
-        else:
-            # Next day, hours since 18:00 yesterday
-            hours_into_session = (24 - 18) + hour
-        
-        # Use previous ATR for first 8 hours, current ATR after
-        return previous_atr if hours_into_session < 8 else current_atr
-    
-    else:
-        # Other assets use standard session logic
-        session_start = SESSION_STARTS.get(asset_type, 9)
-        hour = datetime_val.hour
-        
-        if hour >= session_start:
-            hours_into_session = hour - session_start
-        else:
-            hours_into_session = (24 - session_start) + hour
-        
-        return previous_atr if hours_into_session < 8 else current_atr
-
 def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_method='date_match', asset_type='STOCKS'):
     """
     Combine daily and intraday data with ATR calculation
-    Handles both file uploads and session state data
-    Now supports futures date boundary handling and 8-hour rolling ATR
+    SIMPLIFIED - Only outputs single ATR column with current ATR
     """
     results = []
     
@@ -357,6 +321,13 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             st.warning(f"⚠️ Found {duplicate_dates} duplicate dates in daily data. Using first occurrence of each date.")
             daily_df = daily_df.drop_duplicates(subset=['Date'], keep='first')
         
+        # FIXED: Correct day counting
+        unique_daily_dates = daily_df['Date'].nunique()
+        unique_intraday_dates = intraday_df['Date'].nunique()
+        
+        st.info(f"📅 **CORRECTED Day Count**: Daily data has {unique_daily_dates} unique days")
+        st.info(f"📅 **CORRECTED Day Count**: Intraday data has {unique_intraday_dates} unique days")
+        
         # Calculate ATR on daily data
         st.info("📊 Calculating ATR on daily data...")
         st.info(f"Daily data shape before ATR: {daily_df.shape}")
@@ -391,21 +362,6 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         st.success(f"✅ ATR calculated successfully: {len(valid_atr)} valid ATR values")
         
         # ATR quality check with realistic period requirements
-        if len(valid_atr) < atr_period * 4:  # Less than 4x the ATR period
-            st.error(f"🚨 **CRITICAL ATR WARNING**: Only {len(valid_atr)} valid ATR values")
-            st.error(f"Minimum recommended: {atr_period * 4} periods for {atr_period}-period ATR")
-            st.error("**ATR values may be unreliable - consider longer data history**")
-        elif len(valid_atr) < atr_period * 4:  # Less than 4x the ATR period (84 periods for 21-period ATR)
-            st.warning(f"⚠️ **ATR Quality Warning**: Only {len(valid_atr)} valid ATR values")
-            st.warning(f"Recommended minimum: {atr_period * 4} periods for robust {atr_period}-period ATR")
-            
-            # Show timeframe-specific guidance
-            if atr_period == 14:  # Standard daily ATR
-                st.info("📊 **Daily ATR**: Need ~56 days (2.8 months) minimum, prefer 84+ days (4 months)")
-            elif atr_period == 21:  # Common daily ATR
-                st.info("📊 **Daily ATR**: Need ~84 days (4 months) minimum")
-            
-        # Enhanced quality check based on your 84-period rule
         optimal_periods = max(84, atr_period * 4)  # Use 84 or 4x ATR period, whichever is higher
         
         if len(valid_atr) >= optimal_periods:
@@ -416,13 +372,6 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             st.warning(f"⚠️ **Marginal ATR Quality**: {len(valid_atr)} periods (recommended: {optimal_periods})")
         else:
             st.error(f"❌ **Poor ATR Quality**: {len(valid_atr)} periods (need: {optimal_periods}+)")
-            
-        # Show timeframe-specific requirements
-        st.info("📋 **ATR Quality Requirements by Timeframe:**")
-        st.info("   • **Daily ATR**: 84+ days (4 months) for reliable calculation")
-        st.info("   • **Weekly ATR**: 84+ weeks (1.6 years) for reliable calculation") 
-        st.info("   • **Monthly ATR**: 84+ months (7 years) for reliable calculation")
-        st.info("   • **Quarterly ATR**: 84+ quarters (21 years) for reliable calculation")
         
         # Store valid ATR data
         st.session_state['debug_valid_atr'] = valid_atr.copy()
@@ -444,27 +393,13 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
         if align_method == 'date_match':
             st.info("🔄 Combining data using date matching...")
             
-            # Create ATR lookup dict (safe method that handles duplicates)
+            # SIMPLIFIED: Only create current ATR lookup (no dual ATR)
             st.info("🔧 Creating ATR lookup dictionary...")
             atr_lookup = {}
-            previous_atr_lookup = {}
             
-            # Create both current and previous ATR lookups with trading days count
+            # Create current ATR lookup - this is the "currently used" ATR
             for i, row in daily_with_atr.iterrows():
                 atr_lookup[row['Date']] = row['ATR']
-                
-                # Previous ATR is the ATR from the previous row
-                if i > 0:
-                    previous_atr_lookup[row['Date']] = daily_with_atr.iloc[i-1]['ATR']
-                else:
-                    previous_atr_lookup[row['Date']] = row['ATR']  # First row uses same ATR
-            
-            # Calculate trading days used for each ATR calculation
-            trading_days_lookup = {}
-            for i, row in daily_with_atr.iterrows():
-                # Count non-null ATR values up to this point
-                valid_atr_count = daily_with_atr.iloc[:i+1]['ATR'].notna().sum()
-                trading_days_lookup[row['Date']] = min(valid_atr_count, atr_period + 50)  # Cap at reasonable number
             
             st.info(f"📊 ATR lookup created with {len(atr_lookup)} entries")
             
@@ -484,33 +419,22 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             
             st.info(f"🔍 Daily ATR around intraday start:\n{daily_around_start}")
             
-            # Find first valid ATR in daily data after intraday start
-            valid_daily_after_start = daily_with_atr[
-                (daily_with_atr['Date'] >= intraday_start_date) & 
-                (daily_with_atr['ATR'].notna())
-            ].head(5)
-            
-            st.info(f"🔍 First valid daily ATR after intraday start:\n{valid_daily_after_start[['Date', 'ATR']]}")
-            
             sample_lookups = []
             for date in sample_intraday_dates:
                 atr_val = atr_lookup.get(date, 'NOT_FOUND')
                 sample_lookups.append(f"{date}: {atr_val}")
             st.info(f"🔍 Sample ATR lookups: {sample_lookups}")
             
-            # Add all ATR columns to intraday data
+            # SIMPLIFIED: Add only single ATR column to intraday data
             st.info("📊 Mapping ATR values to intraday data...")
-            intraday_df['ATR_Current'] = intraday_df['Date'].map(atr_lookup)
-            intraday_df['ATR_Previous'] = intraday_df['Date'].map(previous_atr_lookup)
-            intraday_df['ATR_Trading_Days'] = intraday_df['Date'].map(trading_days_lookup)
+            intraday_df['ATR'] = intraday_df['Date'].map(atr_lookup)
             
             # Show ATR calculation info
-            st.info(f"✅ Dual ATR columns calculated:")
-            st.info("📊 **ATR_Current**: Today's ATR (calculated through yesterday)")
-            st.info("📊 **ATR_Previous**: Yesterday's ATR (for rolling 8-hour analysis)")
+            st.info(f"✅ Single ATR column calculated:")
+            st.info("📊 **ATR**: Currently used ATR (from last complete base time period)")
             
             # Check how many matches we got
-            matched_atr = intraday_df['ATR_Current'].notna().sum()
+            matched_atr = intraday_df['ATR'].notna().sum()
             total_intraday = len(intraday_df)
             st.info(f"✅ ATR mapping result: {matched_atr}/{total_intraday} intraday records got ATR values")
             
@@ -518,19 +442,7 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             st.session_state['debug_intraday_with_atr'] = intraday_df.copy()
             
             # Filter to only intraday records with ATR - KEEP ALL COLUMNS
-            combined_df = intraday_df[intraday_df['ATR_Current'].notna()].copy()
-            
-            # Rename ATR_Current to ATR for backwards compatibility, but KEEP ATR_Previous
-            combined_df = combined_df.rename(columns={'ATR_Current': 'ATR'})
-            
-            # Ensure we have both ATR columns in final output
-            required_columns = ['ATR', 'ATR_Previous', 'ATR_Trading_Days']
-            for col in required_columns:
-                if col not in combined_df.columns:
-                    st.error(f"❌ Missing required column: {col}")
-            
-            st.success(f"✅ **Dual ATR columns preserved**: ATR (current day) and ATR_Previous (prior day)")
-            st.success(f"✅ **Trading days tracking**: ATR_Trading_Days column added")
+            combined_df = intraday_df[intraday_df['ATR'].notna()].copy()
             
             if combined_df.empty:
                 st.error("❌ No date overlap between daily and intraday data")
@@ -541,50 +453,6 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
                 overlap_start = max(daily_start, intraday_start)
                 overlap_end = min(daily_end, intraday_end)
                 st.error(f"Expected overlap: {overlap_start} to {overlap_end}")
-                
-                # Show sample of data for debugging
-                st.error("Debug - Daily dates sample:")
-                st.error(str(daily_with_atr['Date'].head(10).tolist()))
-                st.error("Debug - Intraday dates sample:")
-                st.error(str(intraday_df['Date'].head(10).tolist()))
-                st.error("Debug - ATR values sample:")
-                st.error(str(intraday_df['ATR_Current'].head(10).tolist()))
-                
-                # Show debug download buttons only when there's an error
-                st.subheader("🔍 Debug Data Downloads")
-                st.info("💡 **Download these files to debug the issue:**")
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    if 'debug_daily_with_atr' in st.session_state:
-                        st.download_button(
-                            "📥 Daily with ATR",
-                            data=st.session_state['debug_daily_with_atr'].to_csv(index=False),
-                            file_name=f"debug_daily_with_atr_{datetime.now().strftime('%H%M%S')}.csv",
-                            mime="text/csv",
-                            key="download_daily_atr"
-                        )
-                
-                with col2:
-                    if 'debug_valid_atr' in st.session_state:
-                        st.download_button(
-                            "📥 Valid ATR Only",
-                            data=st.session_state['debug_valid_atr'].to_csv(index=False),
-                            file_name=f"debug_valid_atr_{datetime.now().strftime('%H%M%S')}.csv",
-                            mime="text/csv",
-                            key="download_valid_atr"
-                        )
-                
-                with col3:
-                    if 'debug_intraday_with_atr' in st.session_state:
-                        st.download_button(
-                            "📥 Intraday with ATR",
-                            data=st.session_state['debug_intraday_with_atr'].to_csv(index=False),
-                            file_name=f"debug_intraday_atr_{datetime.now().strftime('%H%M%S')}.csv",
-                            mime="text/csv",
-                            key="download_intraday_atr"
-                        )
                 
                 return None
             
@@ -1065,71 +933,6 @@ class CSVProcessor:
         
         # Then, try to detect and split datetime columns
         df = CSVProcessor.detect_and_split_datetime(df)
-        """
-        Detect datetime columns and split them into Date and Time if needed
-        Handles various datetime formats and column names
-        """
-        # Common datetime column names to check
-        datetime_candidates = ['datetime', 'timestamp', 'date_time', 'date time', 'dateTime', 'date/time', 'dt']
-        
-        for col in df.columns:
-            if col.lower() in datetime_candidates:
-                try:
-                    # Try to parse as datetime
-                    parsed_datetime = pd.to_datetime(df[col])
-                    
-                    # Check if this column has time information
-                    has_time_info = (parsed_datetime.dt.hour != 0).any() or (parsed_datetime.dt.minute != 0).any()
-                    
-                    if has_time_info:
-                        st.info(f"🔄 **Auto-detected**: '{col}' contains datetime information - splitting into Date and Time")
-                        
-                        # Create separate Date and Time columns
-                        df['Date'] = parsed_datetime.dt.date
-                        df['Time'] = parsed_datetime.dt.time
-                        df['Datetime'] = parsed_datetime
-                        
-                        # Remove original column if it's not already standardized
-                        if col not in ['Date', 'Time', 'Datetime']:
-                            df = df.drop(columns=[col])
-                        
-                        return df
-                        
-                except Exception:
-                    continue
-        
-        # Check if Date column might contain datetime info
-        if 'Date' in df.columns and 'Time' not in df.columns:
-            try:
-                # Sample a few values to check format
-                sample_values = df['Date'].head(10).astype(str)
-                
-                # Look for time patterns in the date column
-                has_time_pattern = any(
-                    ':' in str(val) and len(str(val)) > 10 
-                    for val in sample_values
-                )
-                
-                if has_time_pattern:
-                    parsed_datetime = pd.to_datetime(df['Date'])
-                    
-                    # Check if parsed values actually have time info
-                    has_time_info = (parsed_datetime.dt.hour != 0).any() or (parsed_datetime.dt.minute != 0).any()
-                    
-                    if has_time_info:
-                        st.info("🔄 **Auto-detected**: Date column contains time information - splitting into Date and Time")
-                        
-                        # Split into separate columns
-                        df['Time'] = parsed_datetime.dt.time
-                        df['Date'] = parsed_datetime.dt.date
-                        df['Datetime'] = parsed_datetime
-                        
-                        return df
-                        
-            except Exception:
-                pass
-        
-        return df
         
         # Common column mappings
         column_mappings = {
@@ -1539,9 +1342,103 @@ class CSVProcessor:
         else:
             return None, file_info
 
+# FIXED: Custom Candle Generator for Single File Resampler
+class CustomCandleGenerator:
+    """Generate custom candles with flexible time periods"""
+    
+    @staticmethod
+    def create_custom_candles_advanced(df, custom_periods):
+        """
+        Advanced custom candle creation with full flexibility
+        Can create any number of candles per day with any time ranges
+        """
+        df = df.copy()
+        
+        # Ensure we have a Datetime column
+        df = CSVProcessor.create_datetime_column(df)
+        
+        # Group by date
+        df['Date_only'] = df['Datetime'].dt.date
+        daily_groups = df.groupby('Date_only')
+        
+        custom_candles = []
+        
+        st.info(f"🕯️ **Creating {len(custom_periods)} custom candles per day**")
+        
+        for date, day_data in daily_groups:
+            for period_idx, period in enumerate(custom_periods):
+                period_name = period['name']
+                start_time = pd.to_datetime(period['start'], format='%H:%M').time()
+                end_time = pd.to_datetime(period['end'], format='%H:%M').time()
+                
+                # Filter data for this time period
+                day_data = day_data.copy()
+                day_data['Time_obj'] = day_data['Datetime'].dt.time
+                
+                # Handle periods that might cross midnight
+                if start_time <= end_time:
+                    # Normal period within same day
+                    period_mask = (day_data['Time_obj'] >= start_time) & (day_data['Time_obj'] <= end_time)
+                else:
+                    # Period crosses midnight (e.g., 22:00 to 06:00)
+                    period_mask = (day_data['Time_obj'] >= start_time) | (day_data['Time_obj'] <= end_time)
+                
+                period_data = day_data[period_mask]
+                
+                if not period_data.empty:
+                    # Sort by time to ensure proper OHLC
+                    period_data = period_data.sort_values('Datetime')
+                    
+                    # Create OHLC candle for this period
+                    candle = {
+                        'Date': date,
+                        'Datetime': pd.Timestamp.combine(date, start_time),
+                        'Period_Name': period_name,
+                        'Period_Start': period['start'],
+                        'Period_End': period['end'],
+                        'Open': period_data['Open'].iloc[0],
+                        'High': period_data['High'].max(),
+                        'Low': period_data['Low'].min(),
+                        'Close': period_data['Close'].iloc[-1],
+                        'Records_Used': len(period_data)  # Debug info
+                    }
+                    
+                    # Add volume if present
+                    if 'Volume' in period_data.columns:
+                        candle['Volume'] = period_data['Volume'].sum()
+                    
+                    custom_candles.append(candle)
+        
+        if custom_candles:
+            result_df = pd.DataFrame(custom_candles)
+            result_df = result_df.sort_values(['Date', 'Period_Start']).reset_index(drop=True)
+            
+            # Show summary
+            total_days = result_df['Date'].nunique()
+            candles_per_day = len(custom_periods)
+            st.success(f"✅ **Custom Candles Created**: {len(result_df)} candles from {total_days} days")
+            st.info(f"📊 **Pattern**: {candles_per_day} candles per day × {total_days} days")
+            
+            return result_df
+        else:
+            st.error("❌ No custom candles created - check time periods and data availability")
+            return pd.DataFrame()
+
 # Streamlit Interface
 st.title('📊 Enhanced CSV Data Handler')
 st.write('**Combine multiple CSV files and resample to any timeframe you need**')
+
+# FIXED: Persistent session state for holding data
+def initialize_session_state():
+    """Initialize session state variables if they don't exist"""
+    if 'last_processed_data' not in st.session_state:
+        st.session_state['last_processed_data'] = None
+    if 'last_processed_filename' not in st.session_state:
+        st.session_state['last_processed_filename'] = None
+    if 'last_processed_summary' not in st.session_state:
+        st.session_state['last_processed_summary'] = None
+
+initialize_session_state()
 
 # Sidebar for held data workspace
 with st.sidebar:
@@ -1836,14 +1733,21 @@ if mode == "📁 Multi-CSV Processor":
                     st.balloons()  # Celebration animation
                     st.success(f"🎉 **Successfully processed {len(uploaded_files)} files!**")
                     
+                    # Generate filename
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    if processing_config['processing_type'] == 'standard_resample':
+                        combined_filename = f"Combined_{processing_config['target_timeframe']}_{timestamp}.csv"
+                    else:
+                        combined_filename = f"Combined_CustomCandles_{len(processing_config['custom_periods'])}periods_{timestamp}.csv"
+                    
                     # Store the processed data in session state IMMEDIATELY
                     st.session_state['last_processed_data'] = combined_data.copy()
                     st.session_state['last_processed_filename'] = combined_filename
-                    st.session_state['last_processed_summary'] = summary_df.copy()
                     
                     # Show file processing summary
                     st.subheader("📋 Processing Summary")
                     summary_df = pd.DataFrame(file_info)
+                    st.session_state['last_processed_summary'] = summary_df.copy()
                     st.dataframe(summary_df, use_container_width=True)
                     
                     # Show combined data preview
@@ -1862,17 +1766,9 @@ if mode == "📁 Multi-CSV Processor":
                         else:
                             st.metric("Periods/Day", len(processing_config['custom_periods']))
                     with col4:
-                        if processing_config['processing_type'] == 'standard_resample' and processing_config.get('filter_start'):
-                            st.metric("Time Filter", f"{processing_config['filter_start']}-{processing_config['filter_end']}")
-                        elif processing_config['processing_type'] == 'custom_candles':
-                            st.metric("Candle Type", "Custom Periods")
-                        else:
-                            st.metric("Processing", "All Data")
-                    
-                    # Store the processed data in session state for persistent access
-                    st.session_state['last_processed_data'] = combined_data
-                    st.session_state['last_processed_filename'] = combined_filename
-                    st.session_state['last_processed_summary'] = summary_df
+                        # FIXED: Correct day counting
+                        unique_days = combined_data['Date'].nunique()
+                        st.metric("Unique Days", f"{unique_days:,}")
                     
                     # Download and workflow options
                     st.markdown("---")
@@ -1904,10 +1800,6 @@ if mode == "📁 Multi-CSV Processor":
                             key="download_summary",
                             use_container_width=True
                         )
-                        
-                        # Show download status
-                        if st.session_state.get('download_status'):
-                            st.success("✅ Download completed!")
                     
                     with col2:
                         st.markdown("### 🔄 Continue Processing")
@@ -1917,15 +1809,16 @@ if mode == "📁 Multi-CSV Processor":
                         
                         col_a, col_b = st.columns(2)
                         with col_a:
+                            # FIXED: Hold buttons that don't break download
                             if st.button("📊 Hold as Base\n(ATR Source)", key="use_as_base", use_container_width=True):
-                                st.session_state['atr_combiner_base_data'] = combined_data
+                                st.session_state['atr_combiner_base_data'] = combined_data.copy()
                                 st.session_state['atr_combiner_base_filename'] = combined_filename
                                 st.success("✅ Saved as Base!")
                                 st.info("💡 Switch to **ATR Combiner** mode")
                         
                         with col_b:
                             if st.button("📈 Hold as Analysis\n(Intraday)", key="use_as_analysis", use_container_width=True):
-                                st.session_state['atr_combiner_analysis_data'] = combined_data
+                                st.session_state['atr_combiner_analysis_data'] = combined_data.copy()
                                 st.session_state['atr_combiner_analysis_filename'] = combined_filename
                                 st.success("✅ Saved as Analysis!")
                                 st.info("💡 Switch to **ATR Combiner** mode")
@@ -1935,81 +1828,16 @@ if mode == "📁 Multi-CSV Processor":
                             st.info("📊 **Base data held** in workspace")
                         if 'atr_combiner_analysis_data' in st.session_state:
                             st.info("📈 **Analysis data held** in workspace")
-                        
-                        # Quick navigation
-                        st.markdown("**Or continue with:**")
-                        
-                        if st.button("🔄 Process More Files", key="process_more", use_container_width=True):
-                            st.info("💡 Upload more files above to continue processing")
-                        
-                        if st.button("🎯 Go to ATR Combiner", key="goto_atr_combiner", use_container_width=True):
-                            st.info("💡 Switch to **Multi-Timeframe ATR Combiner** mode using the dropdown above")
-                    
-                    # Persistent action buttons - always visible
-                    st.markdown("---")
-                    st.markdown("### 🎯 **Persistent Actions** (Always Available)")
-                    
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        if st.button("🔄 **Download Again**", key="download_again", use_container_width=True):
-                            # Create a new download button that doesn't cause re-run
-                            st.download_button(
-                                "📥 Click to Download",
-                                data=combined_data.to_csv(index=False),
-                                file_name=combined_filename,
-                                mime="text/csv",
-                                key="download_persistent",
-                                use_container_width=True
-                            )
-                    
-                    with col2:
-                        if st.button("📊 **Hold as Base**", key="hold_base_persistent", use_container_width=True):
-                            st.session_state['atr_combiner_base_data'] = combined_data
-                            st.session_state['atr_combiner_base_filename'] = combined_filename
-                            st.success("✅ Held as Base!")
-                            st.info("💡 **Data successfully stored** - Check sidebar workspace or switch to ATR Combiner mode")
-                            # Force a small delay to ensure session state is saved
-                            time_module.sleep(0.1)
-                    
-                    with col3:
-                        if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent", use_container_width=True):
-                            st.session_state['atr_combiner_analysis_data'] = combined_data
-                            st.session_state['atr_combiner_analysis_filename'] = combined_filename
-                            st.success("✅ Held as Analysis!")
-                            st.info("💡 **Data successfully stored** - Check sidebar workspace or switch to ATR Combiner mode")
-                            # Force a small delay to ensure session state is saved
-                            time_module.sleep(0.1)
-                    
-                    # Show current hold status immediately
-                    st.markdown("### 📊 **Current Hold Status**")
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        if 'atr_combiner_base_data' in st.session_state:
-                            base_records = len(st.session_state['atr_combiner_base_data'])
-                            st.success(f"📊 **Base Data Held**: {base_records:,} records")
-                        else:
-                            st.info("📊 **Base Data**: Not held")
-                    
-                    with col2:
-                        if 'atr_combiner_analysis_data' in st.session_state:
-                            analysis_records = len(st.session_state['atr_combiner_analysis_data'])
-                            st.success(f"📈 **Analysis Data Held**: {analysis_records:,} records")
-                        else:
-                            st.info("📈 **Analysis Data**: Not held")
-                    
-                    # Processing success summary
-                    st.markdown("---")
-                    st.success(f"🎉 **Processing Complete!** Ready to download: **{combined_filename}**")
                     
                     # Show final data characteristics
-                    st.markdown("### 📊 Final Dataset Characteristics")
+                    st.markdown("---")
+                    st.subheader("📊 Final Dataset Characteristics")
                     
                     col1, col2, col3 = st.columns(3)
                     
                     with col1:
-                        st.metric("📅 Date Span", f"{(combined_data['Date'].max() - combined_data['Date'].min()).days} days")
+                        date_span = (combined_data['Date'].max() - combined_data['Date'].min()).days
+                        st.metric("📅 Date Span", f"{date_span} days")
                     
                     with col2:
                         if processing_config['processing_type'] == 'standard_resample':
@@ -2018,7 +1846,8 @@ if mode == "📁 Multi-CSV Processor":
                             st.metric("🕐 Periods/Day", len(processing_config['custom_periods']))
                     
                     with col3:
-                        avg_daily_records = len(combined_data) / max(1, len(combined_data['Date'].unique()))
+                        unique_days = combined_data['Date'].nunique()
+                        avg_daily_records = len(combined_data) / max(1, unique_days)
                         st.metric("📊 Avg Records/Day", f"{avg_daily_records:.1f}")
                     
                     # Show what's ready for ATR analysis
@@ -2047,7 +1876,46 @@ if mode == "📁 Multi-CSV Processor":
                     
                 else:
                     st.error("❌ Failed to process CSV files. Please check the file processing summary above.")
+
+# FIXED: Show persistent actions for last processed data
+if st.session_state.get('last_processed_data') is not None:
+    st.markdown("---")
+    st.subheader("🔄 **Continue with Last Processed Data**")
     
+    last_data = st.session_state['last_processed_data']
+    last_filename = st.session_state['last_processed_filename']
+    
+    st.info(f"📊 **Available**: {last_filename} ({len(last_data):,} records)")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # Persistent download button
+        st.download_button(
+            "📥 **Download Again**",
+            data=last_data.to_csv(index=False),
+            file_name=last_filename,
+            mime="text/csv",
+            key="download_persistent",
+            use_container_width=True
+        )
+    
+    with col2:
+        # Persistent hold as base
+        if st.button("📊 **Hold as Base**", key="hold_base_persistent", use_container_width=True):
+            st.session_state['atr_combiner_base_data'] = last_data.copy()
+            st.session_state['atr_combiner_base_filename'] = last_filename
+            st.success("✅ Held as Base!")
+            st.rerun()
+    
+    with col3:
+        # Persistent hold as analysis
+        if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent", use_container_width=True):
+            st.session_state['atr_combiner_analysis_data'] = last_data.copy()
+            st.session_state['atr_combiner_analysis_filename'] = last_filename
+            st.success("✅ Held as Analysis!")
+            st.rerun()
+
     else:
         # Show helpful instructions when no files are uploaded
         st.info("👆 **Please upload multiple CSV files to get started**")
@@ -2200,12 +2068,12 @@ elif mode == "📈 Public Data Download":
             if hasattr(held_end, 'date'):
                 held_end = held_end.date()
             
-            # For daily data to support intraday analysis, suggest earlier start
+            # For base data to support analysis, suggest earlier start
             suggested_start = held_start - timedelta(days=180)  # 6 months before for ATR
             suggested_end = held_end + timedelta(days=5)  # Few days after
-            suggestion_context = f"📈 **Smart suggestion based on held intraday data** ({held_start} to {held_end})"
+            suggestion_context = f"📈 **Smart suggestion based on held analysis data** ({held_start} to {held_end})"
             
-            st.info(f"🔍 **Detected held intraday data**: {held_start} to {held_end}")
+            st.info(f"🔍 **Detected held analysis data**: {held_start} to {held_end}")
             st.info("💡 **Suggested range**: Extended back 6 months to provide ATR calculation buffer")
     
     # Date range selection - full width
@@ -2258,20 +2126,20 @@ elif mode == "📈 Public Data Download":
         
         with col1:
             # Simple date range with automatic buffer
-            intraday_start = st.date_input(
-                "Intraday Analysis Start Date",
+            analysis_start = st.date_input(
+                "Analysis Period Start Date",
                 value=suggested_start if suggested_start else date(2024, 1, 1),
                 min_value=date(1850, 1, 1),
                 max_value=date.today(),
-                help="When you want your intraday analysis to begin"
+                help="When you want your analysis period to begin"
             )
             
-            intraday_end = st.date_input(
-                "Intraday Analysis End Date", 
+            analysis_end = st.date_input(
+                "Analysis Period End Date", 
                 value=suggested_end if suggested_end else date.today(),
                 min_value=date(1850, 1, 1),
                 max_value=date.today(),
-                help="When you want your intraday analysis to end"
+                help="When you want your analysis period to end"
             )
         
         with col2:
@@ -2281,11 +2149,11 @@ elif mode == "📈 Public Data Download":
                 4, 300, 12,  # 4 months to 25 years, default 1 year
                 help="Historical data buffer based on target ATR timeframe"
             )
-            daily_start = intraday_start - timedelta(days=buffer_months * 30)
-            daily_end = intraday_end + timedelta(days=5)
+            data_start = analysis_start - timedelta(days=buffer_months * 30)
+            data_end = analysis_end + timedelta(days=5)
             
             buffer_years = buffer_months / 12
-            st.info(f"📊 Daily data will span: {daily_start} to {daily_end}")
+            st.info(f"📊 Data will span: {data_start} to {data_end}")
             st.info(f"📈 Buffer: {buffer_months} months ({buffer_years:.1f} years)")
             
             # Show ATR calculation guidance based on 84-period rule
@@ -2317,75 +2185,75 @@ elif mode == "📈 Public Data Download":
         col1, col2 = st.columns(2)
         
         with col1:
-            daily_start = st.date_input(
-                "Daily Data Start Date", 
+            data_start = st.date_input(
+                "Data Start Date", 
                 value=suggested_start if suggested_start else date(2023, 1, 1),
                 min_value=date(1850, 1, 1),
                 max_value=date.today(),
-                help="Start date for daily data download"
+                help="Start date for data download"
             )
         
         with col2:
-            daily_end = st.date_input(
-                "Daily Data End Date", 
+            data_end = st.date_input(
+                "Data End Date", 
                 value=suggested_end if suggested_end else date.today(),
                 min_value=date(1850, 1, 1),
                 max_value=date.today(),
-                help="End date for daily data download"
+                help="End date for data download"
             )
     
-    if st.button("🚀 Download Daily Data", type="primary"):
+    if st.button("🚀 Download Data", type="primary"):
         if not ticker:
             st.error("❌ Please enter a ticker symbol")
         else:
             mapped_ticker = TickerMapper.get_public_ticker(ticker)
             
-            with st.spinner(f'Downloading daily data for {mapped_ticker}...'):
+            with st.spinner(f'Downloading data for {mapped_ticker}...'):
                 try:
-                    daily_data = yf.download(mapped_ticker, start=daily_start, end=daily_end, interval='1d', progress=False)
+                    downloaded_data = yf.download(mapped_ticker, start=data_start, end=data_end, interval='1d', progress=False)
                     
-                    if not daily_data.empty:
+                    if not downloaded_data.empty:
                         # Reset index and clean columns
-                        daily_data.reset_index(inplace=True)
+                        downloaded_data.reset_index(inplace=True)
                         
                         # Handle MultiIndex columns
-                        if isinstance(daily_data.columns, pd.MultiIndex):
-                            daily_data.columns = daily_data.columns.get_level_values(0)
+                        if isinstance(downloaded_data.columns, pd.MultiIndex):
+                            downloaded_data.columns = downloaded_data.columns.get_level_values(0)
                         
                         # Ensure Date column
-                        if 'Date' not in daily_data.columns and len(daily_data.columns) > 0:
-                            daily_data.rename(columns={daily_data.columns[0]: 'Date'}, inplace=True)
+                        if 'Date' not in downloaded_data.columns and len(downloaded_data.columns) > 0:
+                            downloaded_data.rename(columns={downloaded_data.columns[0]: 'Date'}, inplace=True)
                         
                         # Validate date completeness
-                        daily_data['Date'] = pd.to_datetime(daily_data['Date'])
-                        actual_start = daily_data['Date'].min().date()
-                        actual_end = daily_data['Date'].max().date()
+                        downloaded_data['Date'] = pd.to_datetime(downloaded_data['Date'])
+                        actual_start = downloaded_data['Date'].min().date()
+                        actual_end = downloaded_data['Date'].max().date()
                         
-                        st.success(f"✅ Downloaded {len(daily_data)} daily records")
-                        st.info(f"📅 **Requested range**: {daily_start} to {daily_end}")
+                        st.success(f"✅ Downloaded {len(downloaded_data)} records")
+                        st.info(f"📅 **Requested range**: {data_start} to {data_end}")
                         st.info(f"📅 **Actual range**: {actual_start} to {actual_end}")
                         
                         # Check for date gaps
-                        if actual_start > daily_start:
-                            missing_days = (actual_start - daily_start).days
+                        if actual_start > data_start:
+                            missing_days = (actual_start - data_start).days
                             st.warning(f"⚠️ **Missing early data**: {missing_days} days missing from start of requested range")
-                            st.warning(f"Data starts {actual_start} instead of {daily_start}")
+                            st.warning(f"Data starts {actual_start} instead of {data_start}")
                         
-                        if actual_end < daily_end:
-                            missing_days = (daily_end - actual_end).days
+                        if actual_end < data_end:
+                            missing_days = (data_end - actual_end).days
                             st.warning(f"⚠️ **Missing recent data**: {missing_days} days missing from end of requested range")
-                            st.warning(f"Data ends {actual_end} instead of {daily_end}")
+                            st.warning(f"Data ends {actual_end} instead of {data_end}")
                         
                         # Check for weekends/holidays vs actual gaps
-                        requested_trading_days = pd.bdate_range(start=daily_start, end=daily_end)
-                        actual_trading_days = pd.to_datetime(daily_data['Date']).dt.date
+                        requested_trading_days = pd.bdate_range(start=data_start, end=data_end)
+                        actual_trading_days = pd.to_datetime(downloaded_data['Date']).dt.date
                         
                         # Calculate trading day completeness (more accurate)
                         trading_day_completeness = (len(actual_trading_days) / len(requested_trading_days)) * 100 if len(requested_trading_days) > 0 else 100
                         
                         # Calculate calendar day completeness (original method)
-                        requested_calendar_days = (daily_end - daily_start).days
-                        actual_calendar_days = len(daily_data)
+                        requested_calendar_days = (data_end - data_start).days
+                        actual_calendar_days = len(downloaded_data)
                         calendar_completeness = (actual_calendar_days / requested_calendar_days) * 100 if requested_calendar_days > 0 else 100
                         
                         st.info(f"📊 **Trading days analysis**: {len(actual_trading_days)} of {len(requested_trading_days)} trading days ({trading_day_completeness:.1f}%)")
@@ -2429,41 +2297,23 @@ elif mode == "📈 Public Data Download":
                             elif '=F' in mapped_ticker:
                                 st.info("   • Futures: May have different trading schedules or contract rollovers")
                         
-                        # Overall completeness
-                        requested_days = (daily_end - daily_start).days
-                        actual_days = len(daily_data)
-                        completeness = (actual_days / requested_days) * 100 if requested_days > 0 else 100
-                        
-                        # Store data validation info for downstream use
-                        daily_data['_data_validation'] = f"Requested: {daily_start} to {daily_end}, Actual: {actual_start} to {actual_end}, Completeness: {completeness:.1f}%"
-                        
-                        if completeness < 90:
-                            st.error(f"❌ **Low data completeness**: {completeness:.1f}% of requested date range")
-                            st.error("🚨 **CRITICAL**: This data may be insufficient for reliable analysis!")
-                            st.error("**Recommendation**: Check ticker symbol, adjust date range, or use alternative data source")
-                        elif completeness < 95:
-                            st.warning(f"⚠️ **Partial data completeness**: {completeness:.1f}% of requested date range")
-                            st.warning("⚠️ **CAUTION**: Analysis results may be affected by missing data")
-                        else:
-                            st.success(f"✅ **Good data completeness**: {completeness:.1f}% of requested date range")
-                        
                         # Add data quality metrics to the dataframe for later reference
-                        daily_data.attrs['requested_start'] = daily_start
-                        daily_data.attrs['requested_end'] = daily_end
-                        daily_data.attrs['actual_start'] = actual_start
-                        daily_data.attrs['actual_end'] = actual_end
-                        daily_data.attrs['completeness'] = completeness
-                        daily_data.attrs['data_source'] = f"Yahoo Finance ({mapped_ticker})"
+                        downloaded_data.attrs['requested_start'] = data_start
+                        downloaded_data.attrs['requested_end'] = data_end
+                        downloaded_data.attrs['actual_start'] = actual_start
+                        downloaded_data.attrs['actual_end'] = actual_end
+                        downloaded_data.attrs['completeness'] = completeness
+                        downloaded_data.attrs['data_source'] = f"Yahoo Finance ({mapped_ticker})"
                         
                         # Show preview
                         st.subheader("📋 Data Preview")
-                        st.dataframe(daily_data.head(), use_container_width=True)
+                        st.dataframe(downloaded_data.head(), use_container_width=True)
                         
                         # Download button
-                        filename = f"{ticker}_daily_{daily_start.strftime('%Y%m%d')}_to_{daily_end.strftime('%Y%m%d')}.csv"
+                        filename = f"{ticker}_data_{data_start.strftime('%Y%m%d')}_to_{data_end.strftime('%Y%m%d')}.csv"
                         st.download_button(
-                            "📥 Download Daily CSV",
-                            data=daily_data.to_csv(index=False),
+                            "📥 Download CSV",
+                            data=downloaded_data.to_csv(index=False),
                             file_name=filename,
                             mime="text/csv"
                         )
@@ -2474,14 +2324,14 @@ elif mode == "📈 Public Data Download":
                         
                         with col1:
                             if st.button("📊 Use as Base Timeframe (ATR Source)", key="yahoo_use_as_base"):
-                                st.session_state['atr_combiner_base_data'] = daily_data
+                                st.session_state['atr_combiner_base_data'] = downloaded_data
                                 st.session_state['atr_combiner_base_filename'] = filename
                                 st.success("✅ Data saved as Base Timeframe for ATR Combiner!")
                                 st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
                         
                         with col2:
-                            if st.button("📈 Use as Analysis Timeframe (Intraday)", key="yahoo_use_as_analysis"):
-                                st.session_state['atr_combiner_analysis_data'] = daily_data
+                            if st.button("📈 Use as Analysis Timeframe", key="yahoo_use_as_analysis"):
+                                st.session_state['atr_combiner_analysis_data'] = downloaded_data
                                 st.session_state['atr_combiner_analysis_filename'] = filename
                                 st.success("✅ Data saved as Analysis Timeframe for ATR Combiner!")
                                 st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
@@ -2499,7 +2349,7 @@ elif mode == "📈 Public Data Download":
                     st.error(f"❌ Download failed: {str(e)}")
 
 # ========================================================================================
-# SINGLE FILE RESAMPLER
+# SINGLE FILE RESAMPLER (FIXED - Real Custom Candle Generator)
 # ========================================================================================
 elif mode == "🔧 Single File Resampler":
     st.header("🔧 Single File Resampler")
@@ -2536,29 +2386,197 @@ elif mode == "🔧 Single File Resampler":
             with col1:
                 st.subheader("🎯 Resampling Options")
                 
-                # Standard timeframes
-                timeframe_category = st.selectbox(
-                    "Timeframe Category",
-                    ["Minutes", "Hours", "Daily/Weekly"]
+                # Processing method selection
+                processing_method = st.radio(
+                    "Processing Method",
+                    ["Standard Resampling", "Custom Candle Generator"],
+                    help="Choose between standard timeframe resampling or custom candle periods",
+                    key="processing_method_single"
                 )
                 
-                if timeframe_category == "Minutes":
-                    resample_timeframe = st.selectbox(
-                        "Target Timeframe",
-                        ["1T", "2T", "5T", "10T", "15T", "30T"],
-                        index=3
+                if processing_method == "Standard Resampling":
+                    # Standard timeframes
+                    timeframe_category = st.selectbox(
+                        "Timeframe Category",
+                        ["Minutes", "Hours", "Daily/Weekly"]
                     )
-                elif timeframe_category == "Hours":
-                    resample_timeframe = st.selectbox(
-                        "Target Timeframe",
-                        ["1H", "2H", "3H", "4H", "6H", "8H", "12H"]
+                    
+                    if timeframe_category == "Minutes":
+                        resample_timeframe = st.selectbox(
+                            "Target Timeframe",
+                            ["1T", "2T", "5T", "10T", "15T", "30T"],
+                            index=3
+                        )
+                    elif timeframe_category == "Hours":
+                        resample_timeframe = st.selectbox(
+                            "Target Timeframe",
+                            ["1H", "2H", "3H", "4H", "6H", "8H", "12H"]
+                        )
+                    else:  # Daily/Weekly
+                        resample_timeframe = st.selectbox(
+                            "Target Timeframe",
+                            ["1D", "WEEKLY", "MONTHLY", "QUARTERLY"],
+                            help="1D = Daily aggregation from intraday data"
+                        )
+                
+                else:  # Custom Candle Generator
+                    st.info("🕯️ **Custom Candle Generator**")
+                    st.write("Create multiple custom candles per day with flexible time periods")
+                    
+                    # Number of candles per day
+                    num_candles = st.number_input(
+                        "Candles per Day",
+                        min_value=1,
+                        max_value=10,
+                        value=2,
+                        help="How many custom candles to create per trading day"
                     )
-                else:  # Daily/Weekly
-                    resample_timeframe = st.selectbox(
-                        "Target Timeframe",
-                        ["1D", "WEEKLY", "MONTHLY", "QUARTERLY"],
-                        help="1D = Daily aggregation from intraday data"
+                    
+                    # Preset templates
+                    preset_templates = {
+                        "Morning/Afternoon": [
+                            {"name": "Morning", "start": "09:30", "end": "12:00"},
+                            {"name": "Afternoon", "start": "12:00", "end": "16:00"}
+                        ],
+                        "3-Period Day": [
+                            {"name": "Morning", "start": "09:00", "end": "11:00"},
+                            {"name": "Midday", "start": "11:00", "end": "14:00"},
+                            {"name": "Afternoon", "start": "14:00", "end": "16:00"}
+                        ],
+                        "4-Period Day": [
+                            {"name": "Opening", "start": "09:30", "end": "11:00"},
+                            {"name": "Morning", "start": "11:00", "end": "12:30"},
+                            {"name": "Afternoon", "start": "12:30", "end": "14:30"},
+                            {"name": "Closing", "start": "14:30", "end": "16:00"}
+                        ],
+                        "Custom": []
+                    }
+                    
+                    template_choice = st.selectbox(
+                        "Template",
+                        list(preset_templates.keys()),
+                        help="Choose a preset template or create custom periods"
                     )
+                    
+                    if template_choice != "Custom" and len(preset_templates[template_choice]) == num_candles:
+                        st.success(f"✅ **Using {template_choice} template**")
+                        custom_periods = preset_templates[template_choice].copy()
+                        
+                        # Show template preview
+                        st.markdown("**📋 Template Preview:**")
+                        for i, period in enumerate(custom_periods):
+                            st.write(f"   {i+1}. **{period['name']}**: {period['start']} - {period['end']}")
+                        
+                        # Allow modification
+                        if st.checkbox("Modify Template", help="Customize the template periods"):
+                            for i in range(num_candles):
+                                st.markdown(f"**Candle {i+1}:**")
+                                col_a, col_b, col_c = st.columns([1, 1, 1])
+                                
+                                with col_a:
+                                    custom_periods[i]['name'] = st.text_input(
+                                        "Name",
+                                        value=custom_periods[i]['name'],
+                                        key=f"template_name_{i}"
+                                    )
+                                
+                                with col_b:
+                                    start_time = st.time_input(
+                                        "Start",
+                                        value=pd.to_datetime(custom_periods[i]['start'], format='%H:%M').time(),
+                                        key=f"template_start_{i}"
+                                    )
+                                    custom_periods[i]['start'] = start_time.strftime("%H:%M")
+                                
+                                with col_c:
+                                    end_time = st.time_input(
+                                        "End",
+                                        value=pd.to_datetime(custom_periods[i]['end'], format='%H:%M').time(),
+                                        key=f"template_end_{i}"
+                                    )
+                                    custom_periods[i]['end'] = end_time.strftime("%H:%M")
+                    
+                    else:
+                        # Custom configuration
+                        st.info("🔧 **Custom Configuration**")
+                        custom_periods = []
+                        
+                        for i in range(num_candles):
+                            st.markdown(f"**Candle {i+1}:**")
+                            col_a, col_b, col_c = st.columns([1, 1, 1])
+                            
+                            with col_a:
+                                period_name = st.text_input(
+                                    "Name",
+                                    value=f"Candle_{i+1}",
+                                    key=f"custom_name_{i}",
+                                    help="Name for this candle period"
+                                )
+                            
+                            with col_b:
+                                # Smart defaults based on candle number
+                                if i == 0:
+                                    default_start = time(9, 30)
+                                else:
+                                    # Calculate based on previous candle
+                                    hours_per_candle = 6.5 / num_candles  # 6.5 hours in trading day
+                                    start_hour = int(9.5 + (i * hours_per_candle))
+                                    start_min = int(((9.5 + (i * hours_per_candle)) % 1) * 60)
+                                    default_start = time(start_hour, start_min)
+                                
+                                period_start = st.time_input(
+                                    "Start",
+                                    value=default_start,
+                                    key=f"custom_start_{i}"
+                                )
+                            
+                            with col_c:
+                                # Smart defaults for end time
+                                if i == num_candles - 1:  # Last candle
+                                    default_end = time(16, 0)
+                                else:
+                                    hours_per_candle = 6.5 / num_candles
+                                    end_hour = int(9.5 + ((i + 1) * hours_per_candle))
+                                    end_min = int(((9.5 + ((i + 1) * hours_per_candle)) % 1) * 60)
+                                    default_end = time(end_hour, end_min)
+                                
+                                period_end = st.time_input(
+                                    "End",
+                                    value=default_end,
+                                    key=f"custom_end_{i}"
+                                )
+                            
+                            custom_periods.append({
+                                'name': period_name,
+                                'start': period_start.strftime("%H:%M"),
+                                'end': period_end.strftime("%H:%M")
+                            })
+                    
+                    # Show final configuration
+                    st.markdown("**📋 Final Custom Candle Configuration:**")
+                    for i, period in enumerate(custom_periods):
+                        st.write(f"   {i+1}. **{period['name']}**: {period['start']} - {period['end']}")
+                    
+                    # Validation
+                    overlaps = []
+                    for i in range(len(custom_periods)):
+                        for j in range(i+1, len(custom_periods)):
+                            start1 = pd.to_datetime(custom_periods[i]['start'], format='%H:%M').time()
+                            end1 = pd.to_datetime(custom_periods[i]['end'], format='%H:%M').time()
+                            start2 = pd.to_datetime(custom_periods[j]['start'], format='%H:%M').time()
+                            end2 = pd.to_datetime(custom_periods[j]['end'], format='%H:%M').time()
+                            
+                            # Check for overlap
+                            if (start1 <= start2 < end1) or (start1 < end2 <= end1) or (start2 <= start1 < end2):
+                                overlaps.append(f"{custom_periods[i]['name']} overlaps with {custom_periods[j]['name']}")
+                    
+                    if overlaps:
+                        st.warning("⚠️ **Period Overlaps Detected:**")
+                        for overlap in overlaps:
+                            st.warning(f"   • {overlap}")
+                        st.info("💡 **Note**: Overlaps are allowed but may result in duplicated data")
+                    else:
+                        st.success("✅ **No overlaps detected** - clean period separation")
             
             with col2:
                 st.subheader("⚙️ Time Filtering")
@@ -2647,84 +2665,222 @@ elif mode == "🔧 Single File Resampler":
                     st.info("📅 No time filtering - using all 24 hours")
             
             # Process button
-            if st.button("🔄 Resample Data", type="primary"):
+            if st.button("🔄 Process Data", type="primary"):
                 try:
-                    with st.spinner("Resampling data..."):
-                        resampled_data = CSVProcessor.resample_ohlc_data(
-                            df, resample_timeframe, filter_start_str, filter_end_str
-                        )
+                    with st.spinner("Processing data..."):
+                        if processing_method == "Standard Resampling":
+                            # Standard resampling
+                            resampled_data = CSVProcessor.resample_ohlc_data(
+                                df, resample_timeframe, filter_start_str, filter_end_str
+                            )
+                            
+                            st.success(f"✅ Resampled: {len(df)} → {len(resampled_data)} records")
+                            
+                            # Show resampled preview
+                            st.subheader("📊 Resampled Data Preview")
+                            st.dataframe(resampled_data.head(), use_container_width=True)
+                            
+                            # Summary metrics
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Original Records", len(df))
+                            with col2:
+                                st.metric("Resampled Records", len(resampled_data))
+                            with col3:
+                                compression_ratio = (1 - len(resampled_data) / len(df)) * 100
+                                st.metric("Compression", f"{compression_ratio:.1f}%")
+                            
+                            # Download resampled file
+                            base_name = single_file.name.split('.')[0]
+                            resampled_filename = f"{base_name}_resampled_{resample_timeframe}_{datetime.now().strftime('%H%M%S')}.csv"
+                            
+                            # Store in session state
+                            st.session_state['last_processed_data'] = resampled_data.copy()
+                            st.session_state['last_processed_filename'] = resampled_filename
+                            
+                        else:  # Custom Candle Generator
+                            # Use the advanced custom candle generator
+                            custom_candle_data = CustomCandleGenerator.create_custom_candles_advanced(
+                                df, custom_periods
+                            )
+                            
+                            if not custom_candle_data.empty:
+                                st.success(f"✅ Custom Candles Created: {len(df)} → {len(custom_candle_data)} custom candles")
+                                
+                                # Show custom candle preview
+                                st.subheader("🕯️ Custom Candle Data Preview")
+                                st.dataframe(custom_candle_data.head(), use_container_width=True)
+                                
+                                # Summary metrics
+                                col1, col2, col3, col4 = st.columns(4)
+                                with col1:
+                                    st.metric("Original Records", len(df))
+                                with col2:
+                                    st.metric("Custom Candles", len(custom_candle_data))
+                                with col3:
+                                    unique_days = custom_candle_data['Date'].nunique()
+                                    st.metric("Trading Days", unique_days)
+                                with col4:
+                                    candles_per_day = len(custom_candle_data) / max(1, unique_days)
+                                    st.metric("Candles/Day", f"{candles_per_day:.1f}")
+                                
+                                # Show sample day breakdown
+                                st.subheader("📋 Sample Day Breakdown")
+                                sample_date = custom_candle_data['Date'].iloc[0]
+                                day_sample = custom_candle_data[custom_candle_data['Date'] == sample_date]
+                                
+                                st.info(f"📅 **Sample Date**: {sample_date} → {len(day_sample)} candles created")
+                                st.dataframe(day_sample[['Period_Name', 'Period_Start', 'Period_End', 'Open', 'High', 'Low', 'Close', 'Records_Used']], use_container_width=True)
+                                
+                                # Download custom candle file
+                                base_name = single_file.name.split('.')[0]
+                                custom_filename = f"{base_name}_custom_{len(custom_periods)}candles_{datetime.now().strftime('%H%M%S')}.csv"
+                                
+                                # Store in session state
+                                st.session_state['last_processed_data'] = custom_candle_data.copy()
+                                st.session_state['last_processed_filename'] = custom_filename
+                                
+                                resampled_data = custom_candle_data  # For consistency in download section
+                                resampled_filename = custom_filename
+                            else:
+                                st.error("❌ Failed to create custom candles")
+                                return
                         
-                        st.success(f"✅ Resampled: {len(df)} → {len(resampled_data)} records")
+                        # Download section
+                        st.markdown("---")
+                        st.subheader("📥 Download & Next Steps")
                         
-                        # Show resampled preview
-                        st.subheader("📊 Resampled Data Preview")
-                        st.dataframe(resampled_data.head(), use_container_width=True)
-                        
-                        # Summary metrics
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Original Records", len(df))
-                        with col2:
-                            st.metric("Resampled Records", len(resampled_data))
-                        with col3:
-                            compression_ratio = (1 - len(resampled_data) / len(df)) * 100
-                            st.metric("Compression", f"{compression_ratio:.1f}%")
-                        
-                        # Download resampled file
-                        base_name = single_file.name.split('.')[0]
-                        resampled_filename = f"{base_name}_resampled_{resample_timeframe}.csv"
-                        
-                        st.download_button(
-                            "📥 Download Resampled CSV",
-                            data=resampled_data.to_csv(index=False),
-                            file_name=resampled_filename,
-                            mime="text/csv"
-                        )
-                        
-                        # Option to use in Multi-Timeframe ATR Combiner
-                        st.markdown("### 🔄 Or Use in Multi-Timeframe ATR Combiner")
                         col1, col2 = st.columns(2)
                         
                         with col1:
-                            if st.button("📊 Use as Base Timeframe (ATR Source)", key="resample_use_as_base"):
-                                st.session_state['atr_combiner_base_data'] = resampled_data
-                                st.session_state['atr_combiner_base_filename'] = resampled_filename
-                                st.success("✅ Data saved as Base Timeframe for ATR Combiner!")
-                                st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
+                            st.markdown("### 💾 Download")
+                            
+                            # Primary download button
+                            st.download_button(
+                                "📥 **Download Processed CSV**",
+                                data=resampled_data.to_csv(index=False),
+                                file_name=resampled_filename,
+                                mime="text/csv",
+                                key="download_resampled",
+                                use_container_width=True,
+                                type="primary"
+                            )
                         
                         with col2:
-                            if st.button("📈 Use as Analysis Timeframe (Intraday)", key="resample_use_as_analysis"):
-                                st.session_state['atr_combiner_analysis_data'] = resampled_data
-                                st.session_state['atr_combiner_analysis_filename'] = resampled_filename
-                                st.success("✅ Data saved as Analysis Timeframe for ATR Combiner!")
-                                st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
+                            st.markdown("### 🔄 Use in ATR Combiner")
+                            
+                            col_a, col_b = st.columns(2)
+                            
+                            with col_a:
+                                if st.button("📊 Hold as Base\n(ATR Source)", key="resample_use_as_base", use_container_width=True):
+                                    st.session_state['atr_combiner_base_data'] = resampled_data.copy()
+                                    st.session_state['atr_combiner_base_filename'] = resampled_filename
+                                    st.success("✅ Saved as Base!")
+                                    st.info("💡 Switch to **ATR Combiner** mode")
+                            
+                            with col_b:
+                                if st.button("📈 Hold as Analysis\n(Intraday)", key="resample_use_as_analysis", use_container_width=True):
+                                    st.session_state['atr_combiner_analysis_data'] = resampled_data.copy()
+                                    st.session_state['atr_combiner_analysis_filename'] = resampled_filename
+                                    st.success("✅ Saved as Analysis!")
+                                    st.info("💡 Switch to **ATR Combiner** mode")
+                        
+                        # Show what's ready for next steps
+                        st.markdown("---")
+                        st.subheader("🎯 What's Next?")
+                        
+                        if processing_method == "Standard Resampling":
+                            st.info(f"""
+                            **Standard Resampling Complete!**
+                            
+                            ✅ **Processed**: {len(df):,} records → {len(resampled_data):,} {resample_timeframe} candles
+                            ✅ **Time Filter**: {filter_start_str or 'None'} to {filter_end_str or 'None'}
+                            ✅ **Ready for**: ATR analysis, trading system backtesting, or further processing
+                            
+                            **Perfect for**: Standard timeframe analysis with consistent intervals
+                            """)
+                        else:
+                            st.info(f"""
+                            **Custom Candle Generation Complete!**
+                            
+                            ✅ **Created**: {len(custom_periods)} custom candles per day
+                            ✅ **Total Days**: {custom_candle_data['Date'].nunique()} trading days
+                            ✅ **Total Candles**: {len(custom_candle_data)} custom periods
+                            ✅ **Ready for**: Session-based analysis, custom timeframe backtesting
+                            
+                            **Perfect for**: Session-based analysis, custom trading periods, or non-standard timeframes
+                            """)
                         
                 except Exception as e:
-                    st.error(f"❌ Resampling failed: {str(e)}")
+                    st.error(f"❌ Processing failed: {str(e)}")
+                    import traceback
+                    st.error(traceback.format_exc())
             
         except Exception as e:
             st.error(f"❌ Error loading file: {str(e)}")
 
+# FIXED: Show persistent actions for last processed data from Single File Resampler
+if st.session_state.get('last_processed_data') is not None and mode == "🔧 Single File Resampler":
+    st.markdown("---")
+    st.subheader("🔄 **Continue with Last Processed Data**")
+    
+    last_data = st.session_state['last_processed_data']
+    last_filename = st.session_state['last_processed_filename']
+    
+    st.info(f"📊 **Available**: {last_filename} ({len(last_data):,} records)")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # Persistent download button
+        st.download_button(
+            "📥 **Download Again**",
+            data=last_data.to_csv(index=False),
+            file_name=last_filename,
+            mime="text/csv",
+            key="download_persistent_single",
+            use_container_width=True
+        )
+    
+    with col2:
+        # Persistent hold as base
+        if st.button("📊 **Hold as Base**", key="hold_base_persistent_single", use_container_width=True):
+            st.session_state['atr_combiner_base_data'] = last_data.copy()
+            st.session_state['atr_combiner_base_filename'] = last_filename
+            st.success("✅ Held as Base!")
+            st.rerun()
+    
+    with col3:
+        # Persistent hold as analysis
+        if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent_single", use_container_width=True):
+            st.session_state['atr_combiner_analysis_data'] = last_data.copy()
+            st.session_state['atr_combiner_analysis_filename'] = last_filename
+            st.success("✅ Held as Analysis!")
+            st.rerun()
+
 # ========================================================================================
-# MULTI-TIMEFRAME ATR COMBINER (NEW FEATURE)
+# MULTI-TIMEFRAME ATR COMBINER (SIMPLIFIED - Single ATR Column)
 # ========================================================================================
 elif mode == "🎯 Multi-Timeframe ATR Combiner":
     st.header("🎯 Multi-Timeframe ATR Combiner")
-    st.write("**Combine different timeframes with ATR calculation for systematic analysis**")
+    st.write("**Combine any two timeframes with ATR calculation for systematic analysis**")
     
-    # Information about the tool
+    # SIMPLIFIED: Information about the tool
     st.info("""
     🎯 **Purpose**: Prepare ATR-ready files for systematic analysis
     
     **What this does:**
-    - Calculates TRUE Wilder's ATR on daily data (or any base timeframe)
-    - Combines with intraday data for trigger/goal analysis
-    - Outputs single file ready for ATR Level Analyzer
+    - Calculates TRUE Wilder's ATR on your chosen base timeframe (any timeframe)
+    - Combines with your analysis timeframe for trigger/goal analysis
+    - Outputs single file with **single ATR column** ready for ATR Level Analyzer
     
-    **Perfect for:**
-    - Daily ATR + 10-minute intraday analysis
-    - Weekly ATR + 1-hour intraday analysis  
-    - Any timeframe combination you need
+    **FLEXIBLE EXAMPLES:**
+    - **Monthly ATR + Daily Analysis**: Monthly bars for ATR → applied to daily bars
+    - **Daily ATR + 10-minute Analysis**: Daily bars for ATR → applied to 10-minute bars  
+    - **4-Hour ATR + 1-minute Analysis**: 4-hour bars for ATR → applied to 1-minute bars
+    - **Weekly ATR + 1-hour Analysis**: Weekly bars for ATR → applied to hourly bars
+    
+    **SIMPLIFIED OUTPUT**: Only one ATR column containing the currently used ATR value
     """)
     
     # Configuration columns
@@ -2733,6 +2889,7 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
     with col1:
         st.subheader("📊 Base Timeframe (ATR Source)")
         st.write("**This timeframe will be used for ATR calculation**")
+        st.write("*Can be any timeframe: 1-minute, hourly, daily, weekly, monthly, etc.*")
         
         # Check if we have saved data from other modes
         if 'atr_combiner_base_data' in st.session_state:
@@ -2740,7 +2897,8 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             
             # Show basic info about held data
             base_data = st.session_state['atr_combiner_base_data']
-            st.info(f"📊 **Held base data**: {len(base_data):,} records | {base_data['Date'].min()} to {base_data['Date'].max()}")
+            unique_days = base_data['Date'].nunique()
+            st.info(f"📊 **Held base data**: {len(base_data):,} records | {unique_days} unique periods | {base_data['Date'].min()} to {base_data['Date'].max()}")
             
             if st.button("🗑️ Clear Held Base Data", key="clear_base_main"):
                 del st.session_state['atr_combiner_base_data']
@@ -2753,7 +2911,7 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             base_file = st.file_uploader(
                 "Upload Base Timeframe Data",
                 type=['csv', 'txt', 'xlsx', 'xls'],
-                help="Upload the timeframe you want to calculate ATR on (usually daily)",
+                help="Upload the timeframe you want to calculate ATR on (e.g., daily, weekly, monthly, 4H, etc.)",
                 key="base_timeframe"
             )
         
@@ -2767,14 +2925,15 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                 min_value=1,
                 max_value=100,
                 value=14,
-                help="Number of periods for ATR calculation (e.g., 14 days for daily ATR)"
+                help="Number of periods for ATR calculation (e.g., 14 periods of your base timeframe)"
             )
             
             st.info(f"📊 Will calculate {atr_period}-period ATR on base timeframe")
     
     with col2:
-        st.subheader("📈 Analysis Timeframe (Intraday)")
+        st.subheader("📈 Analysis Timeframe")
         st.write("**This timeframe will be used for trigger/goal analysis**")
+        st.write("*Can be any timeframe: typically shorter than base timeframe*")
         
         # Check if we have saved data from other modes
         if 'atr_combiner_analysis_data' in st.session_state:
@@ -2782,7 +2941,8 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             
             # Show basic info about held data
             analysis_data = st.session_state['atr_combiner_analysis_data']
-            st.info(f"📊 **Held analysis data**: {len(analysis_data):,} records | {analysis_data['Date'].min()} to {analysis_data['Date'].max()}")
+            unique_days = analysis_data['Date'].nunique()
+            st.info(f"📊 **Held analysis data**: {len(analysis_data):,} records | {unique_days} unique periods | {analysis_data['Date'].min()} to {analysis_data['Date'].max()}")
             
             if st.button("🗑️ Clear Held Analysis Data", key="clear_analysis_main"):
                 del st.session_state['atr_combiner_analysis_data']
@@ -2795,7 +2955,7 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             analysis_file = st.file_uploader(
                 "Upload Analysis Timeframe Data",
                 type=['csv', 'xlsx', 'xls', 'txt'],
-                help="Upload the timeframe you want to analyze (usually intraday)",
+                help="Upload the timeframe you want to analyze (e.g., 1-minute, 10-minute, hourly, daily, etc.)",
                 key="analysis_timeframe"
             )
         
@@ -2915,34 +3075,22 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                         atr_coverage = (valid_atr / len(combined_data)) * 100
                         st.metric("ATR Coverage", f"{atr_coverage:.1f}%")
                     
-                    # Show dual ATR columns
-                    st.subheader("🔄 Dual ATR Architecture")
+                    # SIMPLIFIED: Show single ATR column
+                    st.subheader("📊 Single ATR Column")
+                    st.info("✅ **Simplified Output**: Only one ATR column containing the currently used ATR value")
+                    
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        st.write("**ATR Column (Current Day)**")
+                        st.write("**ATR Column (Currently Used ATR)**")
                         recent_atr = combined_data['ATR'].tail(10)
                         st.dataframe(recent_atr.round(2))
                     
                     with col2:
-                        st.write("**ATR_Previous Column (Prior Day)**")
-                        recent_prev_atr = combined_data['ATR_Previous'].tail(10)
-                        st.dataframe(recent_prev_atr.round(2))
-                    
-                    # ATR Statistics
-                    st.subheader("📈 ATR Statistics")
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
+                        # ATR Statistics
                         atr_stats = combined_data['ATR'].describe()
-                        st.write("**Daily ATR Distribution:**")
+                        st.write("**ATR Distribution:**")
                         st.dataframe(atr_stats.round(2))
-                    
-                    with col2:
-                        # Recent ATR values
-                        recent_atr_daily = combined_data.groupby('Date')['ATR'].first().tail(10)
-                        st.write("**Recent Daily ATR Values:**")
-                        st.dataframe(recent_atr_daily.round(2))
                     
                     # Data preview
                     st.subheader("📋 Combined Data Preview")
@@ -2952,12 +3100,10 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     st.subheader("📋 Column Explanations")
                     col_explanations = {
                         'Datetime': 'Analysis timeframe timestamp',
-                        'Date': 'Date for matching',
-                        'Open/High/Low/Close': 'Analysis timeframe OHLC',
-                        'ATR': 'Current day ATR (calculated through yesterday)',
-                        'ATR_Previous': 'Previous day ATR (for rolling 8-hour analysis)',
-                        'ATR_Trading_Days': 'Number of trading days used in ATR calculation',
-                        'Daily_Open/High/Low/Close': 'Base timeframe OHLC for reference'
+                        'Date': 'Date for matching timeframes',
+                        'Open/High/Low/Close': 'Analysis timeframe OHLC data',
+                        'ATR': 'Currently used ATR (calculated from base timeframe)',
+                        'Volume': 'Volume (if available in original data)'
                     }
                     
                     for col, desc in col_explanations.items():
@@ -2999,22 +3145,28 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     st.markdown("---")
                     st.subheader("🎯 Next Steps")
                     st.info("""
-                    🚀 **Ready for Dual Analysis!**
+                    🚀 **Ready for Analysis!**
                     
                     **Your file now contains:**
-                    - ✅ **ATR** column for current day analysis
-                    - ✅ **ATR_Previous** column for rolling 8-hour analysis
-                    - ✅ **ATR_Trading_Days** for reference
+                    - ✅ **ATR** column with currently used ATR value from base timeframe
                     - ✅ Both timeframes aligned perfectly
+                    - ✅ Clean, validated OHLC data from analysis timeframe
+                    - ✅ Single file, ready for systematic analysis
+                    
+                    **Works with any timeframe combination:**
+                    - Monthly ATR applied to daily analysis bars
+                    - Daily ATR applied to 10-minute analysis bars
+                    - 4-Hour ATR applied to 1-minute analysis bars
+                    - Weekly ATR applied to hourly analysis bars
+                    - Or any combination you chose!
                     
                     **Next:**
                     1. **Download** the ATR-ready file above
                     2. **Open** the ATR Level Analyzer tool
                     3. **Upload** this single file
-                    4. **Choose** Daily or Rolling 8-Hour analysis mode
-                    5. **Get** systematic trigger/goal analysis results
+                    4. **Get** systematic trigger/goal analysis results
                     
-                    💡 **One file, dual analysis capability!**
+                    💡 **Ultimate flexibility - any timeframe combination works!**
                     """)
                     
                 else:
@@ -3029,45 +3181,62 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             st.markdown("""
             **🎯 What is Multi-Timeframe ATR Analysis?**
             
-            This combines the power of longer-term ATR calculation with shorter-term analysis:
+            This combines the power of longer-term ATR calculation with shorter-term analysis. **Any timeframe combination works:**
             
-            **Example 1: Daily ATR + 10-Minute Analysis**
+            **Example 1: Monthly ATR + Daily Analysis**
+            - **Base**: Monthly OHLC data (for 14-month ATR calculation)
+            - **Analysis**: Daily data (for trigger/goal detection)
+            - **Result**: Each daily bar has the current monthly ATR value
+            
+            **Example 2: Daily ATR + 10-Minute Analysis**
             - **Base**: Daily OHLC data (for 14-day ATR calculation)
-            - **Analysis**: 10-minute intraday data (for trigger/goal detection)
+            - **Analysis**: 10-minute data (for trigger/goal detection)
             - **Result**: Each 10-minute bar has the current daily ATR value
             
-            **Example 2: Weekly ATR + 1-Hour Analysis**
+            **Example 3: 4-Hour ATR + 1-Minute Analysis**
+            - **Base**: 4-hour OHLC data (for 14-period ATR calculation)
+            - **Analysis**: 1-minute data (for trigger/goal detection)
+            - **Result**: Each 1-minute bar has the current 4-hour ATR value
+            
+            **Example 4: Weekly ATR + 1-Hour Analysis**
             - **Base**: Weekly OHLC data (for 14-week ATR calculation)
             - **Analysis**: 1-hour data (for trigger/goal detection)  
             - **Result**: Each 1-hour bar has the current weekly ATR value
             
             **🔧 Process:**
-            1. **Upload base timeframe** (usually longer period for ATR)
-            2. **Upload analysis timeframe** (usually shorter period for analysis)
-            3. **Set ATR period** (e.g., 14 for 14-day ATR)
+            1. **Upload base timeframe** (any timeframe for ATR calculation)
+            2. **Upload analysis timeframe** (any timeframe for analysis)
+            3. **Set ATR period** (e.g., 14 for 14-period ATR)
             4. **Combine** - system aligns data by date
             5. **Download** single ATR-ready file
             
             **💡 Why This Approach?**
             - **Separation of concerns**: ATR calculation vs analysis
-            - **Flexibility**: Any timeframe combination
+            - **Ultimate flexibility**: Any timeframe combination
             - **Accuracy**: Proper ATR calculation on intended timeframe
             - **Efficiency**: Calculate once, analyze multiple times
             
-            **🎯 Output Format:**
+            **🎯 SIMPLIFIED Output Format:**
             ```
-            Datetime           Date        Open   High   Low    Close  ATR    ATR_8Hour  Previous_ATR
-            2024-01-01 09:30   2024-01-01  4100   4110   4095   4105   45.2   42.8       42.8
-            2024-01-01 09:40   2024-01-01  4105   4115   4100   4110   45.2   42.8       42.8
-            2024-01-01 09:50   2024-01-01  4110   4120   4105   4115   45.2   45.2       42.8
+            Datetime           Date        Open   High   Low    Close  ATR   Volume
+            2024-01-01 09:30   2024-01-01  4100   4110   4095   4105   45.2  1000
+            2024-01-01 09:40   2024-01-01  4105   4115   4100   4110   45.2  1500
+            2024-01-01 09:50   2024-01-01  4110   4120   4105   4115   45.2  1200
             ```
             
             Each analysis timeframe bar includes:
-            - Its own OHLC data
-            - **ATR**: Current day's ATR (Daily Session analysis)
-            - **ATR_8Hour**: Rolling 8-hour ATR (8-Hour Rolling analysis)
-            - **Previous_ATR**: Previous day's ATR (commonly used for analysis)
-            - Reference data from base timeframe
+            - Its own OHLC data  
+            - **ATR**: Currently used ATR value (from base timeframe)
+            - Volume (if available)
+            - Clean, ready-to-analyze format
+            
+            **🚀 Timeframe Combinations:**
+            - **Ultra-long term**: Yearly ATR + Monthly analysis
+            - **Long term**: Monthly ATR + Daily analysis
+            - **Medium term**: Daily ATR + Hourly analysis
+            - **Short term**: 4-Hour ATR + 10-minute analysis
+            - **Scalping**: 1-Hour ATR + 1-minute analysis
+            - **Or any combination you need!**
             """)
         
         # Show supported file formats
@@ -3120,23 +3289,23 @@ st.markdown("""
 - Smart ticker detection and validation
 - Custom time filtering for market hours
 
-**🎯 Multi-Timeframe ATR Combiner** ⭐ (NEW!)
-- Combine different timeframes with ATR calculation
-- Perfect for Daily ATR + 10-minute analysis
-- Outputs single ATR-ready file with dual ATR columns
-- **ATR** column for Daily Session analysis
-- **ATR_8Hour** column for 8-Hour Rolling analysis
-- No more dual file uploads in analysis tools!
+**🎯 Multi-Timeframe ATR Combiner** ⭐ (ULTIMATE FLEXIBILITY!)
+- Combine ANY two timeframes with ATR calculation
+- Examples: Monthly ATR + Daily analysis, Daily ATR + 10-minute analysis, 4H ATR + 1-minute analysis
+- **NEW**: Single ATR column output (simplified workflow)
+- **ATR** column contains currently used ATR value from your chosen base timeframe
+- No more complex dual-column configurations!
 
 **📈 Public Data Download**
 - Download from public sources (limited intraday history)
 - Good for daily data with ATR buffers
 - Auto-maps common tickers (SPX → ^GSPC)
 
-**🔧 Single File Resampler**
+**🔧 Single File Resampler** (ENHANCED!)
 - Transform one file to different timeframes
-- Convert 1-minute → 10-minute, daily → weekly, etc.
-- Apply custom time filters
+- **NEW**: Real Custom Candle Generator
+- Create any number of candles per day with flexible time periods
+- Perfect for session-based analysis
 
 💾 **Next Step:** Use processed files in the ATR Analysis tool!
 
@@ -3150,16 +3319,22 @@ Once you have your ATR-ready files, proceed to systematic trigger/goal analysis:
 
 **What it does:**
 - ✅ **Single file input** - Upload your ATR-ready CSV
-- ✅ **Dual analysis modes** - Daily Session and 8-Hour Rolling
+- ✅ **Single ATR column** - Simplified analysis with one ATR value
 - ✅ **Systematic analysis** - Trigger/goal detection using pre-calculated ATR
 - ✅ **Professional results** - Export-ready analysis data
 - ✅ **No file juggling** - Pure analysis, no data preparation
 
 **Perfect workflow:**
-1. **Process your data here** → Get ATR-ready file with dual ATR columns
-2. **Upload to ATR Level Analyzer** → Choose Daily or 8-Hour Rolling mode
-3. **Get systematic analysis** → Compare both analysis approaches
-4. **Download results** → Professional analysis output
+1. **Process your data here** → Get ATR-ready file with single ATR column
+2. **Upload to ATR Level Analyzer** → Works with any timeframe combination
+3. **Get systematic results** → Professional analysis output  
+4. **Download results** → Ready for trading or further analysis
+
+**Flexible Examples:**
+- **Long-term**: Monthly ATR applied to daily analysis
+- **Medium-term**: Daily ATR applied to hourly analysis  
+- **Short-term**: 4-Hour ATR applied to 10-minute analysis
+- **Scalping**: 1-Hour ATR applied to 1-minute analysis
 
 🚀 **[Launch ATR Level Analyzer →](https://atr-dashboard-ekuggfmlyg4gmtw85ksacm.streamlit.app/)**
 """)
