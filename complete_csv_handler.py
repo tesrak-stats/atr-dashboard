@@ -1916,14 +1916,14 @@ if st.session_state.get('last_processed_data') is not None:
             st.success("✅ Held as Analysis!")
             st.rerun()
 
-else:
-        # Show helpful instructions when no files are uploaded
-        st.info("👆 **Please upload multiple CSV files to get started**")
+    else:
+        # Show helpful instructions when no file is uploaded
+        st.info("👆 **Please upload a single CSV file to get started**")
         
-        # Show example of what files should look like
+        # Show example of what the file should look like
         with st.expander("📋 Expected File Format", expanded=False):
             st.markdown("""
-            **Your CSV files should contain these columns (any format):**
+            **Your CSV file should contain these columns (any format):**
             
             **Standard Format:**
             - **Date** (or Datetime, Time)
@@ -1935,7 +1935,7 @@ else:
             - **o**, **h**, **l**, **c** (lowercase single letters)
             - **v** (volume - optional)
             
-            **Unlabeled Format (NEW - Smart Detection):**
+            **Unlabeled Format (Smart Detection):**
             - **Column 1**: Date/Datetime (any format)
             - **Column 2**: Open price
             - **Column 3**: High price
@@ -1949,56 +1949,42 @@ else:
             - `date, time, O, H, L, C`
             - `9/23/2012 20:35, 4100, 4110, 4095, 4105, 1000` (unlabeled)
             
-            **Example filenames that work well:**
-            - `SPX_20240101.csv`
-            - `AAPL_1min_data.csv`
-            - `ES_intraday.csv`
-            - `data_2024_01_01.csv`
-            - `unlabeled_ohlc_data.csv`
-            
             **The system will:**
-            - ✅ Auto-detect ticker symbols from filenames
-            - ✅ Handle both long (Open, High, Low, Close) and short (o, h, l, c) formats
-            - ✅ **NEW**: Smart detect unlabeled columns and assume Date + OHLC order
-            - ✅ Warn if mixed tickers are found
-            - ✅ Standardize all column names automatically
+            - ✅ Auto-detect column formats
             - ✅ Handle various date/time formats
-            - ✅ **NEW**: Show warnings when assumptions are made
+            - ✅ Smart detect unlabeled columns
+            - ✅ Convert to standard format automatically
             """)
-
         
-        # Show sample workflow
+        # Show sample workflows
         with st.expander("🔧 Sample Workflows", expanded=False):
             st.markdown("""
-            **🎯 Standard Resampling Workflow:**
-            1. Upload 25 daily 1-minute CSV files
-            2. Choose "Standard Resampling" 
-            3. Set timeframe to **10T** (10 minutes)
-            4. Apply time filter **9:30 - 16:00** (market hours)
-            5. Get single combined file with 10-minute bars
+            **🎯 Standard Resampling Examples:**
+            - Upload 1-minute data → Convert to 10-minute bars
+            - Upload daily data → Convert to weekly bars
+            - Upload 5-minute data → Convert to 1-hour bars
+            - Apply time filters (e.g., 9:30-16:00 market hours)
             
-            **Custom Candle Periods Workflow:**
-            1. Upload multiple CSV files with intraday data
-            2. Choose "Custom Candle Periods"
-            3. Define periods: **Morning (9:00-12:00)**, **Afternoon (12:00-16:00)**
-            4. Each day creates 2 custom OHLC candles
-            5. Perfect for session-based analysis
+            **🕯️ Custom Candle Examples:**
+            - **Morning/Afternoon Split**: Create 2 candles per day (9:30-12:00, 12:00-16:00)
+            - **3-Period Day**: Create 3 candles per day (9:00-11:00, 11:00-14:00, 14:00-16:00)
+            - **Session-Based**: Create candles for different trading sessions
+            - **Flexible Periods**: Any time combination you need
             
             **Custom Candle Output Example:**
             ```
             Date        Period_Name  Period_Start  Period_End  Open   High   Low    Close
-            2024-01-01  Morning      09:00        12:00       4100   4150   4090   4140
+            2024-01-01  Morning      09:30        12:00       4100   4150   4090   4140
             2024-01-01  Afternoon    12:00        16:00       4140   4180   4130   4175
-            2024-01-02  Morning      09:00        12:00       4175   4200   4160   4190
+            2024-01-02  Morning      09:30        12:00       4175   4200   4160   4190
             2024-01-02  Afternoon    12:00        16:00       4190   4210   4180   4205
             ```
             """)
 
-
 # ========================================================================================
-# PUBLIC DATA DOWNLOAD
+# MULTI-TIMEFRAME ATR COMBINER (SIMPLIFIED - Single ATR Column)
 # ========================================================================================
-if mode == "📈 Public Data Download":
+elif mode == "🎯 Multi-Timeframe ATR Combiner":
     st.header("📈 Public Data Download")
     st.write("Download financial data from public sources and export as CSV")
     
@@ -2744,7 +2730,7 @@ elif mode == "🔧 Single File Resampler":
                                 resampled_filename = custom_filename
                             else:
                                 st.error("❌ Failed to create custom candles")
-                                st.stop()
+                                return
                         
                         # Download section
                         st.markdown("---")
