@@ -1836,6 +1836,11 @@ if mode == "📁 Multi-CSV Processor":
                     st.balloons()  # Celebration animation
                     st.success(f"🎉 **Successfully processed {len(uploaded_files)} files!**")
                     
+                    # Store the processed data in session state IMMEDIATELY
+                    st.session_state['last_processed_data'] = combined_data.copy()
+                    st.session_state['last_processed_filename'] = combined_filename
+                    st.session_state['last_processed_summary'] = summary_df.copy()
+                    
                     # Show file processing summary
                     st.subheader("📋 Processing Summary")
                     summary_df = pd.DataFrame(file_info)
