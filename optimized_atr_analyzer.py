@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, date
+import time
 
 class AssetConfig:
     """Configuration for different asset classes"""
@@ -1095,15 +1096,17 @@ def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=
                     
                     return result_df, debug_info
                 else:
-                    # Still processing - return partial results
+                    # Still processing - return partial results and auto-continue
                     partial_df = pd.DataFrame(st.session_state.atr_processing['results'])
                     progress_pct = (st.session_state.atr_processing['last_processed_index'] / 
                                   st.session_state.atr_processing['total_periods']) * 100
                     debug_info.append(f"Processing in progress: {progress_pct:.1f}% complete")
-                    debug_info.append("Page will auto-refresh to continue processing...")
+                    debug_info.append("Auto-continuing processing...")
                     
-                    # Auto-refresh to continue processing
-                    st.rerun()
+                    # Force immediate continuation
+                    st.write(f"🔄 Auto-continuing... {progress_pct:.1f}% complete")
+                    time.sleep(0.1)  # Brief pause
+                    st.rerun()  # Force restart
                     
                     return partial_df, debug_info
             else:
@@ -1248,6 +1251,36 @@ st.title('🎯 Simplified ATR Analysis Generator')
 st.write('**Clean, focused ATR analysis using pre-formatted CSV data**')
 st.write('**Upload your CSV file from the CSV Data Handler to get started**')
 
+# Auto-continue processing if incomplete
+if ('atr_processing' in st.session_state and 
+    st.session_state.atr_processing['total_periods'] > 0 and 
+    not st.session_state.atr_processing['is_complete'] and
+    st.session_state.atr_processing['daily_data'] is not None):
+    
+    st.info("🔄 Resuming processing automatically...")
+    
+    # Continue processing immediately
+    with st.spinner('Auto-continuing systematic analysis...'):
+        try:
+            batch_results = detect_triggers_and_goals_batch(
+                st.session_state.atr_processing['daily_data'], 
+                st.session_state.atr_processing['intraday_data'], 
+                st.session_state.atr_processing['custom_ratios'],
+                start_index=st.session_state.atr_processing['last_processed_index']
+            )
+            
+            if batch_results is not None and len(batch_results) > 0:
+                st.session_state.atr_processing['results'].extend(batch_results.to_dict('records'))
+            
+            # Auto-restart if not complete
+            if not st.session_state.atr_processing['is_complete']:
+                time.sleep(0.1)
+                st.rerun()
+                
+        except Exception as e:
+            st.error(f"Error in auto-continue: {e}")
+
+
 # File upload section
 st.header("📁 Data Upload")
 
@@ -1349,6 +1382,20 @@ if data_file:
                 )
                 
                 display_results(result_df, debug_messages, ticker, asset_type)
+                
+                # Clear processing state after successful completion
+                if st.session_state.atr_processing['is_complete']:
+                    st.session_state.atr_processing = {
+                        'results': [],
+                        'last_processed_index': 0,
+                        'is_complete': False,
+                        'daily_data': None,
+                        'intraday_data': None,
+                        'custom_ratios': None,
+                        'ticker': '',
+                        'asset_type': '',
+                        'total_periods': 0
+                    }
                     
             except Exception as e:
                 st.error(f'Error: {e}')
