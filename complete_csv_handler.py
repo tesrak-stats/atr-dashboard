@@ -48,35 +48,38 @@ def calculate_atr(df, period=14):
 
 def calculate_8hour_atr(datetime_val, current_atr, previous_atr, asset_type):
     """
-    Calculate 8-hour rolling ATR logic
-    Returns previous_atr for first 7 hours of session, current_atr after that
+    Calculate 8-hour rolling ATR logic for futures sessions
+    Returns previous_atr for first 8 hours of session, current_atr after that
     """
-    session_start = SESSION_STARTS.get(asset_type, 9)  # Default to stocks
-    
-    # Get hour from datetime
-    hour = datetime_val.hour
-    
-    # Calculate hours into session
     if asset_type == 'FUTURES':
-        # Futures session starts at 18:00 (6 PM)
+        # Futures session: 18:00 to 17:00 next day
+        hour = datetime_val.hour
+        
+        # Session starts at 18:00 (6 PM)
+        # First 8 hours: 18:00-02:00 (next day) use previous ATR
+        # Remaining hours: 02:00-17:00 use current ATR
+        
         if hour >= 18:
+            # Same day, hours since 18:00
             hours_into_session = hour - 18
         else:
             # Next day, hours since 18:00 yesterday
             hours_into_session = (24 - 18) + hour
+        
+        # Use previous ATR for first 8 hours, current ATR after
+        return previous_atr if hours_into_session < 8 else current_atr
+    
     else:
-        # Other assets use standard session start
+        # Other assets use standard session logic
+        session_start = SESSION_STARTS.get(asset_type, 9)
+        hour = datetime_val.hour
+        
         if hour >= session_start:
             hours_into_session = hour - session_start
         else:
-            # Assume next day session
             hours_into_session = (24 - session_start) + hour
-    
-    # Return appropriate ATR based on hours into session
-    if hours_into_session <= 7:
-        return previous_atr  # Use previous day's ATR
-    else:
-        return current_atr   # Use current day's ATR
+        
+        return previous_atr if hours_into_session < 8 else current_atr
 
 def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_method='date_match', asset_type='STOCKS'):
     """
@@ -446,7 +449,7 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             atr_lookup = {}
             previous_atr_lookup = {}
             
-            # Create both current and previous ATR lookups
+            # Create both current and previous ATR lookups with trading days count
             for i, row in daily_with_atr.iterrows():
                 atr_lookup[row['Date']] = row['ATR']
                 
@@ -455,6 +458,13 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
                     previous_atr_lookup[row['Date']] = daily_with_atr.iloc[i-1]['ATR']
                 else:
                     previous_atr_lookup[row['Date']] = row['ATR']  # First row uses same ATR
+            
+            # Calculate trading days used for each ATR calculation
+            trading_days_lookup = {}
+            for i, row in daily_with_atr.iterrows():
+                # Count non-null ATR values up to this point
+                valid_atr_count = daily_with_atr.iloc[:i+1]['ATR'].notna().sum()
+                trading_days_lookup[row['Date']] = min(valid_atr_count, atr_period + 50)  # Cap at reasonable number
             
             st.info(f"📊 ATR lookup created with {len(atr_lookup)} entries")
             
@@ -488,28 +498,16 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
                 sample_lookups.append(f"{date}: {atr_val}")
             st.info(f"🔍 Sample ATR lookups: {sample_lookups}")
             
-            # Add ATR columns to intraday data
+            # Add all ATR columns to intraday data
             st.info("📊 Mapping ATR values to intraday data...")
             intraday_df['ATR_Current'] = intraday_df['Date'].map(atr_lookup)
-            intraday_df['Previous_ATR'] = intraday_df['Date'].map(previous_atr_lookup)
+            intraday_df['ATR_Previous'] = intraday_df['Date'].map(previous_atr_lookup)
+            intraday_df['ATR_Trading_Days'] = intraday_df['Date'].map(trading_days_lookup)
             
-            # Calculate ATR_8Hour for each intraday record
-            st.info("🕐 Calculating 8-hour rolling ATR...")
-            intraday_df['ATR_8Hour'] = intraday_df.apply(
-                lambda row: calculate_8hour_atr(
-                    row['Datetime'], 
-                    row['ATR_Current'], 
-                    row['Previous_ATR'], 
-                    asset_type
-                ), axis=1
-            )
-            
-            # Show 8-hour ATR calculation info
-            st.info(f"✅ 8-hour rolling ATR calculated for {asset_type}")
-            if asset_type == 'FUTURES':
-                st.info("🕐 **Futures 8-hour logic**: Hours 0-7 use previous ATR, hours 8+ use current ATR")
-            else:
-                st.info(f"🕐 **{asset_type} 8-hour logic**: Session starts at {SESSION_STARTS.get(asset_type, 9)}:00")
+            # Show ATR calculation info
+            st.info(f"✅ Dual ATR columns calculated:")
+            st.info("📊 **ATR_Current**: Today's ATR (calculated through yesterday)")
+            st.info("📊 **ATR_Previous**: Yesterday's ATR (for rolling 8-hour analysis)")
             
             # Check how many matches we got
             matched_atr = intraday_df['ATR_Current'].notna().sum()
@@ -519,11 +517,20 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             # Store final mapped data
             st.session_state['debug_intraday_with_atr'] = intraday_df.copy()
             
-            # Filter to only intraday records with ATR
+            # Filter to only intraday records with ATR - KEEP ALL COLUMNS
             combined_df = intraday_df[intraday_df['ATR_Current'].notna()].copy()
             
-            # Rename columns for consistency with roadmap
+            # Rename ATR_Current to ATR for backwards compatibility, but KEEP ATR_Previous
             combined_df = combined_df.rename(columns={'ATR_Current': 'ATR'})
+            
+            # Ensure we have both ATR columns in final output
+            required_columns = ['ATR', 'ATR_Previous', 'ATR_Trading_Days']
+            for col in required_columns:
+                if col not in combined_df.columns:
+                    st.error(f"❌ Missing required column: {col}")
+            
+            st.success(f"✅ **Dual ATR columns preserved**: ATR (current day) and ATR_Previous (prior day)")
+            st.success(f"✅ **Trading days tracking**: ATR_Trading_Days column added")
             
             if combined_df.empty:
                 st.error("❌ No date overlap between daily and intraday data")
@@ -882,23 +889,34 @@ class CSVProcessor:
     def smart_column_detection(df):
         """
         Smart detection for unlabeled columns
+        Only activates when proper headers are missing
         Assumes: First column = Date/Datetime, then O, H, L, C, [Volume]
         """
         original_columns = list(df.columns)
         
-        # Check if we need smart detection
+        # Check if we already have proper OHLC headers
         ohlc_cols = ['Open', 'High', 'Low', 'Close']
         date_cols = ['Date', 'Datetime']
         
-        has_ohlc = any(col in df.columns for col in ohlc_cols)
+        has_ohlc = all(col in df.columns for col in ohlc_cols)
         has_date = any(col in df.columns for col in date_cols)
         
-        # Skip if already properly labeled
+        # Skip smart detection if we already have proper headers
         if has_ohlc and has_date:
+            st.success("✅ **Proper column headers detected** - using existing headers")
+            st.info(f"📋 **Found columns**: {', '.join([col for col in df.columns if col in ohlc_cols + date_cols])}")
             return df
+        
+        # Only proceed with smart detection if headers are missing
+        if has_ohlc:
+            st.info("✅ **OHLC headers found** - no smart detection needed")
+            return df
+            
+        st.info("🔍 **No proper headers found** - activating smart column detection")
         
         # Check if we have enough columns for OHLC data
         if len(df.columns) < 5:  # Need at least Date + OHLC
+            st.info("⚠️ **Insufficient columns** for OHLC data - skipping smart detection")
             return df
             
         # Try to detect if this looks like OHLC data
@@ -913,6 +931,7 @@ class CSVProcessor:
         
         # Need at least 4 numeric columns for OHLC
         if len(numeric_cols) < 4:
+            st.info("⚠️ **Insufficient numeric columns** for OHLC data - skipping smart detection")
             return df
             
         # Check if the numeric data looks like OHLC (High >= Low, etc.)
@@ -959,6 +978,7 @@ class CSVProcessor:
                     
         except Exception as e:
             # If smart detection fails, just return original
+            st.info("⚠️ **Smart detection failed** - using original column names")
             pass
             
         return df
@@ -1220,13 +1240,69 @@ class CSVProcessor:
             start_time = pd.to_datetime(custom_start_time, format='%H:%M').time()
             end_time = pd.to_datetime(custom_end_time, format='%H:%M').time()
             
-            # Filter by time range
-            time_mask = (df['Time_obj'] >= start_time) & (df['Time_obj'] <= end_time)
+            # Check if session crosses midnight (start >= end)
+            crosses_midnight = start_time >= end_time
+            
+            if crosses_midnight:
+                # Session crosses midnight (e.g., 18:00 to 17:00 next day)
+                # Include times >= start_time OR <= end_time
+                time_mask = (df['Time_obj'] >= start_time) | (df['Time_obj'] <= end_time)
+                st.info(f"🕐 **Midnight-crossing session**: {custom_start_time} today → {custom_end_time} next day")
+            else:
+                # Normal session within same day
+                time_mask = (df['Time_obj'] >= start_time) & (df['Time_obj'] <= end_time)
+                st.info(f"📅 **Same-day session**: {custom_start_time} - {custom_end_time}")
+            
             df = df[time_mask]
             df.drop('Time_obj', axis=1, inplace=True)
             
             if df.empty:
                 raise ValueError(f"No data found in time range {custom_start_time} to {custom_end_time}")
+            
+            st.success(f"✅ **Time filtering applied**: {len(df)} records in session")
+            
+            # For midnight-crossing sessions, need special handling for daily aggregation
+            if crosses_midnight and target_timeframe.upper() == '1D':
+                st.info("🔄 **Special daily aggregation** for midnight-crossing session")
+                
+                # Create custom session groups for proper daily aggregation
+                df = df.copy()
+                df['Session_Date'] = df['Datetime'].apply(lambda x: 
+                    x.date() if x.time() >= start_time else (x - timedelta(days=1)).date()
+                )
+                
+                # Group by session date instead of calendar date
+                session_groups = df.groupby('Session_Date')
+                
+                daily_candles = []
+                for session_date, session_data in session_groups:
+                    if len(session_data) > 0:
+                        candle = {
+                            'Datetime': pd.Timestamp.combine(session_date, start_time),
+                            'Date': session_date,
+                            'Open': session_data['Open'].iloc[0],
+                            'High': session_data['High'].max(),
+                            'Low': session_data['Low'].min(),
+                            'Close': session_data['Close'].iloc[-1],
+                        }
+                        
+                        # Add volume if present
+                        if 'Volume' in session_data.columns:
+                            candle['Volume'] = session_data['Volume'].sum()
+                        
+                        # Add other columns if present
+                        for col in session_data.columns:
+                            if col not in ['Datetime', 'Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Time_obj', 'Session_Date']:
+                                candle[col] = session_data[col].iloc[0]
+                        
+                        daily_candles.append(candle)
+                
+                # Create result DataFrame
+                resampled = pd.DataFrame(daily_candles)
+                resampled = resampled.sort_values('Date').reset_index(drop=True)
+                
+                st.success(f"✅ **Session-based daily candles**: {len(resampled)} daily sessions created")
+                return resampled
         
         # Set datetime as index for resampling
         df.set_index('Datetime', inplace=True)
@@ -1255,6 +1331,8 @@ class CSVProcessor:
             resampled = df.resample('M', closed='left', label='left').agg(agg_rules)
         elif target_timeframe.upper() == 'QUARTERLY':
             resampled = df.resample('Q', closed='left', label='left').agg(agg_rules)
+        elif target_timeframe.upper() == '1D':
+            resampled = df.resample('D', closed='left', label='left').agg(agg_rules)
         else:
             # Standard minute-based resampling (e.g., '10T', '30T', '1H')
             resampled = df.resample(target_timeframe, closed='left', label='left').agg(agg_rules)
@@ -2456,7 +2534,7 @@ elif mode == "🔧 Single File Resampler":
                 # Standard timeframes
                 timeframe_category = st.selectbox(
                     "Timeframe Category",
-                    ["Minutes", "Hours", "Daily Aggregations"]
+                    ["Minutes", "Hours", "Daily/Weekly"]
                 )
                 
                 if timeframe_category == "Minutes":
@@ -2470,29 +2548,98 @@ elif mode == "🔧 Single File Resampler":
                         "Target Timeframe",
                         ["1H", "2H", "3H", "4H", "6H", "8H", "12H"]
                     )
-                else:  # Daily Aggregations
+                else:  # Daily/Weekly
                     resample_timeframe = st.selectbox(
                         "Target Timeframe",
-                        ["WEEKLY", "MONTHLY", "QUARTERLY"]
+                        ["1D", "WEEKLY", "MONTHLY", "QUARTERLY"],
+                        help="1D = Daily aggregation from intraday data"
                     )
             
             with col2:
                 st.subheader("⚙️ Time Filtering")
                 
-                # Time filtering
-                apply_time_filter = st.checkbox("Apply Time Filter")
+                # Time filtering options
+                time_filter_mode = st.selectbox(
+                    "Time Filter Mode",
+                    ["No Filter (24 Hours)", "Regular Trading Hours (RTH)", "Custom Session", "Custom Time Range"],
+                    help="Choose how to filter data by time before resampling"
+                )
                 
-                if apply_time_filter:
-                    filter_start = st.time_input("Filter Start Time", value=time(9, 30))
-                    filter_end = st.time_input("Filter End Time", value=time(16, 0))
+                if time_filter_mode == "Regular Trading Hours (RTH)":
+                    filter_start_str = "09:30"
+                    filter_end_str = "16:00"
+                    st.info(f"📅 RTH Filter: {filter_start_str} - {filter_end_str}")
+                    
+                elif time_filter_mode == "Custom Session":
+                    st.markdown("**🎯 Preset Sessions:**")
+                    session_preset = st.selectbox(
+                        "Choose Session Type",
+                        ["ES Futures (18:00-17:00)", "Crypto UTC Reset (00:00-23:59)", "Forex London (08:00-17:00)", "Custom"],
+                        help="Common session boundaries for different instruments"
+                    )
+                    
+                    if session_preset == "ES Futures (18:00-17:00)":
+                        filter_start_str = "18:00"
+                        filter_end_str = "17:00"
+                        st.success("🎯 **ES Futures Session**: 18:00 today → 17:00 next day")
+                        st.info("Creates proper futures daily sessions (crosses midnight)")
+                        
+                    elif session_preset == "Crypto UTC Reset (00:00-23:59)":
+                        filter_start_str = "00:00"
+                        filter_end_str = "23:59"
+                        st.success("🎯 **Crypto UTC Reset**: Midnight to midnight")
+                        st.info("Standard crypto daily candles (UTC timezone)")
+                        
+                    elif session_preset == "Forex London (08:00-17:00)":
+                        filter_start_str = "08:00"
+                        filter_end_str = "17:00"
+                        st.success("🎯 **Forex London Session**: 08:00 - 17:00")
+                        st.info("London market hours (no midnight crossing)")
+                        
+                    else:  # Custom
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            custom_start = st.time_input(
+                                "Session Start Time",
+                                value=time(18, 0),
+                                help="When your custom session starts"
+                            )
+                        with col_b:
+                            custom_end = st.time_input(
+                                "Session End Time", 
+                                value=time(17, 0),
+                                help="When your custom session ends (can be next day)"
+                            )
+                        
+                        filter_start_str = custom_start.strftime("%H:%M")
+                        filter_end_str = custom_end.strftime("%H:%M")
+                        
+                        # Check if it crosses midnight
+                        crosses_midnight = custom_start >= custom_end
+                        if crosses_midnight:
+                            st.info(f"🕐 **Custom Session**: {filter_start_str} today → {filter_end_str} next day")
+                            st.warning("⚠️ **Crosses midnight** - session spans two calendar days")
+                        else:
+                            st.info(f"🕐 **Custom Session**: {filter_start_str} - {filter_end_str} (same day)")
+                            
+                elif time_filter_mode == "Custom Time Range":
+                    st.markdown("**🕐 Custom Time Range:**")
+                    col_a, col_b = st.columns(2)
+                    
+                    with col_a:
+                        filter_start = st.time_input("Start Time", value=time(9, 30))
+                    with col_b:
+                        filter_end = st.time_input("End Time", value=time(16, 0))
                     
                     filter_start_str = filter_start.strftime("%H:%M")
                     filter_end_str = filter_end.strftime("%H:%M")
                     
-                    st.info(f"📅 Time filter: {filter_start_str} - {filter_end_str}")
-                else:
+                    st.info(f"📅 Custom filter: {filter_start_str} - {filter_end_str}")
+                    
+                else:  # No Filter
                     filter_start_str = None
                     filter_end_str = None
+                    st.info("📅 No time filtering - using all 24 hours")
             
             # Process button
             if st.button("🔄 Resample Data", type="primary"):
@@ -2768,14 +2915,14 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        st.write("**ATR Column (Daily Session)**")
+                        st.write("**ATR Column (Current Day)**")
                         recent_atr = combined_data['ATR'].tail(10)
                         st.dataframe(recent_atr.round(2))
                     
                     with col2:
-                        st.write("**ATR_8Hour Column (8-Hour Rolling)**")
-                        recent_8hr_atr = combined_data['ATR_8Hour'].tail(10)
-                        st.dataframe(recent_8hr_atr.round(2))
+                        st.write("**ATR_Previous Column (Prior Day)**")
+                        recent_prev_atr = combined_data['ATR_Previous'].tail(10)
+                        st.dataframe(recent_prev_atr.round(2))
                     
                     # ATR Statistics
                     st.subheader("📈 ATR Statistics")
@@ -2802,9 +2949,9 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                         'Datetime': 'Analysis timeframe timestamp',
                         'Date': 'Date for matching',
                         'Open/High/Low/Close': 'Analysis timeframe OHLC',
-                        'ATR': 'Current day ATR (Daily Session analysis)',
-                        'ATR_8Hour': 'Rolling 8-hour ATR (8-Hour Rolling analysis)',
-                        'Previous_ATR': 'Previous day ATR (commonly used for analysis)',
+                        'ATR': 'Current day ATR (calculated through yesterday)',
+                        'ATR_Previous': 'Previous day ATR (for rolling 8-hour analysis)',
+                        'ATR_Trading_Days': 'Number of trading days used in ATR calculation',
                         'Daily_Open/High/Low/Close': 'Base timeframe OHLC for reference'
                     }
                     
@@ -2850,19 +2997,19 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     🚀 **Ready for Dual Analysis!**
                     
                     **Your file now contains:**
-                    - ✅ **ATR** column for Daily Session analysis
-                    - ✅ **ATR_8Hour** column for 8-Hour Rolling analysis
-                    - ✅ **Previous_ATR** for reference
+                    - ✅ **ATR** column for current day analysis
+                    - ✅ **ATR_Previous** column for rolling 8-hour analysis
+                    - ✅ **ATR_Trading_Days** for reference
                     - ✅ Both timeframes aligned perfectly
                     
                     **Next:**
                     1. **Download** the ATR-ready file above
                     2. **Open** the ATR Level Analyzer tool
                     3. **Upload** this single file
-                    4. **Choose** Daily or 8-Hour Rolling analysis mode
+                    4. **Choose** Daily or Rolling 8-Hour analysis mode
                     5. **Get** systematic trigger/goal analysis results
                     
-                    💡 **One file, multiple analysis modes!**
+                    💡 **One file, dual analysis capability!**
                     """)
                     
                 else:
