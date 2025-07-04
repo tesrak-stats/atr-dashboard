@@ -1998,7 +1998,7 @@ else:
 # ========================================================================================
 # PUBLIC DATA DOWNLOAD
 # ========================================================================================
-elif mode == "📈 Public Data Download":
+if mode == "📈 Public Data Download":
     st.header("📈 Public Data Download")
     st.write("Download financial data from public sources and export as CSV")
     
