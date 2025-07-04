@@ -2750,7 +2750,7 @@ elif mode == "🔧 Single File Resampler":
                                 resampled_filename = custom_filename
                             else:
                                 st.error("❌ Failed to create custom candles")
-                                return
+                                st.stop()
                         
                         # Download section
                         st.markdown("---")
