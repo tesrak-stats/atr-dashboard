@@ -1991,7 +1991,7 @@ else:
 # ========================================================================================
 # MULTI-TIMEFRAME ATR COMBINER (SIMPLIFIED - Single ATR Column)
 # ========================================================================================
-elif mode == "🎯 Multi-Timeframe ATR Combiner":
+if mode == "🎯 Multi-Timeframe ATR Combiner":
     st.header("📈 Public Data Download")
     st.write("Download financial data from public sources and export as CSV")
     
