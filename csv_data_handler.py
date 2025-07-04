@@ -501,26 +501,13 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             # Add all ATR columns to intraday data
             st.info("📊 Mapping ATR values to intraday data...")
             intraday_df['ATR_Current'] = intraday_df['Date'].map(atr_lookup)
-            intraday_df['Previous_ATR'] = intraday_df['Date'].map(previous_atr_lookup)
+            intraday_df['ATR_Previous'] = intraday_df['Date'].map(previous_atr_lookup)
             intraday_df['ATR_Trading_Days'] = intraday_df['Date'].map(trading_days_lookup)
             
-            # Calculate ATR_8Hour for each intraday record
-            st.info("🕐 Calculating 8-hour rolling ATR...")
-            intraday_df['ATR_8Hour'] = intraday_df.apply(
-                lambda row: calculate_8hour_atr(
-                    row['Datetime'], 
-                    row['ATR_Current'], 
-                    row['Previous_ATR'], 
-                    asset_type
-                ), axis=1
-            )
-            
-            # Show 8-hour ATR calculation info
-            st.info(f"✅ 8-hour rolling ATR calculated for {asset_type}")
-            if asset_type == 'FUTURES':
-                st.info("🕐 **Futures 8-hour logic**: 18:00-02:00 use previous ATR, 02:00-17:00 use current ATR")
-            else:
-                st.info(f"🕐 **{asset_type} 8-hour logic**: Session starts at {SESSION_STARTS.get(asset_type, 9)}:00")
+            # Show ATR calculation info
+            st.info(f"✅ Dual ATR columns calculated:")
+            st.info("📊 **ATR_Current**: Today's ATR (calculated through yesterday)")
+            st.info("📊 **ATR_Previous**: Yesterday's ATR (for rolling 8-hour analysis)")
             
             # Check how many matches we got
             matched_atr = intraday_df['ATR_Current'].notna().sum()
@@ -533,16 +520,16 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             # Filter to only intraday records with ATR - KEEP ALL COLUMNS
             combined_df = intraday_df[intraday_df['ATR_Current'].notna()].copy()
             
-            # Rename ATR_Current to ATR for backwards compatibility, but KEEP ATR_8Hour
+            # Rename ATR_Current to ATR for backwards compatibility, but KEEP ATR_Previous
             combined_df = combined_df.rename(columns={'ATR_Current': 'ATR'})
             
             # Ensure we have both ATR columns in final output
-            required_columns = ['ATR', 'ATR_8Hour', 'Previous_ATR', 'ATR_Trading_Days']
+            required_columns = ['ATR', 'ATR_Previous', 'ATR_Trading_Days']
             for col in required_columns:
                 if col not in combined_df.columns:
                     st.error(f"❌ Missing required column: {col}")
             
-            st.success(f"✅ **Dual ATR columns preserved**: ATR (daily) and ATR_8Hour (rolling)")
+            st.success(f"✅ **Dual ATR columns preserved**: ATR (current day) and ATR_Previous (prior day)")
             st.success(f"✅ **Trading days tracking**: ATR_Trading_Days column added")
             
             if combined_df.empty:
@@ -1288,6 +1275,8 @@ class CSVProcessor:
             resampled = df.resample('M', closed='left', label='left').agg(agg_rules)
         elif target_timeframe.upper() == 'QUARTERLY':
             resampled = df.resample('Q', closed='left', label='left').agg(agg_rules)
+        elif target_timeframe.upper() == '1D':
+            resampled = df.resample('D', closed='left', label='left').agg(agg_rules)
         else:
             # Standard minute-based resampling (e.g., '10T', '30T', '1H')
             resampled = df.resample(target_timeframe, closed='left', label='left').agg(agg_rules)
@@ -2489,7 +2478,7 @@ elif mode == "🔧 Single File Resampler":
                 # Standard timeframes
                 timeframe_category = st.selectbox(
                     "Timeframe Category",
-                    ["Minutes", "Hours", "Daily Aggregations"]
+                    ["Minutes", "Hours", "Daily/Weekly"]
                 )
                 
                 if timeframe_category == "Minutes":
@@ -2503,10 +2492,11 @@ elif mode == "🔧 Single File Resampler":
                         "Target Timeframe",
                         ["1H", "2H", "3H", "4H", "6H", "8H", "12H"]
                     )
-                else:  # Daily Aggregations
+                else:  # Daily/Weekly
                     resample_timeframe = st.selectbox(
                         "Target Timeframe",
-                        ["WEEKLY", "MONTHLY", "QUARTERLY"]
+                        ["1D", "WEEKLY", "MONTHLY", "QUARTERLY"],
+                        help="1D = Daily aggregation from intraday data"
                     )
             
             with col2:
