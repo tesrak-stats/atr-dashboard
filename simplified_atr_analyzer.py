@@ -151,7 +151,7 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
             previous_atr = current_row['ATR']                 # Pre-calculated ATR
             trading_date = current_row['Date']
             
-            # Date filtering
+            # Date filtering - start from first available intraday data
             if hasattr(trading_date, 'strftime'):
                 date_str = trading_date.strftime('%Y-%m-%d')
             elif isinstance(trading_date, str):
@@ -159,8 +159,7 @@ def detect_triggers_and_goals_systematic(daily, intraday, custom_ratios=None):
             else:
                 date_str = str(trading_date)[:10]
             
-            if date_str < '2014-01-02':
-                continue
+            # No hardcoded date filter - process all available data
             
             # Skip if no valid ATR (early days before period completion)
             if pd.isna(previous_atr) or pd.isna(previous_close):
