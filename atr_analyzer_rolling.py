@@ -249,7 +249,8 @@ def state_check_analysis(daily, intraday, custom_ratios=None):
     progress_bar.empty()
     status_text.empty()
     
-    return pd.DataFrame(results)import streamlit as st
+    return pd.DataFrame(results)
+    import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, date
