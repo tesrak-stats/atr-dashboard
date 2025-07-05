@@ -249,8 +249,7 @@ def state_check_analysis(daily, intraday, custom_ratios=None):
     progress_bar.empty()
     status_text.empty()
     
-    return pd.DataFrame(results)
-    import streamlit as st
+    return pd.DataFrame(results)import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, date
@@ -2214,7 +2213,8 @@ if data_file:
                     data_file=data_file,
                     custom_ratios=custom_ratios,
                     debug_mode=debug_mode,
-                    debug_date=debug_date
+                    debug_date=debug_date,
+                    resume_from_period=resume_from_period
                 )
                 
                 display_results(result_df, debug_messages, ticker, asset_type)
