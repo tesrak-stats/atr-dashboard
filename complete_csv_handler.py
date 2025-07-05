@@ -2140,6 +2140,7 @@ if mode == "📁 Multi-CSV Processor":
                     with col3:
                         unique_days = combined_data['Date'].nunique()
                         avg_daily_records = len(combined_data) / max(1, unique_days)
+                        st.metric("📊 Avg Records/Day", f"{avg_daily_records:.1f}")records = len(combined_data) / max(1, unique_days)
                         st.metric("📊 Avg Records/Day", f"{avg_daily_records:.1f}")
                     
                     # Show what's ready for ATR analysis
@@ -2170,120 +2171,448 @@ if mode == "📁 Multi-CSV Processor":
                     st.error("❌ Failed to process CSV files. Please check the file processing summary above.")
 
 # FIXED: Show persistent actions for last processed data
-    if st.session_state.get('last_processed_data') is not None:
-        st.markdown("---")
-        st.subheader("🔄 **Continue with Last Processed Data**")
+if st.session_state.get('last_processed_data') is not None:
+    st.markdown("---")
+    st.subheader("🔄 **Continue with Last Processed Data**")
     
-        last_data = st.session_state['last_processed_data']
-        last_filename = st.session_state['last_processed_filename']
+    last_data = st.session_state['last_processed_data']
+    last_filename = st.session_state['last_processed_filename']
     
-        st.info(f"📊 **Available**: {last_filename} ({len(last_data):,} records)")
+    st.info(f"📊 **Available**: {last_filename} ({len(last_data):,} records)")
     
-        col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
     
-        with col1:
+    with col1:
         # Persistent download button
-            st.download_button(
-                "📥 **Download Again**",
-                data=last_data.to_csv(index=False),
-                file_name=last_filename,
-                mime="text/csv",
-                key="download_persistent",
-                use_container_width=True
-            )
+        st.download_button(
+            "📥 **Download Again**",
+            data=last_data.to_csv(index=False),
+            file_name=last_filename,
+            mime="text/csv",
+            key="download_persistent",
+            use_container_width=True
+        )
     
-        with col2:
+    with col2:
         # Persistent hold as base
-            if st.button("📊 **Hold as Base**", key="hold_base_persistent", use_container_width=True):
-                st.session_state['atr_combiner_base_data'] = last_data.copy()
-                st.session_state['atr_combiner_base_filename'] = last_filename
-                st.success("✅ Held as Base!")
-                st.rerun()
+        if st.button("📊 **Hold as Base**", key="hold_base_persistent", use_container_width=True):
+            st.session_state['atr_combiner_base_data'] = last_data.copy()
+            st.session_state['atr_combiner_base_filename'] = last_filename
+            st.success("✅ Held as Base!")
+            st.rerun()
     
-        with col3:
+    with col3:
         # Persistent hold as analysis
-            if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent", use_container_width=True):
-                st.session_state['atr_combiner_analysis_data'] = last_data.copy()
-                st.session_state['atr_combiner_analysis_filename'] = last_filename
-                st.success("✅ Held as Analysis!")
-                st.rerun()
+        if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent", use_container_width=True):
+            st.session_state['atr_combiner_analysis_data'] = last_data.copy()
+            st.session_state['atr_combiner_analysis_filename'] = last_filename
+            st.success("✅ Held as Analysis!")
+            st.rerun()
 
     else:
         # Show helpful instructions when no file is uploaded
-            st.info("👆 **Please upload a single CSV file to get started**")
+        st.info("👆 **Please upload a single CSV file to get started**")
         
         # Show example of what the file should look like
-            with st.expander("📋 Expected File Format", expanded=False):
-                st.markdown("""
-                **Your CSV file should contain these columns (any format):**
+        with st.expander("📋 Expected File Format", expanded=False):
+            st.markdown("""
+            **Your CSV file should contain these columns (any format):**
             
-                **Standard Format:**
-                - **Date** (or Datetime, Time)
-                - **Open**, **High**, **Low**, **Close**
-                - **Volume** (optional)
+            **Standard Format:**
+            - **Date** (or Datetime, Time)
+            - **Open**, **High**, **Low**, **Close**
+            - **Volume** (optional)
             
-                **Short Format (also supported):**
-                - **Date** (or Datetime, Time)  
-                - **o**, **h**, **l**, **c** (lowercase single letters)
-                - **v** (volume - optional)
+            **Short Format (also supported):**
+            - **Date** (or Datetime, Time)  
+            - **o**, **h**, **l**, **c** (lowercase single letters)
+            - **v** (volume - optional)
             
-                **Unlabeled Format (Smart Detection):**
-                - **Column 1**: Date/Datetime (any format)
-                - **Column 2**: Open price
-                - **Column 3**: High price
-                - **Column 4**: Low price
-                - **Column 5**: Close price
-                - **Column 6**: Volume (optional)
+            **Unlabeled Format (Smart Detection):**
+            - **Column 1**: Date/Datetime (any format)
+            - **Column 2**: Open price
+            - **Column 3**: High price
+            - **Column 4**: Low price
+            - **Column 5**: Close price
+            - **Column 6**: Volume (optional)
             
-                **Mixed Format Examples:**
-                - `Date, o, h, l, c, v`
-                - `datetime, Open, High, Low, Close, Volume`
-                - `date, time, O, H, L, C`
-                - `9/23/2012 20:35, 4100, 4110, 4095, 4105, 1000` (unlabeled)
+            **Mixed Format Examples:**
+            - `Date, o, h, l, c, v`
+            - `datetime, Open, High, Low, Close, Volume`
+            - `date, time, O, H, L, C`
+            - `9/23/2012 20:35, 4100, 4110, 4095, 4105, 1000` (unlabeled)
             
-                **The system will:**
-                - ✅ Auto-detect column formats
-                - ✅ Handle various date/time formats
-                - ✅ Smart detect unlabeled columns
-                - ✅ Convert to standard format automatically
-                """)
+            **The system will:**
+            - ✅ Auto-detect column formats
+            - ✅ Handle various date/time formats
+            - ✅ Smart detect unlabeled columns
+            - ✅ Convert to standard format automatically
+            """)
         
         # Show sample workflows
-            with st.expander("🔧 Sample Workflows", expanded=False):
-                st.markdown("""
-                **🎯 Standard Resampling Examples:**
-                - Upload 1-minute data → Convert to 10-minute bars
-                - Upload daily data → Convert to weekly bars
-                - Upload 5-minute data → Convert to 1-hour bars
-                - Apply time filters (e.g., 9:30-16:00 market hours)
+        with st.expander("🔧 Sample Workflows", expanded=False):
+            st.markdown("""
+            **🎯 Standard Resampling Examples:**
+            - Upload 1-minute data → Convert to 10-minute bars
+            - Upload daily data → Convert to weekly bars
+            - Upload 5-minute data → Convert to 1-hour bars
+            - Apply time filters (e.g., 9:30-16:00 market hours)
             
-                **🕯️ Custom Candle Examples:**
-                - **Morning/Afternoon Split**: Create 2 candles per day (9:30-12:00, 12:00-16:00)
-                - **3-Period Day**: Create 3 candles per day (9:00-11:00, 11:00-14:00, 14:00-16:00)
-                - **Session-Based**: Create candles for different trading sessions
-                - **Flexible Periods**: Any time combination you need
-                
-                **Custom Candle Output Example:**
-                ```
-                Date        Period_Name  Period_Start  Period_End  Open   High   Low    Close
-                2024-01-01  Morning      09:30        12:00       4100   4150   4090   4140
-                2024-01-01  Afternoon    12:00        16:00       4140   4180   4130   4175
-                2024-01-02  Morning      09:30        12:00       4175   4200   4160   4190
-                2024-01-02  Afternoon    12:00        16:00       4190   4210   4180   4205
-                ```
-                """)
+            **🕯️ Custom Candle Examples:**
+            - **Morning/Afternoon Split**: Create 2 candles per day (9:30-12:00, 12:00-16:00)
+            - **3-Period Day**: Create 3 candles per day (9:00-11:00, 11:00-14:00, 14:00-16:00)
+            - **Session-Based**: Create candles for different trading sessions
+            - **Flexible Periods**: Any time combination you need
+            
+            **Custom Candle Output Example:**
+            ```
+            Date        Period_Name  Period_Start  Period_End  Open   High   Low    Close
+            2024-01-01  Morning      09:30        12:00       4100   4150   4090   4140
+            2024-01-01  Afternoon    12:00        16:00       4140   4180   4130   4175
+            2024-01-02  Morning      09:30        12:00       4175   4200   4160   4190
+            2024-01-02  Afternoon    12:00        16:00       4190   4210   4180   4205
+            ```
+            """)
 
 # ========================================================================================
-# MULTI-TIMEFRAME ATR COMBINER (SIMPLIFIED - Single ATR Column)
+# PUBLIC DATA DOWNLOAD (RESTORED WITH DUAL SOURCE)
+# ========================================================================================
+elif mode == "📈 Public Data Download":
+    st.header("📈 Public Data Download")
+    st.write("Download financial data from multiple sources and export as CSV")
+    
+    # Data source selection
+    st.subheader("🔧 Data Source Selection")
+    data_source = st.radio(
+        "Choose Data Source",
+        ["Polygon.io API", "Yahoo Finance (Public)"],
+        help="Select your preferred data source",
+        horizontal=True
+    )
+    
+    if data_source == "Polygon.io API":
+        st.info("📊 **Polygon.io**: Professional-grade data with better historical coverage")
+        
+        # API Key input
+        st.subheader("🔑 API Configuration")
+        api_key = st.text_input(
+            "Polygon.io API Key",
+            type="password",
+            help="Enter your Polygon.io API key"
+        )
+        
+        if not api_key:
+            st.warning("⚠️ **API Key Required**: Enter your Polygon.io API key to continue")
+            st.info("💡 **Get your free API key**: [polygon.io](https://polygon.io/)")
+        else:
+            # Configuration in main frame
+            st.subheader("🎯 Download Configuration")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**📈 Ticker & Timeframe**")
+                
+                # Ticker input
+                ticker = st.text_input(
+                    "Ticker Symbol",
+                    value="SPY",
+                    help="Enter ticker symbol (e.g., SPY, AAPL, TSLA)"
+                ).upper()
+                
+                # Timeframe selection
+                timeframe = st.selectbox(
+                    "Timeframe",
+                    ["1 minute", "5 minute", "15 minute", "30 minute", "1 hour", "4 hour", "1 day"],
+                    index=6,  # Default to 1 day
+                    help="Select data timeframe"
+                )
+                
+                # Convert to Polygon format
+                timeframe_map = {
+                    "1 minute": ("1", "minute"),
+                    "5 minute": ("5", "minute"), 
+                    "15 minute": ("15", "minute"),
+                    "30 minute": ("30", "minute"),
+                    "1 hour": ("1", "hour"),
+                    "4 hour": ("4", "hour"),
+                    "1 day": ("1", "day")
+                }
+                multiplier, timespan = timeframe_map[timeframe]
+            
+            with col2:
+                st.markdown("**📅 Date Range**")
+                
+                # Simple date range
+                start_date = st.date_input(
+                    "Start Date",
+                    value=date(2024, 1, 1),
+                    min_value=date(2000, 1, 1),
+                    max_value=date.today(),
+                    help="Start date for data download"
+                )
+                
+                end_date = st.date_input(
+                    "End Date",
+                    value=date.today(),
+                    min_value=date(2000, 1, 1),
+                    max_value=date.today(),
+                    help="End date for data download"
+                )
+            
+            # Download button
+            if st.button("🚀 Download from Polygon", type="primary"):
+                if not ticker:
+                    st.error("❌ Please enter a ticker symbol")
+                else:
+                    with st.spinner(f'Downloading {timeframe} data for {ticker} from Polygon.io...'):
+                        try:
+                            import requests
+                            
+                            # Format dates for Polygon API
+                            start_str = start_date.strftime('%Y-%m-%d')
+                            end_str = end_date.strftime('%Y-%m-%d')
+                            
+                            # Build Polygon API URL
+                            url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/{multiplier}/{timespan}/{start_str}/{end_str}"
+                            params = {
+                                'adjusted': 'true',
+                                'sort': 'asc',
+                                'limit': 50000,
+                                'apikey': api_key
+                            }
+                            
+                            # Make API request
+                            response = requests.get(url, params=params)
+                            
+                            if response.status_code == 200:
+                                data = response.json()
+                                
+                                if data.get('status') == 'OK' and data.get('results'):
+                                    # Convert to DataFrame
+                                    results = data['results']
+                                    polygon_df = pd.DataFrame(results)
+                                    
+                                    # Convert timestamp to datetime
+                                    polygon_df['Date'] = pd.to_datetime(polygon_df['t'], unit='ms')
+                                    
+                                    # Rename columns to standard format
+                                    polygon_df = polygon_df.rename(columns={
+                                        'o': 'Open',
+                                        'h': 'High', 
+                                        'l': 'Low',
+                                        'c': 'Close',
+                                        'v': 'Volume'
+                                    })
+                                    
+                                    # Select and reorder columns
+                                    polygon_df = polygon_df[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']]
+                                    
+                                    # Create Datetime column for consistency
+                                    polygon_df['Datetime'] = polygon_df['Date']
+                                    polygon_df['Date'] = polygon_df['Date'].dt.date
+                                    
+                                    st.success(f"✅ Downloaded {len(polygon_df)} records from Polygon.io")
+                                    st.info(f"📅 **Date range**: {polygon_df['Date'].min()} to {polygon_df['Date'].max()}")
+                                    st.info(f"📊 **Timeframe**: {timeframe}")
+                                    
+                                    # Show preview
+                                    st.subheader("📋 Data Preview")
+                                    st.dataframe(polygon_df.head(), use_container_width=True)
+                                    
+                                    # Download button
+                                    filename = f"{ticker}_{timeframe.replace(' ', '')}_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}_polygon.csv"
+                                    st.download_button(
+                                        "📥 Download Polygon CSV",
+                                        data=polygon_df.to_csv(index=False),
+                                        file_name=filename,
+                                        mime="text/csv"
+                                    )
+                                    
+                                    # Option to use in Multi-Timeframe ATR Combiner
+                                    st.markdown("### 🔄 Or Use in Multi-Timeframe ATR Combiner")
+                                    col1, col2 = st.columns(2)
+                                    
+                                    with col1:
+                                        if st.button("📊 Use as Base Timeframe (ATR Source)", key="polygon_use_as_base"):
+                                            st.session_state['atr_combiner_base_data'] = polygon_df
+                                            st.session_state['atr_combiner_base_filename'] = filename
+                                            st.success("✅ Data saved as Base Timeframe for ATR Combiner!")
+                                            st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
+                                    
+                                    with col2:
+                                        if st.button("📈 Use as Analysis Timeframe", key="polygon_use_as_analysis"):
+                                            st.session_state['atr_combiner_analysis_data'] = polygon_df
+                                            st.session_state['atr_combiner_analysis_filename'] = filename
+                                            st.success("✅ Data saved as Analysis Timeframe for ATR Combiner!")
+                                            st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
+                                
+                                else:
+                                    st.error("❌ No data available for this ticker/range")
+                                    if data.get('status') == 'ERROR':
+                                        st.error(f"API Error: {data.get('error', 'Unknown error')}")
+                            
+                            elif response.status_code == 401:
+                                st.error("❌ **Authentication Error**: Invalid API key")
+                                st.error("Please check your Polygon.io API key")
+                            
+                            elif response.status_code == 429:
+                                st.error("❌ **Rate Limit Exceeded**: Too many requests")
+                                st.error("Please wait before making another request")
+                            
+                            else:
+                                st.error(f"❌ API request failed: HTTP {response.status_code}")
+                                st.error(response.text)
+                                
+                        except Exception as e:
+                            st.error(f"❌ Download failed: {str(e)}")
+    
+    else:  # Yahoo Finance (Public)
+        st.info("📈 **Yahoo Finance**: Free public data with good crypto and index coverage")
+        st.info("⚠️ **Note:** Limited intraday history. Best for crypto, indices, and recent data.")
+        
+        # Configuration in main frame
+        st.subheader("🎯 Download Configuration")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**📈 Ticker & Data Source**")
+            
+            # Ticker input
+            ticker = st.text_input(
+                "Ticker Symbol",
+                value="SPX",
+                help="Enter ticker symbol (e.g., SPX, AAPL, BTC)"
+            ).upper()
+            
+            # Show ticker mapping
+            if ticker:
+                mapped_ticker = TickerMapper.get_public_ticker(ticker)
+                if mapped_ticker != ticker:
+                    st.success(f"✅ Will map: {ticker} → {mapped_ticker}")
+                else:
+                    st.info(f"📈 Will fetch: {ticker}")
+        
+        with col2:
+            st.markdown("**📅 Date Range**")
+            
+            # Simple date range
+            start_date = st.date_input(
+                "Start Date",
+                value=date(2023, 1, 1),
+                min_value=date(1850, 1, 1),
+                max_value=date.today(),
+                help="Start date for data download"
+            )
+            
+            end_date = st.date_input(
+                "End Date",
+                value=date.today(),
+                min_value=date(1850, 1, 1),
+                max_value=date.today(),
+                help="End date for data download"
+            )
+        
+        if st.button("🚀 Download from Yahoo Finance", type="primary"):
+            if not ticker:
+                st.error("❌ Please enter a ticker symbol")
+            else:
+                mapped_ticker = TickerMapper.get_public_ticker(ticker)
+                
+                with st.spinner(f'Downloading data for {mapped_ticker} from Yahoo Finance...'):
+                    try:
+                        downloaded_data = yf.download(mapped_ticker, start=start_date, end=end_date, interval='1d', progress=False)
+                        
+                        if not downloaded_data.empty:
+                            # Reset index and clean columns
+                            downloaded_data.reset_index(inplace=True)
+                            
+                            # Handle MultiIndex columns
+                            if isinstance(downloaded_data.columns, pd.MultiIndex):
+                                downloaded_data.columns = downloaded_data.columns.get_level_values(0)
+                            
+                            # Ensure Date column
+                            if 'Date' not in downloaded_data.columns and len(downloaded_data.columns) > 0:
+                                downloaded_data.rename(columns={downloaded_data.columns[0]: 'Date'}, inplace=True)
+                            
+                            # Create Datetime column for consistency
+                            downloaded_data['Datetime'] = pd.to_datetime(downloaded_data['Date'])
+                            downloaded_data['Date'] = downloaded_data['Date'].dt.date if hasattr(downloaded_data['Date'].iloc[0], 'date') else downloaded_data['Date']
+                            
+                            st.success(f"✅ Downloaded {len(downloaded_data)} records from Yahoo Finance")
+                            st.info(f"📅 **Date range**: {downloaded_data['Date'].min()} to {downloaded_data['Date'].max()}")
+                            
+                            # Show preview
+                            st.subheader("📋 Data Preview")
+                            st.dataframe(downloaded_data.head(), use_container_width=True)
+                            
+                            # Download button
+                            filename = f"{ticker}_yahoo_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}.csv"
+                            st.download_button(
+                                "📥 Download Yahoo CSV",
+                                data=downloaded_data.to_csv(index=False),
+                                file_name=filename,
+                                mime="text/csv"
+                            )
+                            
+                            # Option to use in Multi-Timeframe ATR Combiner
+                            st.markdown("### 🔄 Or Use in Multi-Timeframe ATR Combiner")
+                            col1, col2 = st.columns(2)
+                            
+                            with col1:
+                                if st.button("📊 Use as Base Timeframe (ATR Source)", key="yahoo_use_as_base"):
+                                    st.session_state['atr_combiner_base_data'] = downloaded_data
+                                    st.session_state['atr_combiner_base_filename'] = filename
+                                    st.success("✅ Data saved as Base Timeframe for ATR Combiner!")
+                                    st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
+                            
+                            with col2:
+                                if st.button("📈 Use as Analysis Timeframe", key="yahoo_use_as_analysis"):
+                                    st.session_state['atr_combiner_analysis_data'] = downloaded_data
+                                    st.session_state['atr_combiner_analysis_filename'] = filename
+                                    st.success("✅ Data saved as Analysis Timeframe for ATR Combiner!")
+                                    st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
+                        else:
+                            st.error("❌ No data available for this ticker/range")
+                            
+                            # Suggest alternatives
+                            alternatives = TickerMapper.suggest_alternatives(ticker)
+                            if alternatives:
+                                st.info("💡 Try these alternative formats:")
+                                for alt in alternatives:
+                                    st.info(f"   • {alt}")
+                                    
+                    except Exception as e:
+                        st.error(f"❌ Download failed: {str(e)}")
+
+# ========================================================================================
+# SINGLE FILE RESAMPLER (FIXED - Real Custom Candle Generator)
+# ========================================================================================
+# ========================================================================================
+# MULTI-TIMEFRAME ATR COMBINER (SIMPLIFIED - Single ATR Column)  
 # ========================================================================================
 elif mode == "🎯 Multi-Timeframe ATR Combiner":
-    st.header("📈 Public Data Download")
-    st.write("Download financial data from public sources and export as CSV")
+    st.header("🎯 Multi-Timeframe ATR Combiner")
+    st.write("**Combine any two timeframes with ATR calculation for systematic analysis**")
     
-    st.info("⚠️ **Note:** Public sources have limitations. For extensive historical intraday data, use the Multi-CSV Processor with broker files.")
+    # SIMPLIFIED: Information about the tool
+    st.info("""
+    🎯 **Purpose**: Prepare ATR-ready files for systematic analysis
     
-    # Configuration in main frame
-    st.subheader("🎯 Download Configuration")
+    **What this does:**
+    - Calculates TRUE Wilder's ATR on your chosen base timeframe (any timeframe)
+    - Combines with your analysis timeframe for trigger/goal analysis
+    - Outputs single file with **single ATR column** ready for ATR Level Analyzer
+    
+    **FLEXIBLE EXAMPLES:**
+    - **Monthly ATR + Daily Analysis**: Monthly bars for ATR → applied to daily bars
+    - **Daily ATR + 10-minute Analysis**: Daily bars for ATR → applied to 10-minute bars  
+    - **4-Hour ATR + 1-minute Analysis**: 4-hour bars for ATR → applied to 1-minute bars
+    - **Weekly ATR + 1-hour Analysis**: Weekly bars for ATR → applied to hourly bars
+    
+    **SIMPLIFIED OUTPUT**: Only one ATR column containing the currently used ATR value
+    """)
     
     col1, col2 = st.columns(2)
     
@@ -3022,7 +3351,7 @@ elif mode == "🔧 Single File Resampler":
                                 resampled_filename = custom_filename
                             else:
                                 st.error("❌ Failed to create custom candles")
-                                st.stop()
+                                return
                         
                         # Download section
                         st.markdown("---")
