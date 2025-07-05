@@ -249,8 +249,7 @@ def state_check_analysis(daily, intraday, custom_ratios=None):
     progress_bar.empty()
     status_text.empty()
     
-    return pd.DataFrame(results)
-    import streamlit as st
+    return pd.DataFrame(results)import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, date
@@ -2083,7 +2082,7 @@ def debug_single_day_analysis(daily, intraday, debug_date, custom_ratios=None):
     st.success(f"**Debug Summary**: {total_triggers} total level triggers detected across {len(day_data)} candles")
 
 # ==============================================================================================
-# END OF CRITICAL SECTION
+# END OF CRITICAL SECTION  
 # ==============================================================================================
 
 # Main analysis function with session state resume capability
@@ -2620,7 +2619,11 @@ def display_results(result_df, debug_messages, ticker, asset_type):
     else:
         st.warning('No results generated - check processing information above')
 
-# Streamlit Interface
+
+# ==============================================================================
+# STREAMLIT INTERFACE
+# ==============================================================================
+
 st.title('🎯 Comprehensive ATR Analysis Generator')
 st.write('**Complete ATR analysis suite: Session, Rolling, ZoneBaseline, and StateCheck**')
 st.write('**Upload your CSV file from the CSV Data Handler to get started**')
@@ -2664,7 +2667,7 @@ if ('atr_processing' in st.session_state and
             st.subheader("💾 Emergency Download")
             st.write(f"**Save current progress:** {current_records:,} records through period {current_progress:,}")
             
-            if total_records > 0:
+            if current_records > 0:
                 # Prepare download data - all results are already unified
                 all_current_data = st.session_state.atr_processing.get('results', [])
                 
