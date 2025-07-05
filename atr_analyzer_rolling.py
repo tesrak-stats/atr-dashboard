@@ -249,8 +249,7 @@ def state_check_analysis(daily, intraday, custom_ratios=None):
     progress_bar.empty()
     status_text.empty()
     
-    return pd.DataFrame(results)
-import streamlit as st
+    return pd.DataFrame(results)import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, date
@@ -385,7 +384,636 @@ def create_rolling_result_record(base_record, goal_level, goal_price, goal_hit, 
     })
     return rolling_record
 
-def detect_triggers_and_goals_batch(daily, intraday, custom_ratios=None, start_index=0, batch_size=50):
+def detect_triggers_and_goals_unified_batch(daily, intraday, custom_ratios=None, start_index=0, batch_size=50):
+    """
+    UNIFIED batch analysis: Session, Rolling, ZoneBaseline, and StateCheck in single loop
+    Processes batch_size periods at a time with all 4 analysis types per period
+    """
+    if custom_ratios is None:
+        fib_levels = [0.236, 0.382, 0.500, 0.618, 0.786, 1.000,
+                     -0.236, -0.382, -0.500, -0.618, -0.786, -1.000, 0.000]
+    else:
+        fib_levels = custom_ratios
+
+    all_results = []
+
+    # Progress tracking
+    total_periods = len(daily)
+    end_index = min(start_index + batch_size, total_periods)
+
+    progress_bar = st.progress(start_index / total_periods)
+    status_text = st.empty()
+
+    # Check if rolling analysis is configured
+    has_rolling_config = False
+    rolling_candles = 0
+    if 'Candle_Interval_Minutes' in intraday.columns:
+        candle_interval = intraday['Candle_Interval_Minutes'].iloc[0]
+        period_type = intraday['Rolling_Period_Type'].iloc[0] if 'Rolling_Period_Type' in intraday.columns else None
+        period_count = intraday['Rolling_Period_Count'].iloc[0] if 'Rolling_Period_Count' in intraday.columns else None
+        analysis_timeframe = intraday['Analysis_Timeframe'].iloc[0] if 'Analysis_Timeframe' in intraday.columns else None
+        
+        if period_type and period_type != 'None' and analysis_timeframe and analysis_timeframe != 'Other':
+            has_rolling_config = True
+            rolling_candles = calculate_rolling_candles(candle_interval, period_type, period_count)
+
+    for i in range(start_index, end_index):
+        try:
+            # Update progress
+            progress = (i + 1) / total_periods
+            progress_bar.progress(progress)
+            status_text.text(f"Unified Processing: period {i+1}/{total_periods} (All 4 analysis types)...")
+            
+            # Use CURRENT day's Pre-calculated Prior_Base_Close and ATR
+            current_row = daily.iloc[i]     
+            
+            previous_close = current_row['Prior_Base_Close']  # Pre-calculated previous close
+            previous_atr = current_row['ATR']                 # Pre-calculated ATR
+            trading_date = current_row['Date']
+            
+            # Skip if no valid ATR (early days before period completion)
+            if pd.isna(previous_atr) or pd.isna(previous_close):
+                continue
+            
+            # Generate levels using PREVIOUS day's close + ATR
+            level_map = generate_atr_levels(previous_close, previous_atr, custom_ratios)
+            
+            # Get intraday data for trading date
+            day_data = intraday[intraday['Date'] == pd.to_datetime(trading_date).date()].copy()
+            if day_data.empty:
+                continue
+
+            day_data['Time'] = day_data['Datetime'].dt.strftime('%H%M')
+            day_data.reset_index(drop=True, inplace=True)
+
+            open_candle = day_data.iloc[0]
+            open_price = open_candle['Open']
+            
+            # ==================================================================================
+            # 1. SESSION + ROLLING ANALYSIS (Using existing critical section logic)
+            # ==================================================================================
+            
+            # PERFECT SYSTEMATIC APPROACH: Each level checked in both directions
+            for trigger_level in fib_levels:
+                trigger_price = level_map[trigger_level]
+                
+                # 1. CHECK BELOW DIRECTION: LOW <= trigger level
+                below_triggered = False
+                below_trigger_time = None
+                below_trigger_row = None
+                
+                # Check OPEN candle for below trigger
+                if open_price <= trigger_price:
+                    below_triggered = True
+                    below_trigger_time = 'OPEN'
+                    below_trigger_row = 0
+                
+                # If OPEN didn't trigger, check 0930 candle High/Low
+                elif day_data.iloc[0]['Low'] <= trigger_price:
+                    below_triggered = True
+                    below_trigger_time = '0930'
+                    below_trigger_row = 0
+                
+                # Check intraday candles for below trigger (only if neither OPEN nor 0930 triggered)
+                if not below_triggered:
+                    for idx, row in day_data.iloc[1:].iterrows():
+                        if row['Low'] <= trigger_price:
+                            below_triggered = True
+                            below_trigger_time = row['Time']
+                            below_trigger_row = idx
+                            break
+                
+                # Process all goals for BELOW trigger
+                if below_triggered:
+                    trigger_candle = day_data.iloc[below_trigger_row]
+                    
+                    # Base record template for both session and rolling
+                    base_record = {
+                        'Date': trading_date,
+                        'Direction': 'Below',
+                        'TriggerLevel': trigger_level,
+                        'TriggerTime': below_trigger_time,
+                        'TriggerPrice': round(trigger_price, 2),
+                        'PreviousClose': round(previous_close, 2),
+                        'PreviousATR': round(previous_atr, 2),
+                        'RetestedTrigger': 'No'
+                    }
+                    
+                    for goal_level in fib_levels:
+                        goal_price = level_map[goal_level]
+                        
+                        # Determine goal type for BELOW trigger
+                        if goal_level == trigger_level:
+                            goal_type = 'Retest'  # Same level retest
+                        elif goal_level < trigger_level:
+                            goal_type = 'Continuation'  # Further below
+                        else:
+                            goal_type = 'Retracement'   # Back above (includes cross-zero)
+                        
+                        # SESSION ANALYSIS: Check until end of session
+                        session_goal_hit = False
+                        session_goal_time = ''
+                        session_is_same_time = False
+                        
+                        # [CRITICAL SECTION LOGIC FOR SESSION - UNCHANGED]
+                        if below_trigger_time == 'OPEN':
+                            # Step 1: Check if goal completes at OPEN price first (takes precedence)
+                            if goal_level == trigger_level:  # Same level retest
+                                if open_price >= goal_price:
+                                    session_goal_hit = True
+                                    session_goal_time = 'OPEN'
+                                    session_is_same_time = True
+                            elif goal_level > trigger_level:  # Above goal (RETRACEMENT)
+                                if open_price >= goal_price:
+                                    session_goal_hit = True
+                                    session_goal_time = 'OPEN'
+                                    session_is_same_time = True
+                            else:  # Below goal (CONTINUATION)
+                                if open_price <= goal_price:
+                                    session_goal_hit = True
+                                    session_goal_time = 'OPEN'
+                                    session_is_same_time = True
+                            
+                            # Step 2: Only if OPEN missed, check candles based on goal type
+                            if not session_goal_hit:
+                                if goal_level == trigger_level:  # RETEST - must skip same candle
+                                    start_candles = day_data.iloc[1:].iterrows()
+                                elif goal_level > trigger_level:  # RETRACEMENT - must skip same candle
+                                    start_candles = day_data.iloc[1:].iterrows()
+                                else:  # CONTINUATION - can check same candle
+                                    start_candles = day_data.iterrows()
+                                
+                                for _, row in start_candles:
+                                    if goal_level == trigger_level:  # Same level retest (opposite direction)
+                                        if row['High'] >= goal_price:
+                                            session_goal_hit = True
+                                            session_goal_time = row['Time']
+                                            break
+                                    elif goal_level > trigger_level:  # Above goal
+                                        if row['High'] >= goal_price:
+                                            session_goal_hit = True
+                                            session_goal_time = row['Time']
+                                            break
+                                    else:  # Below goal  
+                                        if row['Low'] <= goal_price:
+                                            session_goal_hit = True
+                                            session_goal_time = row['Time']
+                                            break
+                        
+                        else:  # Intraday below trigger
+                            if goal_level == trigger_level:  # RETEST - Skip same candle entirely
+                                pass
+                            elif goal_level > trigger_level:  # RETRACEMENT - Skip same candle entirely  
+                                pass
+                            else:  # CONTINUATION - Can check same candle
+                                if goal_level < trigger_level:
+                                    if trigger_candle['Low'] <= goal_price:
+                                        session_goal_hit = True
+                                        session_goal_time = below_trigger_time
+                            
+                            # Check subsequent candles if not completed on trigger candle
+                            if not session_goal_hit:
+                                for _, row in day_data.iloc[below_trigger_row + 1:].iterrows():
+                                    if goal_level == trigger_level:  # Same level retest (opposite direction)
+                                        if row['High'] >= goal_price:
+                                            session_goal_hit = True
+                                            session_goal_time = row['Time']
+                                            break
+                                    elif goal_level > trigger_level:  # Above goal
+                                        if row['High'] >= goal_price:
+                                            session_goal_hit = True
+                                            session_goal_time = row['Time']
+                                            break
+                                    else:  # Below goal
+                                        if row['Low'] <= goal_price:
+                                            session_goal_hit = True
+                                            session_goal_time = row['Time']
+                                            break
+                        
+                        # Record SESSION result
+                        session_record = base_record.copy()
+                        session_record.update({
+                            'GoalLevel': goal_level,
+                            'GoalPrice': round(goal_price, 2),
+                            'GoalHit': 'Yes' if session_goal_hit else 'No',
+                            'GoalTime': session_goal_time if session_goal_hit else '',
+                            'GoalClassification': goal_type,
+                            'SameTime': session_is_same_time,
+                            'AnalysisType': 'Session'
+                        })
+                        all_results.append(session_record)
+                        
+                        # ROLLING ANALYSIS: Same logic but with rolling boundary
+                        if has_rolling_config:
+                            rolling_goal_hit = False
+                            rolling_goal_time = ''
+                            rolling_is_same_time = False
+                            
+                            # [SAME LOGIC AS SESSION BUT WITH ROLLING BOUNDARY]
+                            if below_trigger_time == 'OPEN':
+                                # Step 1: Check if goal completes at OPEN price first
+                                if goal_level == trigger_level:  # Same level retest
+                                    if open_price >= goal_price:
+                                        rolling_goal_hit = True
+                                        rolling_goal_time = 'OPEN'
+                                        rolling_is_same_time = True
+                                elif goal_level > trigger_level:  # Above goal (RETRACEMENT)
+                                    if open_price >= goal_price:
+                                        rolling_goal_hit = True
+                                        rolling_goal_time = 'OPEN'
+                                        rolling_is_same_time = True
+                                else:  # Below goal (CONTINUATION)
+                                    if open_price <= goal_price:
+                                        rolling_goal_hit = True
+                                        rolling_goal_time = 'OPEN'
+                                        rolling_is_same_time = True
+                                
+                                # Step 2: Only if OPEN missed, check candles with rolling boundary
+                                if not rolling_goal_hit:
+                                    if goal_level == trigger_level:  # RETEST
+                                        rolling_end_idx = min(1 + rolling_candles, len(day_data))
+                                        start_candles = day_data.iloc[1:rolling_end_idx].iterrows()
+                                    elif goal_level > trigger_level:  # RETRACEMENT
+                                        rolling_end_idx = min(1 + rolling_candles, len(day_data))
+                                        start_candles = day_data.iloc[1:rolling_end_idx].iterrows()
+                                    else:  # CONTINUATION
+                                        rolling_end_idx = min(rolling_candles, len(day_data))
+                                        start_candles = day_data.iloc[0:rolling_end_idx].iterrows()
+                                    
+                                    for _, row in start_candles:
+                                        if goal_level == trigger_level:  # Same level retest
+                                            if row['High'] >= goal_price:
+                                                rolling_goal_hit = True
+                                                rolling_goal_time = row['Time']
+                                                break
+                                        elif goal_level > trigger_level:  # Above goal
+                                            if row['High'] >= goal_price:
+                                                rolling_goal_hit = True
+                                                rolling_goal_time = row['Time']
+                                                break
+                                        else:  # Below goal  
+                                            if row['Low'] <= goal_price:
+                                                rolling_goal_hit = True
+                                                rolling_goal_time = row['Time']
+                                                break
+                            
+                            else:  # Intraday below trigger
+                                if goal_level == trigger_level:  # RETEST - Skip same candle
+                                    pass
+                                elif goal_level > trigger_level:  # RETRACEMENT - Skip same candle
+                                    pass
+                                else:  # CONTINUATION - Can check same candle
+                                    if goal_level < trigger_level:
+                                        if trigger_candle['Low'] <= goal_price:
+                                            rolling_goal_hit = True
+                                            rolling_goal_time = below_trigger_time
+                                
+                                # Check subsequent candles with rolling boundary
+                                if not rolling_goal_hit:
+                                    rolling_end_idx = min(below_trigger_row + 1 + rolling_candles, len(day_data))
+                                    for _, row in day_data.iloc[below_trigger_row + 1:rolling_end_idx].iterrows():
+                                        if goal_level == trigger_level:  # Same level retest
+                                            if row['High'] >= goal_price:
+                                                rolling_goal_hit = True
+                                                rolling_goal_time = row['Time']
+                                                break
+                                        elif goal_level > trigger_level:  # Above goal
+                                            if row['High'] >= goal_price:
+                                                rolling_goal_hit = True
+                                                rolling_goal_time = row['Time']
+                                                break
+                                        else:  # Below goal
+                                            if row['Low'] <= goal_price:
+                                                rolling_goal_hit = True
+                                                rolling_goal_time = row['Time']
+                                                break
+                            
+                            # Record ROLLING result
+                            rolling_record = create_rolling_result_record(
+                                base_record, goal_level, goal_price, rolling_goal_hit, 
+                                rolling_goal_time, goal_type, rolling_is_same_time
+                            )
+                            all_results.append(rolling_record)
+                
+                # 2. CHECK ABOVE DIRECTION: HIGH >= trigger level
+                above_triggered = False
+                above_trigger_time = None
+                above_trigger_row = None
+                
+                # Check OPEN candle for above trigger
+                if open_price >= trigger_price:
+                    above_triggered = True
+                    above_trigger_time = 'OPEN'
+                    above_trigger_row = 0
+                
+                # If OPEN didn't trigger, check 0930 candle High/Low
+                elif day_data.iloc[0]['High'] >= trigger_price:
+                    above_triggered = True
+                    above_trigger_time = '0930'
+                    above_trigger_row = 0
+                
+                # Check intraday candles for above trigger
+                if not above_triggered:
+                    for idx, row in day_data.iloc[1:].iterrows():
+                        if row['High'] >= trigger_price:
+                            above_triggered = True
+                            above_trigger_time = row['Time']
+                            above_trigger_row = idx
+                            break
+                
+                # Process all goals for ABOVE trigger (same pattern as below)
+                if above_triggered:
+                    trigger_candle = day_data.iloc[above_trigger_row]
+                    
+                    base_record = {
+                        'Date': trading_date,
+                        'Direction': 'Above',
+                        'TriggerLevel': trigger_level,
+                        'TriggerTime': above_trigger_time,
+                        'TriggerPrice': round(trigger_price, 2),
+                        'PreviousClose': round(previous_close, 2),
+                        'PreviousATR': round(previous_atr, 2),
+                        'RetestedTrigger': 'No'
+                    }
+                    
+                    for goal_level in fib_levels:
+                        goal_price = level_map[goal_level]
+                        
+                        # Determine goal type for ABOVE trigger
+                        if goal_level == trigger_level:
+                            goal_type = 'Retest'  # Same level retest
+                        elif goal_level > trigger_level:
+                            goal_type = 'Continuation'  # Further above
+                        else:
+                            goal_type = 'Retracement'   # Back below (includes cross-zero)
+                        
+                        # SESSION ANALYSIS for ABOVE trigger
+                        session_goal_hit = False
+                        session_goal_time = ''
+                        session_is_same_time = False
+                        
+                        # [Same logic as below trigger but for above direction]
+                        if above_trigger_time == 'OPEN':
+                            if goal_level == trigger_level:  # Same level retest
+                                if open_price <= goal_price:
+                                    session_goal_hit = True
+                                    session_goal_time = 'OPEN'
+                                    session_is_same_time = True
+                            elif goal_level > trigger_level:  # Above goal (CONTINUATION)
+                                if open_price >= goal_price:
+                                    session_goal_hit = True
+                                    session_goal_time = 'OPEN'
+                                    session_is_same_time = True
+                            else:  # Below goal (RETRACEMENT)
+                                if open_price <= goal_price:
+                                    session_goal_hit = True
+                                    session_goal_time = 'OPEN'
+                                    session_is_same_time = True
+                            
+                            if not session_goal_hit:
+                                for _, row in day_data.iterrows():
+                                    if goal_level == trigger_level:  # Same level retest
+                                        if row['Low'] <= goal_price:
+                                            session_goal_hit = True
+                                            session_goal_time = row['Time']
+                                            break
+                                    elif goal_level > trigger_level:  # Above goal
+                                        if row['High'] >= goal_price:
+                                            session_goal_hit = True
+                                            session_goal_time = row['Time']
+                                            break
+                                    else:  # Below goal
+                                        if row['Low'] <= goal_price:
+                                            session_goal_hit = True
+                                            session_goal_time = row['Time']
+                                            break
+                        
+                        else:  # Intraday above trigger
+                            if goal_level == trigger_level:  # RETEST - Skip same candle
+                                pass
+                            elif goal_level < trigger_level:  # RETRACEMENT - Skip same candle
+                                pass
+                            else:  # CONTINUATION - Can check same candle
+                                if goal_level > trigger_level:
+                                    if trigger_candle['High'] >= goal_price:
+                                        session_goal_hit = True
+                                        session_goal_time = above_trigger_time
+                            
+                            if not session_goal_hit:
+                                for _, row in day_data.iloc[above_trigger_row + 1:].iterrows():
+                                    if goal_level == trigger_level:  # Same level retest
+                                        if row['Low'] <= goal_price:
+                                            session_goal_hit = True
+                                            session_goal_time = row['Time']
+                                            break
+                                    elif goal_level > trigger_level:  # Above goal
+                                        if row['High'] >= goal_price:
+                                            session_goal_hit = True
+                                            session_goal_time = row['Time']
+                                            break
+                                    else:  # Below goal
+                                        if row['Low'] <= goal_price:
+                                            session_goal_hit = True
+                                            session_goal_time = row['Time']
+                                            break
+                        
+                        # Record SESSION result for ABOVE
+                        session_record = base_record.copy()
+                        session_record.update({
+                            'GoalLevel': goal_level,
+                            'GoalPrice': round(goal_price, 2),
+                            'GoalHit': 'Yes' if session_goal_hit else 'No',
+                            'GoalTime': session_goal_time if session_goal_hit else '',
+                            'GoalClassification': goal_type,
+                            'SameTime': session_is_same_time,
+                            'AnalysisType': 'Session'
+                        })
+                        all_results.append(session_record)
+                        
+                        # ROLLING ANALYSIS for ABOVE trigger (same pattern)
+                        if has_rolling_config:
+                            rolling_goal_hit = False
+                            rolling_goal_time = ''
+                            rolling_is_same_time = False
+                            
+                            # [Rolling logic for above trigger - similar to session but with boundary]
+                            if above_trigger_time == 'OPEN':
+                                if goal_level == trigger_level:  # Same level retest
+                                    if open_price <= goal_price:
+                                        rolling_goal_hit = True
+                                        rolling_goal_time = 'OPEN'
+                                        rolling_is_same_time = True
+                                elif goal_level > trigger_level:  # Above goal (CONTINUATION)
+                                    if open_price >= goal_price:
+                                        rolling_goal_hit = True
+                                        rolling_goal_time = 'OPEN'
+                                        rolling_is_same_time = True
+                                else:  # Below goal (RETRACEMENT)
+                                    if open_price <= goal_price:
+                                        rolling_goal_hit = True
+                                        rolling_goal_time = 'OPEN'
+                                        rolling_is_same_time = True
+                                
+                                if not rolling_goal_hit:
+                                    rolling_end_idx = min(rolling_candles, len(day_data))
+                                    for _, row in day_data.iloc[0:rolling_end_idx].iterrows():
+                                        if goal_level == trigger_level:  # Same level retest
+                                            if row['Low'] <= goal_price:
+                                                rolling_goal_hit = True
+                                                rolling_goal_time = row['Time']
+                                                break
+                                        elif goal_level > trigger_level:  # Above goal
+                                            if row['High'] >= goal_price:
+                                                rolling_goal_hit = True
+                                                rolling_goal_time = row['Time']
+                                                break
+                                        else:  # Below goal
+                                            if row['Low'] <= goal_price:
+                                                rolling_goal_hit = True
+                                                rolling_goal_time = row['Time']
+                                                break
+                            
+                            else:  # Intraday above trigger
+                                if goal_level == trigger_level:  # RETEST - Skip same candle
+                                    pass
+                                elif goal_level < trigger_level:  # RETRACEMENT - Skip same candle
+                                    pass
+                                else:  # CONTINUATION - Can check same candle
+                                    if goal_level > trigger_level:
+                                        if trigger_candle['High'] >= goal_price:
+                                            rolling_goal_hit = True
+                                            rolling_goal_time = above_trigger_time
+                                
+                                if not rolling_goal_hit:
+                                    rolling_end_idx = min(above_trigger_row + 1 + rolling_candles, len(day_data))
+                                    for _, row in day_data.iloc[above_trigger_row + 1:rolling_end_idx].iterrows():
+                                        if goal_level == trigger_level:  # Same level retest
+                                            if row['Low'] <= goal_price:
+                                                rolling_goal_hit = True
+                                                rolling_goal_time = row['Time']
+                                                break
+                                        elif goal_level > trigger_level:  # Above goal
+                                            if row['High'] >= goal_price:
+                                                rolling_goal_hit = True
+                                                rolling_goal_time = row['Time']
+                                                break
+                                        else:  # Below goal
+                                            if row['Low'] <= goal_price:
+                                                rolling_goal_hit = True
+                                                rolling_goal_time = row['Time']
+                                                break
+                            
+                            # Record ROLLING result for ABOVE
+                            rolling_record = create_rolling_result_record(
+                                base_record, goal_level, goal_price, rolling_goal_hit, 
+                                rolling_goal_time, goal_type, rolling_is_same_time
+                            )
+                            all_results.append(rolling_record)
+            
+            # ==================================================================================
+            # 2. ZONEBASELINE ANALYSIS (For this single period)
+            # ==================================================================================
+            
+            # For every candle in this period, identify ALL zones it crosses
+            for idx, candle in day_data.iterrows():
+                high_price = candle['High']
+                low_price = candle['Low']
+                close_price = candle['Close']
+                
+                # Get all zones this candle touches
+                zones_crossed = get_zones_crossed(high_price, low_price, level_map)
+                
+                # Create a record for EACH zone crossed
+                for zone in zones_crossed:
+                    all_results.append({
+                        'Date': trading_date,
+                        'Datetime': candle['Datetime'],
+                        'Time': candle['Time'],
+                        'High': round(high_price, 2),
+                        'Low': round(low_price, 2),
+                        'Close': round(close_price, 2),
+                        'Zone': zone,
+                        'PreviousClose': round(previous_close, 2),
+                        'PreviousATR': round(previous_atr, 2),
+                        'AnalysisType': 'ZoneBaseline'
+                    })
+            
+            # ==================================================================================
+            # 3. STATECHECK ANALYSIS (For this single period)
+            # ==================================================================================
+            
+            # For every candle, check if it's in a zone, then analyze rest of session
+            for idx, candle in day_data.iterrows():
+                high_price = candle['High']
+                low_price = candle['Low']
+                close_price = candle['Close']
+                
+                # Get all zones this candle touches (initial state)
+                initial_zones = get_zones_crossed(high_price, low_price, level_map)
+                
+                # For each initial zone, analyze rest of session
+                for initial_zone in initial_zones:
+                    # Get rest of session data (from current candle to end)
+                    rest_of_session = day_data.iloc[idx:].copy()
+                    
+                    # Count zone frequencies for rest of session
+                    zone_frequencies = {}
+                    total_candles_remaining = len(rest_of_session)
+                    
+                    if total_candles_remaining > 0:
+                        # Analyze each remaining candle
+                        for _, future_candle in rest_of_session.iterrows():
+                            future_high = future_candle['High']
+                            future_low = future_candle['Low']
+                            
+                            # Get zones this future candle touches
+                            future_zones = get_zones_crossed(future_high, future_low, level_map)
+                            
+                            # Count each zone
+                            for zone in future_zones:
+                                if zone not in zone_frequencies:
+                                    zone_frequencies[zone] = 0
+                                zone_frequencies[zone] += 1
+                        
+                        # Convert counts to percentages and record
+                        for zone, count in zone_frequencies.items():
+                            percentage = (count / total_candles_remaining) * 100
+                            
+                            all_results.append({
+                                'Date': trading_date,
+                                'InitialDatetime': candle['Datetime'],
+                                'InitialTime': candle['Time'],
+                                'InitialZone': initial_zone,
+                                'InitialHigh': round(high_price, 2),
+                                'InitialLow': round(low_price, 2),
+                                'InitialClose': round(close_price, 2),
+                                'RestOfSessionZone': zone,
+                                'ZoneFrequency': count,
+                                'ZonePercentage': round(percentage, 2),
+                                'TotalCandlesRemaining': total_candles_remaining,
+                                'PreviousClose': round(previous_close, 2),
+                                'PreviousATR': round(previous_atr, 2),
+                                'AnalysisType': 'StateCheck'
+                            })
+
+        except Exception as e:
+            st.warning(f"Error processing {trading_date}: {str(e)}")
+            continue
+
+    # Update session state
+    st.session_state.atr_processing['last_processed_index'] = end_index
+
+    # Check if we're done
+    if end_index >= total_periods:
+        st.session_state.atr_processing['is_complete'] = True
+        status_text.text("All 4 analysis types complete!")
+    else:
+        status_text.text(f"Unified batch complete. Next batch will start at period {end_index + 1}")
+
+    # Clear progress bar after batch
+    progress_bar.empty()
+
+    return pd.DataFrame(all_results)
     """
     Batch version of systematic analysis with session state checkpointing
     Processes batch_size periods at a time to avoid timeouts
@@ -2018,36 +2646,26 @@ if ('atr_processing' in st.session_state and
             progress_pct = (current_progress / total_progress) * 100
             st.metric("Progress", f"{progress_pct:.1f}%", f"Period {current_progress:,}")
         with col2:
-            st.metric("Records Generated", f"{current_records:,}")
+            st.metric("Total Records", f"{current_records:,}")
         with col3:
-            # Add zone records if available
-            zone_records_count = 0
-            if 'zone_baseline_results' in st.session_state.atr_processing:
-                zone_records_count += len(st.session_state.atr_processing['zone_baseline_results'])
-            if 'state_check_results' in st.session_state.atr_processing:
-                zone_records_count += len(st.session_state.atr_processing['state_check_results'])
-            
-            total_records = current_records + zone_records_count
-            st.metric("Total Records", f"{total_records:,}")
+            # Show analysis type breakdown
+            if current_records > 0:
+                temp_df = pd.DataFrame(st.session_state.atr_processing['results'])
+                if 'AnalysisType' in temp_df.columns:
+                    type_counts = temp_df['AnalysisType'].value_counts()
+                    breakdown = ", ".join([f"{k}: {v}" for k, v in type_counts.items()])
+                    st.metric("Analysis Types", breakdown[:50] + "..." if len(breakdown) > 50 else breakdown)
+                else:
+                    st.metric("Analysis Types", "All 4 types")
         
         # Progressive download in separate container
         with st.container():
             st.subheader("💾 Emergency Download")
-            st.write(f"**Save current progress:** {total_records:,} records through period {current_progress:,}")
+            st.write(f"**Save current progress:** {current_records:,} records through period {current_progress:,}")
             
             if total_records > 0:
-                # Prepare download data
-                all_current_data = []
-                
-                # Add session/rolling results
-                if st.session_state.atr_processing.get('results'):
-                    all_current_data.extend(st.session_state.atr_processing['results'])
-                
-                # Add zone results if available
-                if 'zone_baseline_results' in st.session_state.atr_processing:
-                    all_current_data.extend(st.session_state.atr_processing['zone_baseline_results'])
-                if 'state_check_results' in st.session_state.atr_processing:
-                    all_current_data.extend(st.session_state.atr_processing['state_check_results'])
+                # Prepare download data - all results are already unified
+                all_current_data = st.session_state.atr_processing.get('results', [])
                 
                 if all_current_data:
                     partial_df = pd.DataFrame(all_current_data)
@@ -2136,9 +2754,9 @@ if ('atr_processing' in st.session_state and
         st.markdown("---")
     
     # Continue processing immediately
-    with st.spinner('Auto-continuing systematic analysis...'):
+    with st.spinner('Auto-continuing unified analysis (All 4 types)...'):
         try:
-            batch_results = detect_triggers_and_goals_batch(
+            batch_results = detect_triggers_and_goals_unified_batch(
                 st.session_state.atr_processing['daily_data'], 
                 st.session_state.atr_processing['intraday_data'], 
                 st.session_state.atr_processing['custom_ratios'],
