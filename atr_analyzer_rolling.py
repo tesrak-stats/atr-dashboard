@@ -2204,7 +2204,7 @@ def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=
                 debug_info.append("Running ALL analysis types in batches...")
                 
                 # Process trigger/goal analysis (Daily + Rolling)
-                batch_results = detect_triggers_and_goals_batch(
+                batch_results = detect_triggers_and_goals_unified_batch(
                     daily_data, 
                     intraday_data, 
                     custom_ratios,
