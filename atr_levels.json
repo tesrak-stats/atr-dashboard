@@ -1,10 +1,10 @@
 {
-  "last_updated": "2025-07-05 00:50:30 EDT",
-  "last_updated_timestamp": 1751691030.126148,
+  "last_updated": "2025-07-05 01:39:16 EDT",
+  "last_updated_timestamp": 1751693956.09476,
   "tickers": {
     "SPX": {
-      "generated_at": "2025-07-05 00:50:30 EDT",
-      "generated_timestamp": 1751691030.637647,
+      "generated_at": "2025-07-05 01:39:16 EDT",
+      "generated_timestamp": 1751693956.358411,
       "ticker": "^GSPC",
       "reference_date": "2025-07-03",
       "reference_close": 6279.35,
@@ -31,8 +31,8 @@
       "display_name": "S&P 500 (SPX)"
     },
     "QQQ": {
-      "generated_at": "2025-07-05 00:50:30 EDT",
-      "generated_timestamp": 1751691030.791085,
+      "generated_at": "2025-07-05 01:39:16 EDT",
+      "generated_timestamp": 1751693956.518225,
       "ticker": "QQQ",
       "reference_date": "2025-07-03",
       "reference_close": 556.22,
@@ -59,8 +59,8 @@
       "display_name": "Nasdaq 100 (QQQ)"
     },
     "NVDA": {
-      "generated_at": "2025-07-05 00:50:30 EDT",
-      "generated_timestamp": 1751691030.92234,
+      "generated_at": "2025-07-05 01:39:16 EDT",
+      "generated_timestamp": 1751693956.694729,
       "ticker": "NVDA",
       "reference_date": "2025-07-03",
       "reference_close": 159.34,
@@ -87,8 +87,8 @@
       "display_name": "NVidia Corporation (NVDA)"
     },
     "IWM": {
-      "generated_at": "2025-07-05 00:50:31 EDT",
-      "generated_timestamp": 1751691031.091275,
+      "generated_at": "2025-07-05 01:39:16 EDT",
+      "generated_timestamp": 1751693956.915477,
       "ticker": "IWM",
       "reference_date": "2025-07-03",
       "reference_close": 223.08,
