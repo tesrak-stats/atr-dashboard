@@ -439,15 +439,29 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             intraday_df['ATR'] = intraday_df['Date'].map(atr_lookup)
             intraday_df['Prior_Base_Close'] = intraday_df['Date'].map(prior_base_close_lookup)
             
-            # Add trading days count for downstream apps
+            # Add trading days count and interval configuration for downstream apps
             unique_trading_days = daily_with_atr['Date'].nunique()
             intraday_df['Trading_Days_Count'] = unique_trading_days
+            
+            # Add interval configuration from analysis
+            interval_config = st.session_state.get('interval_config', {
+                'candle_interval_minutes': 10,
+                'rolling_period_type': 'hourly', 
+                'rolling_period_count': 8,
+                'analysis_timeframe': 'Intraday'
+            })
+            
+            intraday_df['Candle_Interval_Minutes'] = interval_config['candle_interval_minutes']
+            intraday_df['Rolling_Period_Type'] = interval_config['rolling_period_type']
+            intraday_df['Rolling_Period_Count'] = interval_config['rolling_period_count']
+            intraday_df['Analysis_Timeframe'] = interval_config['analysis_timeframe']
             
             # Show mapping info
             st.info(f"✅ Data columns mapped:")
             st.info("📊 **ATR**: Currently used ATR (from base timeframe)")
             st.info("📊 **Prior_Base_Close**: Previous period close from base timeframe (for level calculation)")
-            st.info(f"📊 **Trading_Days_Count**: {unique_trading_days} unique trading days (for downstream apps)")
+            st.info(f"📊 **Trading_Days_Count**: {unique_trading_days} unique trading days")
+            st.info(f"📊 **Interval Config**: {interval_config['candle_interval_minutes']}min candles, {interval_config['rolling_period_count']}×{interval_config['rolling_period_type']} rolling, {interval_config['analysis_timeframe']} analysis")
             
             # Check how many matches we got
             matched_atr = intraday_df['ATR'].notna().sum()
@@ -1868,6 +1882,7 @@ if mode == "📁 Multi-CSV Processor":
                     with col3:
                         unique_days = combined_data['Date'].nunique()
                         avg_daily_records = len(combined_data) / max(1, unique_days)
+                        st.metric("📊 Avg Records/Day", f"{avg_daily_records:.1f}")records = len(combined_data) / max(1, unique_days)
                         st.metric("📊 Avg Records/Day", f"{avg_daily_records:.1f}")
                     
                     # Show what's ready for ATR analysis
@@ -1898,108 +1913,108 @@ if mode == "📁 Multi-CSV Processor":
                     st.error("❌ Failed to process CSV files. Please check the file processing summary above.")
 
 # FIXED: Show persistent actions for last processed data
-    if st.session_state.get('last_processed_data') is not None:
-        st.markdown("---")
-        st.subheader("🔄 **Continue with Last Processed Data**")
+if st.session_state.get('last_processed_data') is not None:
+    st.markdown("---")
+    st.subheader("🔄 **Continue with Last Processed Data**")
     
-        last_data = st.session_state['last_processed_data']
-        last_filename = st.session_state['last_processed_filename']
+    last_data = st.session_state['last_processed_data']
+    last_filename = st.session_state['last_processed_filename']
     
-        st.info(f"📊 **Available**: {last_filename} ({len(last_data):,} records)")
+    st.info(f"📊 **Available**: {last_filename} ({len(last_data):,} records)")
     
-        col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
     
-        with col1:
+    with col1:
         # Persistent download button
-            st.download_button(
-                "📥 **Download Again**",
-                data=last_data.to_csv(index=False),
-                file_name=last_filename,
-                mime="text/csv",
-                key="download_persistent",
-                use_container_width=True
-            )
+        st.download_button(
+            "📥 **Download Again**",
+            data=last_data.to_csv(index=False),
+            file_name=last_filename,
+            mime="text/csv",
+            key="download_persistent",
+            use_container_width=True
+        )
     
-        with col2:
+    with col2:
         # Persistent hold as base
-            if st.button("📊 **Hold as Base**", key="hold_base_persistent", use_container_width=True):
-                st.session_state['atr_combiner_base_data'] = last_data.copy()
-                st.session_state['atr_combiner_base_filename'] = last_filename
-                st.success("✅ Held as Base!")
-                st.rerun()
+        if st.button("📊 **Hold as Base**", key="hold_base_persistent", use_container_width=True):
+            st.session_state['atr_combiner_base_data'] = last_data.copy()
+            st.session_state['atr_combiner_base_filename'] = last_filename
+            st.success("✅ Held as Base!")
+            st.rerun()
     
-        with col3:
+    with col3:
         # Persistent hold as analysis
-            if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent", use_container_width=True):
-                st.session_state['atr_combiner_analysis_data'] = last_data.copy()
-                st.session_state['atr_combiner_analysis_filename'] = last_filename
-                st.success("✅ Held as Analysis!")
-                st.rerun()
+        if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent", use_container_width=True):
+            st.session_state['atr_combiner_analysis_data'] = last_data.copy()
+            st.session_state['atr_combiner_analysis_filename'] = last_filename
+            st.success("✅ Held as Analysis!")
+            st.rerun()
 
     else:
         # Show helpful instructions when no file is uploaded
-            st.info("👆 **Please upload a single CSV file to get started**")
+        st.info("👆 **Please upload a single CSV file to get started**")
         
         # Show example of what the file should look like
-            with st.expander("📋 Expected File Format", expanded=False):
-                st.markdown("""
-                **Your CSV file should contain these columns (any format):**
+        with st.expander("📋 Expected File Format", expanded=False):
+            st.markdown("""
+            **Your CSV file should contain these columns (any format):**
             
-                **Standard Format:**
-                - **Date** (or Datetime, Time)
-                - **Open**, **High**, **Low**, **Close**
-                - **Volume** (optional)
+            **Standard Format:**
+            - **Date** (or Datetime, Time)
+            - **Open**, **High**, **Low**, **Close**
+            - **Volume** (optional)
             
-                **Short Format (also supported):**
-                - **Date** (or Datetime, Time)  
-                - **o**, **h**, **l**, **c** (lowercase single letters)
-                - **v** (volume - optional)
+            **Short Format (also supported):**
+            - **Date** (or Datetime, Time)  
+            - **o**, **h**, **l**, **c** (lowercase single letters)
+            - **v** (volume - optional)
             
-                **Unlabeled Format (Smart Detection):**
-                - **Column 1**: Date/Datetime (any format)
-                - **Column 2**: Open price
-                - **Column 3**: High price
-                - **Column 4**: Low price
-                - **Column 5**: Close price
-                - **Column 6**: Volume (optional)
+            **Unlabeled Format (Smart Detection):**
+            - **Column 1**: Date/Datetime (any format)
+            - **Column 2**: Open price
+            - **Column 3**: High price
+            - **Column 4**: Low price
+            - **Column 5**: Close price
+            - **Column 6**: Volume (optional)
             
-                **Mixed Format Examples:**
-                - `Date, o, h, l, c, v`
-                - `datetime, Open, High, Low, Close, Volume`
-                - `date, time, O, H, L, C`
-                - `9/23/2012 20:35, 4100, 4110, 4095, 4105, 1000` (unlabeled)
+            **Mixed Format Examples:**
+            - `Date, o, h, l, c, v`
+            - `datetime, Open, High, Low, Close, Volume`
+            - `date, time, O, H, L, C`
+            - `9/23/2012 20:35, 4100, 4110, 4095, 4105, 1000` (unlabeled)
             
-                **The system will:**
-                - ✅ Auto-detect column formats
-                - ✅ Handle various date/time formats
-                - ✅ Smart detect unlabeled columns
-                - ✅ Convert to standard format automatically
-                """)
+            **The system will:**
+            - ✅ Auto-detect column formats
+            - ✅ Handle various date/time formats
+            - ✅ Smart detect unlabeled columns
+            - ✅ Convert to standard format automatically
+            """)
         
         # Show sample workflows
-            with st.expander("🔧 Sample Workflows", expanded=False):
-                st.markdown("""
-                **🎯 Standard Resampling Examples:**
-                - Upload 1-minute data → Convert to 10-minute bars
-                - Upload daily data → Convert to weekly bars
-                - Upload 5-minute data → Convert to 1-hour bars
-                - Apply time filters (e.g., 9:30-16:00 market hours)
+        with st.expander("🔧 Sample Workflows", expanded=False):
+            st.markdown("""
+            **🎯 Standard Resampling Examples:**
+            - Upload 1-minute data → Convert to 10-minute bars
+            - Upload daily data → Convert to weekly bars
+            - Upload 5-minute data → Convert to 1-hour bars
+            - Apply time filters (e.g., 9:30-16:00 market hours)
             
-                **🕯️ Custom Candle Examples:**
-                - **Morning/Afternoon Split**: Create 2 candles per day (9:30-12:00, 12:00-16:00)
-                - **3-Period Day**: Create 3 candles per day (9:00-11:00, 11:00-14:00, 14:00-16:00)
-                - **Session-Based**: Create candles for different trading sessions
-                - **Flexible Periods**: Any time combination you need
+            **🕯️ Custom Candle Examples:**
+            - **Morning/Afternoon Split**: Create 2 candles per day (9:30-12:00, 12:00-16:00)
+            - **3-Period Day**: Create 3 candles per day (9:00-11:00, 11:00-14:00, 14:00-16:00)
+            - **Session-Based**: Create candles for different trading sessions
+            - **Flexible Periods**: Any time combination you need
             
-                **Custom Candle Output Example:**
-                ```
-                Date        Period_Name  Period_Start  Period_End  Open   High   Low    Close
-                2024-01-01  Morning      09:30        12:00       4100   4150   4090   4140
-                2024-01-01  Afternoon    12:00        16:00       4140   4180   4130   4175
-                2024-01-02  Morning      09:30        12:00       4175   4200   4160   4190
-                2024-01-02  Afternoon    12:00        16:00       4190   4210   4180   4205
-                ```
-                """)
+            **Custom Candle Output Example:**
+            ```
+            Date        Period_Name  Period_Start  Period_End  Open   High   Low    Close
+            2024-01-01  Morning      09:30        12:00       4100   4150   4090   4140
+            2024-01-01  Afternoon    12:00        16:00       4140   4180   4130   4175
+            2024-01-02  Morning      09:30        12:00       4175   4200   4160   4190
+            2024-01-02  Afternoon    12:00        16:00       4190   4210   4180   4205
+            ```
+            """)
 
 # ========================================================================================
 # MULTI-TIMEFRAME ATR COMBINER (SIMPLIFIED - Single ATR Column)
@@ -2750,7 +2765,7 @@ elif mode == "🔧 Single File Resampler":
                                 resampled_filename = custom_filename
                             else:
                                 st.error("❌ Failed to create custom candles")
-                                st.stop()
+                                return
                         
                         # Download section
                         st.markdown("---")
@@ -2969,6 +2984,154 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             if analysis_file:
                 st.success(f"✅ Analysis file: {analysis_file.name}")
             
+            # NEW: Interval Detection & Configuration
+            st.markdown("---")
+            st.subheader("🕐 Analysis Timeframe Configuration")
+            
+            # Load analysis data for interval detection
+            try:
+                if analysis_file:
+                    if analysis_file.name.endswith('.csv'):
+                        analysis_preview = pd.read_csv(analysis_file)
+                    else:
+                        analysis_preview = pd.read_excel(analysis_file)
+                else:
+                    analysis_preview = st.session_state['atr_combiner_analysis_data']
+                
+                # Standardize columns for analysis
+                analysis_preview = CSVProcessor.standardize_columns(analysis_preview)
+                analysis_preview = CSVProcessor.create_datetime_column(analysis_preview)
+                
+                # 1. AUTO-DETECT CANDLE INTERVAL
+                st.write("**1. Candle Interval Detection**")
+                
+                if len(analysis_preview) > 1:
+                    # Calculate timestamp gaps
+                    analysis_preview['Datetime'] = pd.to_datetime(analysis_preview['Datetime'])
+                    analysis_preview = analysis_preview.sort_values('Datetime')
+                    
+                    # Calculate differences between consecutive timestamps
+                    time_diffs = analysis_preview['Datetime'].diff().dropna()
+                    
+                    # Get the most common interval (mode)
+                    most_common_diff = time_diffs.mode().iloc[0] if not time_diffs.mode().empty else time_diffs.median()
+                    interval_minutes = int(most_common_diff.total_seconds() / 60)
+                    
+                    # Show detection results
+                    if interval_minutes < 60:
+                        interval_display = f"{interval_minutes}-minute"
+                    elif interval_minutes == 60:
+                        interval_display = "1-hour"
+                    elif interval_minutes < 1440:
+                        hours = interval_minutes / 60
+                        interval_display = f"{hours:.1f}-hour" if hours != int(hours) else f"{int(hours)}-hour"
+                    elif interval_minutes == 1440:
+                        interval_display = "daily"
+                    else:
+                        days = interval_minutes / 1440
+                        interval_display = f"{days:.1f}-day" if days != int(days) else f"{int(days)}-day"
+                    
+                    st.success(f"🔍 **Auto-detected**: {interval_display} candles ({interval_minutes} minutes)")
+                    
+                    # Allow manual correction
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        manual_override = st.checkbox("Manual Override", help="Override auto-detection")
+                    
+                    if manual_override:
+                        with col2:
+                            interval_minutes = st.number_input(
+                                "Interval (minutes)",
+                                min_value=1,
+                                max_value=10080,  # 1 week
+                                value=interval_minutes,
+                                help="Enter interval in minutes"
+                            )
+                            st.info(f"📝 **Manual setting**: {interval_minutes} minutes")
+                    
+                else:
+                    st.warning("⚠️ Insufficient data for interval detection")
+                    interval_minutes = st.number_input("Interval (minutes)", min_value=1, value=10)
+                
+                # 2. SMART PERIOD RECOMMENDATIONS
+                st.write("**2. Rolling Period Configuration**")
+                
+                # Smart defaults based on candle interval - ALWAYS 8 PERIODS
+                if interval_minutes <= 5:  # 1-5 minute candles
+                    default_period_type = "hourly"
+                    default_period_count = 8
+                    recommendation = "8-hour periods (8 × 1-hour rolling analysis)"
+                elif interval_minutes <= 60:  # 6-60 minute candles
+                    default_period_type = "4hour"
+                    default_period_count = 8
+                    recommendation = "8 × 4-hour periods (32-hour rolling analysis)"
+                elif interval_minutes <= 1440:  # 1-24 hour candles
+                    default_period_type = "daily"
+                    default_period_count = 8
+                    recommendation = "8-day periods (8-day rolling analysis)"
+                else:  # Daily+ candles
+                    default_period_type = "weekly"
+                    default_period_count = 8
+                    recommendation = "8-week periods (8-week rolling analysis)"
+                
+                st.info(f"💡 **Smart recommendation**: {recommendation}")
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    rolling_period_type = st.selectbox(
+                        "Rolling Period Type",
+                        ["hourly", "4hour", "daily", "weekly", "monthly"],
+                        index=["hourly", "4hour", "daily", "weekly", "monthly"].index(default_period_type),
+                        help="Type of periods for rolling analysis"
+                    )
+                
+                with col2:
+                    rolling_period_count = st.number_input(
+                        "Period Count",
+                        min_value=1,
+                        max_value=50,
+                        value=default_period_count,
+                        help="Number of periods to use for rolling analysis"
+                    )
+                
+                # Show final configuration
+                period_display = f"{rolling_period_count} × {rolling_period_type}"
+                st.success(f"⚙️ **Rolling configuration**: {period_display}")
+                
+                # 3. ANALYSIS TIMEFRAME SELECTION
+                st.write("**3. Analysis Timeframe Selection**")
+                
+                analysis_timeframe = st.selectbox(
+                    "Analysis Timeframe",
+                    ["Intraday", "Weekly", "Monthly", "Other"],
+                    help="Select analysis timeframe type (Other = skip rolling analysis)"
+                )
+                
+                if analysis_timeframe == "Other":
+                    st.info("ℹ️ **Other selected**: Rolling analysis will be skipped in downstream apps")
+                else:
+                    st.success(f"📊 **Analysis timeframe**: {analysis_timeframe}")
+                
+                # Store configuration in session state for processing
+                st.session_state['interval_config'] = {
+                    'candle_interval_minutes': interval_minutes,
+                    'rolling_period_type': rolling_period_type,
+                    'rolling_period_count': rolling_period_count,
+                    'analysis_timeframe': analysis_timeframe
+                }
+                
+            except Exception as e:
+                st.error(f"❌ Error analyzing timeframe: {str(e)}")
+                # Fallback configuration
+                st.session_state['interval_config'] = {
+                    'candle_interval_minutes': 10,
+                    'rolling_period_type': 'hourly',
+                    'rolling_period_count': 8,
+                    'analysis_timeframe': 'Intraday'
+                }
+            
+            st.markdown("---")
+            
             # Asset type for futures date handling
             asset_type = st.selectbox(
                 "Asset Type",
@@ -3110,7 +3273,11 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                         'Open/High/Low/Close': 'Analysis timeframe OHLC data',
                         'ATR': 'Currently used ATR (calculated from base timeframe)',
                         'Prior_Base_Close': 'Previous period close from base timeframe (reference for level calculation)',
-                        'Trading_Days_Count': 'Number of unique trading days used in ATR calculation (for downstream apps)',
+                        'Trading_Days_Count': 'Number of unique trading days used in ATR calculation',
+                        'Candle_Interval_Minutes': 'Auto-detected candle interval in minutes',
+                        'Rolling_Period_Type': 'Type of periods for rolling analysis (hourly, daily, etc.)',
+                        'Rolling_Period_Count': 'Number of periods for rolling analysis',
+                        'Analysis_Timeframe': 'Analysis timeframe type (Intraday, Weekly, Monthly, Other)',
                         'Volume': 'Volume (if available in original data)'
                     }
                     
