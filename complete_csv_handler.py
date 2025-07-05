@@ -2840,43 +2840,43 @@ elif mode == "🔧 Single File Resampler":
             st.error(f"❌ Error loading file: {str(e)}")
 
 # FIXED: Show persistent actions for last processed data from Single File Resampler
-if st.session_state.get('last_processed_data') is not None and mode == "🔧 Single File Resampler":
-    st.markdown("---")
-    st.subheader("🔄 **Continue with Last Processed Data**")
+    if st.session_state.get('last_processed_data') is not None and mode == "🔧 Single File Resampler":
+        st.markdown("---")
+        st.subheader("🔄 **Continue with Last Processed Data**")
     
-    last_data = st.session_state['last_processed_data']
-    last_filename = st.session_state['last_processed_filename']
+        last_data = st.session_state['last_processed_data']
+        last_filename = st.session_state['last_processed_filename']
     
-    st.info(f"📊 **Available**: {last_filename} ({len(last_data):,} records)")
+        st.info(f"📊 **Available**: {last_filename} ({len(last_data):,} records)")
     
-    col1, col2, col3 = st.columns(3)
+        col1, col2, col3 = st.columns(3)
     
-    with col1:
+        with col1:
         # Persistent download button
-        st.download_button(
-            "📥 **Download Again**",
-            data=last_data.to_csv(index=False),
-            file_name=last_filename,
-            mime="text/csv",
-            key="download_persistent_single",
-            use_container_width=True
-        )
+            st.download_button(
+                "📥 **Download Again**",
+                data=last_data.to_csv(index=False),
+                file_name=last_filename,
+                mime="text/csv",
+                key="download_persistent_single",
+                use_container_width=True
+            )
     
-    with col2:
+        with col2:
         # Persistent hold as base
-        if st.button("📊 **Hold as Base**", key="hold_base_persistent_single", use_container_width=True):
-            st.session_state['atr_combiner_base_data'] = last_data.copy()
-            st.session_state['atr_combiner_base_filename'] = last_filename
-            st.success("✅ Held as Base!")
-            st.rerun()
+            if st.button("📊 **Hold as Base**", key="hold_base_persistent_single", use_container_width=True):
+                st.session_state['atr_combiner_base_data'] = last_data.copy()
+                st.session_state['atr_combiner_base_filename'] = last_filename
+                st.success("✅ Held as Base!")
+                st.rerun()
     
-    with col3:
+        with col3:    
         # Persistent hold as analysis
-        if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent_single", use_container_width=True):
-            st.session_state['atr_combiner_analysis_data'] = last_data.copy()
-            st.session_state['atr_combiner_analysis_filename'] = last_filename
-            st.success("✅ Held as Analysis!")
-            st.rerun()
+            if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent_single", use_container_width=True):
+                st.session_state['atr_combiner_analysis_data'] = last_data.copy()
+                st.session_state['atr_combiner_analysis_filename'] = last_filename
+                st.success("✅ Held as Analysis!")
+                st.rerun()
 
 # ========================================================================================
 # MULTI-TIMEFRAME ATR COMBINER (SIMPLIFIED - Single ATR Column)
