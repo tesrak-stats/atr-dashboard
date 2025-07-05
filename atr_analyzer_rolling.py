@@ -249,8 +249,7 @@ def state_check_analysis(daily, intraday, custom_ratios=None):
     progress_bar.empty()
     status_text.empty()
     
-    return pd.DataFrame(results)
-import streamlit as st
+    return pd.DataFrame(results)import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, date
@@ -1458,7 +1457,7 @@ def debug_single_day_analysis(daily, intraday, debug_date, custom_ratios=None):
 # ==============================================================================================
 
 # Main analysis function with session state resume capability
-def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=False, debug_date=None):
+def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=False, debug_date=None, resume_from_period=0):
     """Main function for pre-formatted CSV analysis with auto-resume"""
     debug_info = []
     
@@ -1547,6 +1546,11 @@ def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=
             st.session_state.atr_processing['asset_type'] = asset_type
             st.session_state.atr_processing['total_periods'] = len(daily_data)
             
+            # Handle resume from specific period
+            if resume_from_period > 0:
+                st.session_state.atr_processing['last_processed_index'] = resume_from_period
+                debug_info.append(f"Resuming from period {resume_from_period}")
+            
             debug_info.append(f"Daily data prepared: {len(daily_data)} periods")
             debug_info.append(f"Intraday data prepared: {len(intraday_data)} records")
         else:
@@ -1597,6 +1601,77 @@ def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=
                         st.session_state.atr_processing['results'].extend(batch_results.to_dict('records'))
                     
                     debug_info.append(f"Batch complete. Total trigger/goal combinations found: {len(st.session_state.atr_processing['results'])}")
+                
+                # PROGRESSIVE SAVE: Always show current progress and download option
+                current_progress = st.session_state.atr_processing['last_processed_index']
+                total_progress = st.session_state.atr_processing['total_periods']
+                
+                if current_progress > 0:
+                    st.subheader("📊 Current Progress")
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        progress_pct = (current_progress / total_progress) * 100
+                        st.metric("Progress", f"{progress_pct:.1f}%")
+                    with col2:
+                        st.metric("Periods Processed", f"{current_progress:,}")
+                    with col3:
+                        current_records = len(st.session_state.atr_processing['results'])
+                        st.metric("Records Generated", f"{current_records:,}")
+                    
+                    # Progressive download button
+                    if current_records > 0:
+                        partial_df = pd.DataFrame(st.session_state.atr_processing['results'])
+                        
+                        # Add zone analysis results if available
+                        zone_records = []
+                        if 'zone_baseline_results' in st.session_state.atr_processing:
+                            zone_records.extend(st.session_state.atr_processing['zone_baseline_results'])
+                        if 'state_check_results' in st.session_state.atr_processing:
+                            zone_records.extend(st.session_state.atr_processing['state_check_results'])
+                        
+                        if zone_records:
+                            zone_df = pd.DataFrame(zone_records)
+                            partial_df = pd.concat([partial_df, zone_df], ignore_index=True)
+                        
+                        # Progressive download
+                        st.subheader("💾 Progressive Save")
+                        st.write(f"**Download current progress:** {len(partial_df):,} records through period {current_progress}")
+                        
+                        csv_data = partial_df.to_csv(index=False)
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        ticker_clean = st.session_state.atr_processing.get('ticker', 'TICKER').replace("^", "").replace("=", "_")
+                        asset_type = st.session_state.atr_processing.get('asset_type', 'ASSET')
+                        
+                        progressive_filename = f'{ticker_clean}_{asset_type}_PARTIAL_{current_progress}of{total_progress}_{timestamp}.csv'
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.download_button(
+                                label=f'💾 Download Partial Results ({len(partial_df):,} records)',
+                                data=csv_data,
+                                file_name=progressive_filename,
+                                mime='text/csv',
+                                key=f'progressive_download_{current_progress}',
+                                help=f'Save current progress: {progress_pct:.1f}% complete'
+                            )
+                        
+                        with col2:
+                            # Resume from specific period option
+                            with st.expander("🔄 Resume Options"):
+                                st.write("**Current session will continue automatically.**")
+                                st.write("**For manual resume (if needed):**")
+                                resume_period = st.number_input(
+                                    "Resume from period:",
+                                    min_value=0,
+                                    max_value=total_progress,
+                                    value=current_progress,
+                                    key=f"resume_input_{current_progress}"
+                                )
+                                
+                                if st.button("🚀 Set Resume Point", key=f"resume_btn_{current_progress}"):
+                                    st.session_state.atr_processing['last_processed_index'] = resume_period
+                                    st.success(f"Resume point set to period {resume_period}")
+                                    st.info("Processing will continue from this point on next batch.")
                 
                 # Check if processing is complete
                 if st.session_state.atr_processing['is_complete']:
@@ -2101,6 +2176,26 @@ if data_file:
                 value=pd.to_datetime("2024-01-03").date(),
                 help="Enter a specific date to analyze in detail"
             )
+        
+        # Resume processing option
+        st.subheader("🔄 Resume Processing")
+        resume_processing = st.checkbox("Resume from specific period", help="Continue processing from a previous point")
+        resume_from_period = 0
+        if resume_processing:
+            resume_from_period = st.number_input(
+                "Start from period:",
+                min_value=0,
+                max_value=10000,
+                value=0,
+                help="Enter the period number to resume from (0 = start from beginning)"
+            )
+            st.info(f"Will skip to period {resume_from_period} and continue from there.")
+            
+            if st.button("🗑️ Clear Previous Session Data"):
+                if 'atr_processing' in st.session_state:
+                    del st.session_state.atr_processing
+                st.success("Session data cleared. Ready for fresh start or resume.")
+                st.rerun()
     
     # Session filtering (simplified)
     config = AssetConfig.get_config(asset_type, extended_hours)
