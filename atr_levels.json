@@ -1,15 +1,15 @@
 {
-  "last_updated": "2025-07-04 01:45:52 EDT",
-  "last_updated_timestamp": 1751607952.576178,
+  "last_updated": "2025-07-05 00:50:30 EDT",
+  "last_updated_timestamp": 1751691030.126148,
   "tickers": {
     "SPX": {
-      "generated_at": "2025-07-04 01:45:52 EDT",
-      "generated_timestamp": 1751607952.905811,
+      "generated_at": "2025-07-05 00:50:30 EDT",
+      "generated_timestamp": 1751691030.637647,
       "ticker": "^GSPC",
       "reference_date": "2025-07-03",
       "reference_close": 6279.35,
       "reference_atr": 60.44,
-      "data_age_days": 1,
+      "data_age_days": 2,
       "target_date": "next_trading_day",
       "levels": {
         "+1.000": 6339.79,
@@ -31,13 +31,13 @@
       "display_name": "S&P 500 (SPX)"
     },
     "QQQ": {
-      "generated_at": "2025-07-04 01:45:53 EDT",
-      "generated_timestamp": 1751607953.056202,
+      "generated_at": "2025-07-05 00:50:30 EDT",
+      "generated_timestamp": 1751691030.791085,
       "ticker": "QQQ",
       "reference_date": "2025-07-03",
       "reference_close": 556.22,
       "reference_atr": 6.89,
-      "data_age_days": 1,
+      "data_age_days": 2,
       "target_date": "next_trading_day",
       "levels": {
         "+1.000": 563.11,
@@ -59,13 +59,13 @@
       "display_name": "Nasdaq 100 (QQQ)"
     },
     "NVDA": {
-      "generated_at": "2025-07-04 01:45:53 EDT",
-      "generated_timestamp": 1751607953.189513,
+      "generated_at": "2025-07-05 00:50:30 EDT",
+      "generated_timestamp": 1751691030.92234,
       "ticker": "NVDA",
       "reference_date": "2025-07-03",
       "reference_close": 159.34,
       "reference_atr": 4.03,
-      "data_age_days": 1,
+      "data_age_days": 2,
       "target_date": "next_trading_day",
       "levels": {
         "+1.000": 163.37,
@@ -87,13 +87,13 @@
       "display_name": "NVidia Corporation (NVDA)"
     },
     "IWM": {
-      "generated_at": "2025-07-04 01:45:53 EDT",
-      "generated_timestamp": 1751607953.371712,
+      "generated_at": "2025-07-05 00:50:31 EDT",
+      "generated_timestamp": 1751691031.091275,
       "ticker": "IWM",
       "reference_date": "2025-07-03",
       "reference_close": 223.08,
       "reference_atr": 3.41,
-      "data_age_days": 1,
+      "data_age_days": 2,
       "target_date": "next_trading_day",
       "levels": {
         "+1.000": 226.49,
