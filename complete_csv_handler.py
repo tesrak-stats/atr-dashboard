@@ -2140,6 +2140,7 @@ if mode == "📁 Multi-CSV Processor":
                     with col3:
                         unique_days = combined_data['Date'].nunique()
                         avg_daily_records = len(combined_data) / max(1, unique_days)
+                        st.metric("📊 Avg Records/Day", f"{avg_daily_records:.1f}")records = len(combined_data) / max(1, unique_days)
                         st.metric("📊 Avg Records/Day", f"{avg_daily_records:.1f}")
                     
                     # Show what's ready for ATR analysis
@@ -2170,108 +2171,108 @@ if mode == "📁 Multi-CSV Processor":
                     st.error("❌ Failed to process CSV files. Please check the file processing summary above.")
 
 # FIXED: Show persistent actions for last processed data
-    if st.session_state.get('last_processed_data') is not None:
-        st.markdown("---")
-        st.subheader("🔄 **Continue with Last Processed Data**")
+if st.session_state.get('last_processed_data') is not None:
+    st.markdown("---")
+    st.subheader("🔄 **Continue with Last Processed Data**")
     
-        last_data = st.session_state['last_processed_data']
-        last_filename = st.session_state['last_processed_filename']
+    last_data = st.session_state['last_processed_data']
+    last_filename = st.session_state['last_processed_filename']
     
-        st.info(f"📊 **Available**: {last_filename} ({len(last_data):,} records)")
+    st.info(f"📊 **Available**: {last_filename} ({len(last_data):,} records)")
     
-        col1, col2, col3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
     
-        with col1:
+    with col1:
         # Persistent download button
-            st.download_button(
-                "📥 **Download Again**",
-                data=last_data.to_csv(index=False),
-                file_name=last_filename,
-                mime="text/csv",
-                key="download_persistent",
-                use_container_width=True
-            )    
-        
-        with col2:
-        # Persistent hold as base
-            if st.button("📊 **Hold as Base**", key="hold_base_persistent", use_container_width=True):
-                st.session_state['atr_combiner_base_data'] = last_data.copy()
-                st.session_state['atr_combiner_base_filename'] = last_filename
-                st.success("✅ Held as Base!")
-                st.rerun()
+        st.download_button(
+            "📥 **Download Again**",
+            data=last_data.to_csv(index=False),
+            file_name=last_filename,
+            mime="text/csv",
+            key="download_persistent",
+            use_container_width=True
+        )
     
-        with col3:
+    with col2:
+        # Persistent hold as base
+        if st.button("📊 **Hold as Base**", key="hold_base_persistent", use_container_width=True):
+            st.session_state['atr_combiner_base_data'] = last_data.copy()
+            st.session_state['atr_combiner_base_filename'] = last_filename
+            st.success("✅ Held as Base!")
+            st.rerun()
+    
+    with col3:
         # Persistent hold as analysis
-            if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent", use_container_width=True):
-                st.session_state['atr_combiner_analysis_data'] = last_data.copy()
-                st.session_state['atr_combiner_analysis_filename'] = last_filename
-                st.success("✅ Held as Analysis!")
-                st.rerun()
+        if st.button("📈 **Hold as Analysis**", key="hold_analysis_persistent", use_container_width=True):
+            st.session_state['atr_combiner_analysis_data'] = last_data.copy()
+            st.session_state['atr_combiner_analysis_filename'] = last_filename
+            st.success("✅ Held as Analysis!")
+            st.rerun()
 
     else:
         # Show helpful instructions when no file is uploaded
-            st.info("👆 **Please upload a single CSV file to get started**")
+        st.info("👆 **Please upload a single CSV file to get started**")
         
         # Show example of what the file should look like
-            with st.expander("📋 Expected File Format", expanded=False):
-                st.markdown("""
-                **Your CSV file should contain these columns (any format):**
-                
-                **Standard Format:**
-                - **Date** (or Datetime, Time)
-                - **Open**, **High**, **Low**, **Close**
-                - **Volume** (optional)
+        with st.expander("📋 Expected File Format", expanded=False):
+            st.markdown("""
+            **Your CSV file should contain these columns (any format):**
             
-                **Short Format (also supported):**
-                - **Date** (or Datetime, Time)  
-                - **o**, **h**, **l**, **c** (lowercase single letters)
-                - **v** (volume - optional)
+            **Standard Format:**
+            - **Date** (or Datetime, Time)
+            - **Open**, **High**, **Low**, **Close**
+            - **Volume** (optional)
             
-                **Unlabeled Format (Smart Detection):**
-                - **Column 1**: Date/Datetime (any format)
-                - **Column 2**: Open price
-                - **Column 3**: High price
-                - **Column 4**: Low price
-                - **Column 5**: Close price
-                - **Column 6**: Volume (optional)
+            **Short Format (also supported):**
+            - **Date** (or Datetime, Time)  
+            - **o**, **h**, **l**, **c** (lowercase single letters)
+            - **v** (volume - optional)
             
-                **Mixed Format Examples:**
-                - `Date, o, h, l, c, v`
-                - `datetime, Open, High, Low, Close, Volume`
-                - `date, time, O, H, L, C`
-                - `9/23/2012 20:35, 4100, 4110, 4095, 4105, 1000` (unlabeled)
+            **Unlabeled Format (Smart Detection):**
+            - **Column 1**: Date/Datetime (any format)
+            - **Column 2**: Open price
+            - **Column 3**: High price
+            - **Column 4**: Low price
+            - **Column 5**: Close price
+            - **Column 6**: Volume (optional)
             
-                **The system will:**
-                - ✅ Auto-detect column formats
-                - ✅ Handle various date/time formats
-                - ✅ Smart detect unlabeled columns
-                - ✅ Convert to standard format automatically
-                """)
+            **Mixed Format Examples:**
+            - `Date, o, h, l, c, v`
+            - `datetime, Open, High, Low, Close, Volume`
+            - `date, time, O, H, L, C`
+            - `9/23/2012 20:35, 4100, 4110, 4095, 4105, 1000` (unlabeled)
+            
+            **The system will:**
+            - ✅ Auto-detect column formats
+            - ✅ Handle various date/time formats
+            - ✅ Smart detect unlabeled columns
+            - ✅ Convert to standard format automatically
+            """)
         
         # Show sample workflows
-            with st.expander("🔧 Sample Workflows", expanded=False):
-                st.markdown("""
-                **🎯 Standard Resampling Examples:**
-                - Upload 1-minute data → Convert to 10-minute bars
-                - Upload daily data → Convert to weekly bars
-                - Upload 5-minute data → Convert to 1-hour bars
-                - Apply time filters (e.g., 9:30-16:00 market hours)
+        with st.expander("🔧 Sample Workflows", expanded=False):
+            st.markdown("""
+            **🎯 Standard Resampling Examples:**
+            - Upload 1-minute data → Convert to 10-minute bars
+            - Upload daily data → Convert to weekly bars
+            - Upload 5-minute data → Convert to 1-hour bars
+            - Apply time filters (e.g., 9:30-16:00 market hours)
             
-                **🕯️ Custom Candle Examples:**
-                - **Morning/Afternoon Split**: Create 2 candles per day (9:30-12:00, 12:00-16:00)
-                - **3-Period Day**: Create 3 candles per day (9:00-11:00, 11:00-14:00, 14:00-16:00)
-                - **Session-Based**: Create candles for different trading sessions
-                - **Flexible Periods**: Any time combination you need
+            **🕯️ Custom Candle Examples:**
+            - **Morning/Afternoon Split**: Create 2 candles per day (9:30-12:00, 12:00-16:00)
+            - **3-Period Day**: Create 3 candles per day (9:00-11:00, 11:00-14:00, 14:00-16:00)
+            - **Session-Based**: Create candles for different trading sessions
+            - **Flexible Periods**: Any time combination you need
             
-                **Custom Candle Output Example:**
-                ```
-                Date        Period_Name  Period_Start  Period_End  Open   High   Low    Close
-                2024-01-01  Morning      09:30        12:00       4100   4150   4090   4140
-                2024-01-01  Afternoon    12:00        16:00       4140   4180   4130   4175
-                2024-01-02  Morning      09:30        12:00       4175   4200   4160   4190
-                2024-01-02  Afternoon    12:00        16:00       4190   4210   4180   4205
-                ```
-                """)
+            **Custom Candle Output Example:**
+            ```
+            Date        Period_Name  Period_Start  Period_End  Open   High   Low    Close
+            2024-01-01  Morning      09:30        12:00       4100   4150   4090   4140
+            2024-01-01  Afternoon    12:00        16:00       4140   4180   4130   4175
+            2024-01-02  Morning      09:30        12:00       4175   4200   4160   4190
+            2024-01-02  Afternoon    12:00        16:00       4190   4210   4180   4205
+            ```
+            """)
 
 # ========================================================================================
 # PUBLIC DATA DOWNLOAD (RESTORED WITH DUAL SOURCE)
@@ -2322,7 +2323,7 @@ elif mode == "📈 Public Data Download":
                 # Timeframe selection
                 timeframe = st.selectbox(
                     "Timeframe",
-                    ["1 minute", "5 minute", "10 minute", "15 minute", "30 minute", "1 hour", "4 hour", "1 day"],
+                    ["1 minute", "5 minute", "15 minute", "30 minute", "1 hour", "4 hour", "1 day"],
                     index=6,  # Default to 1 day
                     help="Select data timeframe"
                 )
@@ -2331,7 +2332,6 @@ elif mode == "📈 Public Data Download":
                 timeframe_map = {
                     "1 minute": ("1", "minute"),
                     "5 minute": ("5", "minute"), 
-                    "10 minute": ("10", "minute"), 
                     "15 minute": ("15", "minute"),
                     "30 minute": ("30", "minute"),
                     "1 hour": ("1", "hour"),
@@ -3351,7 +3351,7 @@ elif mode == "🔧 Single File Resampler":
                                 resampled_filename = custom_filename
                             else:
                                 st.error("❌ Failed to create custom candles")
-                                st.stop
+                                return
                         
                         # Download section
                         st.markdown("---")
@@ -3588,8 +3588,8 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                 analysis_preview = CSVProcessor.standardize_columns(analysis_preview)
                 analysis_preview = CSVProcessor.create_datetime_column(analysis_preview)
                 
-                # 1. AUTO-DETECT CANDLE INTERVAL
-                st.write("**1. Candle Interval Detection**")
+                # 1. AUTO-DETECT ANALYSIS CANDLE INTERVAL
+                st.write("**1. Analysis Candle Interval Detection**")
                 
                 if len(analysis_preview) > 1:
                     # Calculate timestamp gaps
@@ -3639,8 +3639,53 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     st.warning("⚠️ Insufficient data for interval detection")
                     interval_minutes = st.number_input("Interval (minutes)", min_value=1, value=10)
                 
-                # 2. SMART PERIOD RECOMMENDATIONS
-                st.write("**2. Rolling Period Configuration**")
+                # AUTO-DETECT BASE TIMEFRAME INTERVAL
+                st.write("**2. Base Timeframe Detection**")
+                
+                try:
+                    if base_file:
+                        if base_file.name.endswith('.csv'):
+                            base_preview = pd.read_csv(base_file)
+                        else:
+                            base_preview = pd.read_excel(base_file)
+                    else:
+                        base_preview = st.session_state['atr_combiner_base_data']
+                    
+                    # Standardize and create datetime for base data
+                    base_preview = CSVProcessor.standardize_columns(base_preview)
+                    base_preview = CSVProcessor.create_datetime_column(base_preview)
+                    
+                    if len(base_preview) > 1:
+                        base_preview['Datetime'] = pd.to_datetime(base_preview['Datetime'])
+                        base_preview = base_preview.sort_values('Datetime')
+                        
+                        # Calculate base timeframe intervals
+                        base_time_diffs = base_preview['Datetime'].diff().dropna()
+                        base_common_diff = base_time_diffs.mode().iloc[0] if not base_time_diffs.mode().empty else base_time_diffs.median()
+                        base_interval_minutes = int(base_common_diff.total_seconds() / 60)
+                        
+                        # Display base timeframe detection
+                        if base_interval_minutes < 60:
+                            base_display = f"{base_interval_minutes}-minute"
+                        elif base_interval_minutes == 1440:
+                            base_display = "daily"
+                        elif base_interval_minutes == 10080:
+                            base_display = "weekly"
+                        else:
+                            days = base_interval_minutes / 1440
+                            base_display = f"{days:.1f}-day" if days != int(days) else f"{int(days)}-day"
+                        
+                        st.success(f"🔍 **Base timeframe detected**: {base_display} ({base_interval_minutes} minutes)")
+                    else:
+                        base_interval_minutes = 1440  # Default to daily
+                        st.info("🔍 **Base timeframe**: Assuming daily (insufficient data for detection)")
+
+                except Exception as e:
+                    base_interval_minutes = 1440  # Default to daily
+                    st.info("🔍 **Base timeframe**: Defaulting to daily (detection failed)")
+                
+                # 3. SMART PERIOD RECOMMENDATIONS
+                st.write("**3. Rolling Period Configuration**")
                 
                 # Smart defaults based on candle interval - ALWAYS 8 PERIODS
                 if interval_minutes <= 5:  # 1-5 minute candles
@@ -3684,8 +3729,8 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                 period_display = f"{rolling_period_count} × {rolling_period_type}"
                 st.success(f"⚙️ **Rolling configuration**: {period_display}")
                 
-                # 3. ANALYSIS TIMEFRAME SELECTION
-                st.write("**3. Analysis Timeframe Selection**")
+                # 4. ANALYSIS TIMEFRAME SELECTION
+                st.write("**4. Analysis Timeframe Selection**")
                 
                 analysis_timeframe = st.selectbox(
                     "Analysis Timeframe",
@@ -3703,7 +3748,8 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     'candle_interval_minutes': interval_minutes,
                     'rolling_period_type': rolling_period_type,
                     'rolling_period_count': rolling_period_count,
-                    'analysis_timeframe': analysis_timeframe
+                    'analysis_timeframe': analysis_timeframe,
+                    'base_interval_minutes': base_interval_minutes
                 }
                 
             except Exception as e:
@@ -3713,7 +3759,8 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     'candle_interval_minutes': 10,
                     'rolling_period_type': 'hourly',
                     'rolling_period_count': 8,
-                    'analysis_timeframe': 'Intraday'
+                    'analysis_timeframe': 'Intraday',
+                    'base_interval_minutes': 1440
                 }
             
             st.markdown("---")
