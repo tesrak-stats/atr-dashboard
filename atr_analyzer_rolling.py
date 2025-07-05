@@ -249,8 +249,7 @@ def state_check_analysis(daily, intraday, custom_ratios=None):
     progress_bar.empty()
     status_text.empty()
     
-    return pd.DataFrame(results)
-import streamlit as st
+    return pd.DataFrame(results)import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, date
@@ -1603,77 +1602,6 @@ def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=
                     
                     debug_info.append(f"Batch complete. Total trigger/goal combinations found: {len(st.session_state.atr_processing['results'])}")
                 
-                # PROGRESSIVE SAVE: Always show current progress and download option
-                current_progress = st.session_state.atr_processing['last_processed_index']
-                total_progress = st.session_state.atr_processing['total_periods']
-                
-                if current_progress > 0:
-                    st.subheader("📊 Current Progress")
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        progress_pct = (current_progress / total_progress) * 100
-                        st.metric("Progress", f"{progress_pct:.1f}%")
-                    with col2:
-                        st.metric("Periods Processed", f"{current_progress:,}")
-                    with col3:
-                        current_records = len(st.session_state.atr_processing['results'])
-                        st.metric("Records Generated", f"{current_records:,}")
-                    
-                    # Progressive download button
-                    if current_records > 0:
-                        partial_df = pd.DataFrame(st.session_state.atr_processing['results'])
-                        
-                        # Add zone analysis results if available
-                        zone_records = []
-                        if 'zone_baseline_results' in st.session_state.atr_processing:
-                            zone_records.extend(st.session_state.atr_processing['zone_baseline_results'])
-                        if 'state_check_results' in st.session_state.atr_processing:
-                            zone_records.extend(st.session_state.atr_processing['state_check_results'])
-                        
-                        if zone_records:
-                            zone_df = pd.DataFrame(zone_records)
-                            partial_df = pd.concat([partial_df, zone_df], ignore_index=True)
-                        
-                        # Progressive download
-                        st.subheader("💾 Progressive Save")
-                        st.write(f"**Download current progress:** {len(partial_df):,} records through period {current_progress}")
-                        
-                        csv_data = partial_df.to_csv(index=False)
-                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        ticker_clean = st.session_state.atr_processing.get('ticker', 'TICKER').replace("^", "").replace("=", "_")
-                        asset_type = st.session_state.atr_processing.get('asset_type', 'ASSET')
-                        
-                        progressive_filename = f'{ticker_clean}_{asset_type}_PARTIAL_{current_progress}of{total_progress}_{timestamp}.csv'
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.download_button(
-                                label=f'💾 Download Partial Results ({len(partial_df):,} records)',
-                                data=csv_data,
-                                file_name=progressive_filename,
-                                mime='text/csv',
-                                key=f'progressive_download_{current_progress}',
-                                help=f'Save current progress: {progress_pct:.1f}% complete'
-                            )
-                        
-                        with col2:
-                            # Resume from specific period option
-                            with st.expander("🔄 Resume Options"):
-                                st.write("**Current session will continue automatically.**")
-                                st.write("**For manual resume (if needed):**")
-                                resume_period = st.number_input(
-                                    "Resume from period:",
-                                    min_value=0,
-                                    max_value=total_progress,
-                                    value=current_progress,
-                                    key=f"resume_input_{current_progress}"
-                                )
-                                
-                                if st.button("🚀 Set Resume Point", key=f"resume_btn_{current_progress}"):
-                                    st.session_state.atr_processing['last_processed_index'] = resume_period
-                                    st.success(f"Resume point set to period {resume_period}")
-                                    st.info("Processing will continue from this point on next batch.")
-                
                 # Check if processing is complete
                 if st.session_state.atr_processing['is_complete']:
                     # Combine all analysis results
@@ -1705,6 +1633,11 @@ def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=
                         analysis_timeframe = intraday_data['Analysis_Timeframe'].iloc[0]
                         result_df['Analysis_Timeframe'] = analysis_timeframe
                         debug_info.append(f"Added Analysis_Timeframe: {analysis_timeframe}")
+                    
+                    # Add Ticker and Asset Type for identification
+                    if not result_df.empty:
+                        result_df['Ticker'] = ticker
+                        result_df['AssetType'] = asset_type
                     
                     # Comprehensive statistics
                     if not result_df.empty:
@@ -1777,8 +1710,11 @@ def display_results(result_df, debug_messages, ticker, asset_type):
             st.write(msg)
     
     if not result_df.empty:
-        result_df['Ticker'] = ticker
-        result_df['AssetType'] = asset_type
+        # Ensure metadata columns are present for downstream processing
+        if 'Ticker' not in result_df.columns:
+            result_df['Ticker'] = ticker
+        if 'AssetType' not in result_df.columns:
+            result_df['AssetType'] = asset_type
         
         # Enhanced summary stats
         st.subheader('Summary Statistics')
@@ -2041,6 +1977,114 @@ if ('atr_processing' in st.session_state and
     st.session_state.atr_processing['daily_data'] is not None):
     
     st.info("🔄 Resuming processing automatically...")
+    
+    # PROGRESSIVE SAVE SECTION - SEPARATE FROM MAIN PROCESSING
+    current_progress = st.session_state.atr_processing.get('last_processed_index', 0)
+    total_progress = st.session_state.atr_processing.get('total_periods', 1)
+    current_records = len(st.session_state.atr_processing.get('results', []))
+    
+    if current_progress > 0:
+        st.markdown("---")
+        st.subheader("📊 Live Progress Monitor")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            progress_pct = (current_progress / total_progress) * 100
+            st.metric("Progress", f"{progress_pct:.1f}%", f"Period {current_progress:,}")
+        with col2:
+            st.metric("Records Generated", f"{current_records:,}")
+        with col3:
+            # Add zone records if available
+            zone_records_count = 0
+            if 'zone_baseline_results' in st.session_state.atr_processing:
+                zone_records_count += len(st.session_state.atr_processing['zone_baseline_results'])
+            if 'state_check_results' in st.session_state.atr_processing:
+                zone_records_count += len(st.session_state.atr_processing['state_check_results'])
+            
+            total_records = current_records + zone_records_count
+            st.metric("Total Records", f"{total_records:,}")
+        
+        # Progressive download in separate container
+        with st.container():
+            st.subheader("💾 Emergency Download")
+            st.write(f"**Save current progress:** {total_records:,} records through period {current_progress:,}")
+            
+            if total_records > 0:
+                # Prepare download data
+                all_current_data = []
+                
+                # Add session/rolling results
+                if st.session_state.atr_processing.get('results'):
+                    all_current_data.extend(st.session_state.atr_processing['results'])
+                
+                # Add zone results if available
+                if 'zone_baseline_results' in st.session_state.atr_processing:
+                    all_current_data.extend(st.session_state.atr_processing['zone_baseline_results'])
+                if 'state_check_results' in st.session_state.atr_processing:
+                    all_current_data.extend(st.session_state.atr_processing['state_check_results'])
+                
+                if all_current_data:
+                    partial_df = pd.DataFrame(all_current_data)
+                    
+                    # ADD CRITICAL METADATA COLUMNS for downstream apps
+                    if not partial_df.empty:
+                        # Get original intraday data to extract metadata
+                        if st.session_state.atr_processing.get('intraday_data') is not None:
+                            intraday_data = st.session_state.atr_processing['intraday_data']
+                            
+                            # Add Trading_Days_Count (for final display)
+                            if 'Trading_Days_Count' in intraday_data.columns:
+                                final_trading_days = intraday_data['Trading_Days_Count'].iloc[-1]
+                                partial_df['Trading_Days_Count'] = final_trading_days
+                            
+                            # Add Analysis_Timeframe (for summarizer logic)
+                            if 'Analysis_Timeframe' in intraday_data.columns:
+                                analysis_timeframe = intraday_data['Analysis_Timeframe'].iloc[0]
+                                partial_df['Analysis_Timeframe'] = analysis_timeframe
+                            
+                            # Add Ticker and Asset Type for identification
+                            partial_df['Ticker'] = st.session_state.atr_processing.get('ticker', 'UNKNOWN')
+                            partial_df['AssetType'] = st.session_state.atr_processing.get('asset_type', 'UNKNOWN')
+                    
+                    csv_data = partial_df.to_csv(index=False)
+                    
+                    # Create unique filename
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    ticker_clean = st.session_state.atr_processing.get('ticker', 'TICKER').replace("^", "").replace("=", "_")
+                    asset_type = st.session_state.atr_processing.get('asset_type', 'ASSET')
+                    
+                    emergency_filename = f'{ticker_clean}_{asset_type}_EMERGENCY_{current_progress}of{total_progress}_{timestamp}.csv'
+                    
+                    # Multiple download options to prevent button disappearing
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.download_button(
+                            label=f'💾 Save Progress',
+                            data=csv_data,
+                            file_name=emergency_filename,
+                            mime='text/csv',
+                            key=f'emergency_save_1_{current_progress}_{len(all_current_data)}',
+                            help=f'Download {len(all_current_data):,} records'
+                        )
+                    
+                    with col2:
+                        st.download_button(
+                            label=f'🔄 Backup Download',
+                            data=csv_data,
+                            file_name=f'backup_{emergency_filename}',
+                            mime='text/csv',
+                            key=f'emergency_save_2_{current_progress}_{len(all_current_data)}',
+                            help=f'Alternative download option'
+                        )
+                    
+                    with col3:
+                        # Show file info
+                        st.write(f"**File:** `{emergency_filename}`")
+                        st.write(f"**Size:** {len(csv_data):,} bytes")
+                        st.write(f"**Progress:** {progress_pct:.1f}%")
+        
+        st.markdown("---")
     
     # Continue processing immediately
     with st.spinner('Auto-continuing systematic analysis...'):
