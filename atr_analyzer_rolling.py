@@ -249,8 +249,7 @@ def state_check_analysis(daily, intraday, custom_ratios=None):
     progress_bar.empty()
     status_text.empty()
     
-    return pd.DataFrame(results)
-import streamlit as st
+    return pd.DataFrame(results)import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta, date
@@ -1458,7 +1457,7 @@ def debug_single_day_analysis(daily, intraday, debug_date, custom_ratios=None):
 # ==============================================================================================
 
 # Main analysis function with session state resume capability
-def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=False, debug_date=None, resume_from_period=0):
+def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=False, debug_date=None, resume_from_period=0, extended_hours=False):
     """Main function for pre-formatted CSV analysis with auto-resume"""
     debug_info = []
     
@@ -1474,6 +1473,7 @@ def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=
                 'custom_ratios': None,
                 'ticker': '',
                 'asset_type': '',
+                'extended_hours': False,
                 'total_periods': 0,
                 'zone_baseline_results': [],
                 'zone_baseline_complete': False,
@@ -1545,6 +1545,7 @@ def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=
             st.session_state.atr_processing['custom_ratios'] = custom_ratios
             st.session_state.atr_processing['ticker'] = ticker
             st.session_state.atr_processing['asset_type'] = asset_type
+            st.session_state.atr_processing['extended_hours'] = extended_hours
             st.session_state.atr_processing['total_periods'] = len(daily_data)
             
             # Handle resume from specific period
@@ -1635,10 +1636,33 @@ def main_analysis(ticker, asset_type, data_file, custom_ratios=None, debug_mode=
                         result_df['Analysis_Timeframe'] = analysis_timeframe
                         debug_info.append(f"Added Analysis_Timeframe: {analysis_timeframe}")
                     
+                    # Add Candle_Interval_Minutes (for summarizer)
+                    if not result_df.empty and 'Candle_Interval_Minutes' in intraday_data.columns:
+                        candle_interval = intraday_data['Candle_Interval_Minutes'].iloc[0]
+                        result_df['Candle_Interval_Minutes'] = candle_interval
+                        debug_info.append(f"Added Candle_Interval_Minutes: {candle_interval}")
+                    
+                    # Add Base_Interval_Minutes (for summarizer)
+                    if not result_df.empty and 'Base_Interval_Minutes' in intraday_data.columns:
+                        base_interval = intraday_data['Base_Interval_Minutes'].iloc[0]
+                        result_df['Base_Interval_Minutes'] = base_interval
+                        debug_info.append(f"Added Base_Interval_Minutes: {base_interval}")
+                    
                     # Add Ticker and Asset Type for identification
                     if not result_df.empty:
                         result_df['Ticker'] = ticker
                         result_df['AssetType'] = asset_type
+                        
+                        # Add detailed asset class info
+                        if asset_type == 'STOCKS':
+                            if extended_hours:
+                                result_df['AssetClass'] = 'STOCKS_ETH'  # Extended Trading Hours
+                            else:
+                                result_df['AssetClass'] = 'STOCKS_RTH'  # Regular Trading Hours
+                        else:
+                            result_df['AssetClass'] = asset_type  # CRYPTO, FOREX, FUTURES as-is
+                        
+                        debug_info.append(f"Added AssetClass: {result_df['AssetClass'].iloc[0]}")
                     
                     # Comprehensive statistics
                     if not result_df.empty:
@@ -2043,9 +2067,32 @@ if ('atr_processing' in st.session_state and
                                 analysis_timeframe = intraday_data['Analysis_Timeframe'].iloc[0]
                                 partial_df['Analysis_Timeframe'] = analysis_timeframe
                             
+                            # Add Candle_Interval_Minutes (for summarizer)
+                            if 'Candle_Interval_Minutes' in intraday_data.columns:
+                                candle_interval = intraday_data['Candle_Interval_Minutes'].iloc[0]
+                                partial_df['Candle_Interval_Minutes'] = candle_interval
+                            
+                            # Add Base_Interval_Minutes (for summarizer)
+                            if 'Base_Interval_Minutes' in intraday_data.columns:
+                                base_interval = intraday_data['Base_Interval_Minutes'].iloc[0]
+                                partial_df['Base_Interval_Minutes'] = base_interval
+                            
                             # Add Ticker and Asset Type for identification
                             partial_df['Ticker'] = st.session_state.atr_processing.get('ticker', 'UNKNOWN')
-                            partial_df['AssetType'] = st.session_state.atr_processing.get('asset_type', 'UNKNOWN')
+                            
+                            # Add detailed asset class info from UI
+                            base_asset_type = st.session_state.atr_processing.get('asset_type', 'UNKNOWN')
+                            partial_df['AssetType'] = base_asset_type
+                            
+                            # Add extended hours info for stocks
+                            extended_hours_info = st.session_state.atr_processing.get('extended_hours', False)
+                            if base_asset_type == 'STOCKS':
+                                if extended_hours_info:
+                                    partial_df['AssetClass'] = 'STOCKS_ETH'  # Extended Trading Hours
+                                else:
+                                    partial_df['AssetClass'] = 'STOCKS_RTH'  # Regular Trading Hours
+                            else:
+                                partial_df['AssetClass'] = base_asset_type  # CRYPTO, FOREX, FUTURES as-is
                     
                     csv_data = partial_df.to_csv(index=False)
                     
@@ -2260,7 +2307,8 @@ if data_file:
                     custom_ratios=custom_ratios,
                     debug_mode=debug_mode,
                     debug_date=debug_date,
-                    resume_from_period=resume_from_period
+                    resume_from_period=resume_from_period,
+                    extended_hours=extended_hours
                 )
                 
                 display_results(result_df, debug_messages, ticker, asset_type)
