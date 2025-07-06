@@ -472,6 +472,7 @@ def process_combined_data(df, filenames):
     
     # Process each analysis type
     summary_rows = []
+    level_totals = []
     
     for analysis_type in df['AnalysisType'].unique():
         analysis_data = df[df['AnalysisType'] == analysis_type]
@@ -506,6 +507,9 @@ def process_combined_data(df, filenames):
             for goal_level in analysis_data['GoalLevel'].unique():
                 bucket_labels, _ = create_time_buckets(base_interval, candle_interval)
                 
+                # Calculate total hits for this trigger-goal combination across all time buckets
+                total_hits_for_level = 0
+                
                 for goal_time in bucket_labels:
                     hits = goal_hits[
                         (goal_hits['TriggerLevel'] == trigger_level) &
@@ -516,6 +520,7 @@ def process_combined_data(df, filenames):
                     ]
                     
                     num_hits = hits['NumHits'].iloc[0] if len(hits) > 0 else 0
+                    total_hits_for_level += num_hits
                     pct_completion = (num_hits / total_triggers * 100) if total_triggers > 0 else 0
                     
                     summary_rows.append({
@@ -529,8 +534,24 @@ def process_combined_data(df, filenames):
                         'NumHits': num_hits,
                         'PctCompletion': round(pct_completion, 2)
                     })
+                
+                # Calculate total completion rate for this trigger-goal combination
+                total_completion_rate = (total_hits_for_level / total_triggers * 100) if total_triggers > 0 else 0
+                
+                # Store level totals for display app
+                level_totals.append({
+                    'AnalysisType': analysis_type,
+                    'Direction': direction,
+                    'TriggerLevel': trigger_level,
+                    'TriggerTime': trigger_time,
+                    'GoalLevel': goal_level,
+                    'TotalTriggers': total_triggers,
+                    'TotalHits': total_hits_for_level,
+                    'TotalCompletionRate': round(total_completion_rate, 2)
+                })
     
     summary_df = pd.DataFrame(summary_rows)
+    level_totals_df = pd.DataFrame(level_totals)
     
     # Create metadata
     metadata = {
@@ -541,7 +562,7 @@ def process_combined_data(df, filenames):
         'source_files': filenames
     }
     
-    return summary_df, metadata, ticker, base_interval, candle_interval, asset_type
+    return summary_df, level_totals_df, metadata, ticker, base_interval, candle_interval, asset_type
 
 # Streamlit App
 st.title("🎯 Multi-Analysis ATR Summarizer with Combiner")
@@ -587,16 +608,21 @@ if uploaded_files:
             combined_df = dataframes[0]
         
         # Process the data
-        summary_df, metadata, ticker, base_interval, candle_interval, asset_type = process_combined_data(combined_df, filenames)
+        summary_df, level_totals_df, metadata, ticker, base_interval, candle_interval, asset_type = process_combined_data(combined_df, filenames)
         
         # Generate reports
         st.write("## 📊 Generating Reports...")
         
-        # Generate CSV
+        # Generate CSV files
         csv_buffer = io.StringIO()
         summary_df.to_csv(csv_buffer, index=False)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         csv_filename = f"atr_summary_{ticker}_{asset_type}_{base_interval}min_{timestamp}.csv"
+        
+        # Generate level totals CSV
+        level_totals_buffer = io.StringIO()
+        level_totals_df.to_csv(level_totals_buffer, index=False)
+        level_totals_filename = f"atr_level_totals_{ticker}_{asset_type}_{base_interval}min_{timestamp}.csv"
         
         # Generate Excel
         try:
@@ -615,17 +641,27 @@ if uploaded_files:
             html_content = None
         
         # Download buttons
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             st.download_button(
-                label="📥 Download CSV",
+                label="📥 Download Detailed CSV",
                 data=csv_buffer.getvalue(),
                 file_name=csv_filename,
-                mime="text/csv"
+                mime="text/csv",
+                help="Detailed hourly breakdown data"
             )
         
         with col2:
+            st.download_button(
+                label="📥 Download Level Totals CSV",
+                data=level_totals_buffer.getvalue(),
+                file_name=level_totals_filename,
+                mime="text/csv",
+                help="Total completion rates per trigger level"
+            )
+        
+        with col3:
             if excel_content:
                 st.download_button(
                     label="📥 Download Excel",
@@ -634,7 +670,7 @@ if uploaded_files:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
         
-        with col3:
+        with col4:
             if html_content:
                 st.download_button(
                     label="📥 Download HTML",
@@ -648,20 +684,32 @@ if uploaded_files:
         
         col1, col2, col3, col4 = st.columns(4)
         with col1:
-            st.metric("Summary Records", len(summary_df))
+            st.metric("Detailed Records", len(summary_df))
         with col2:
-            st.metric("Analysis Types", len(metadata['analysis_types']))
+            st.metric("Level Combinations", len(level_totals_df))
         with col3:
-            st.metric("Source Files", len(filenames))
+            st.metric("Analysis Types", len(metadata['analysis_types']))
         with col4:
-            bucket_labels, bucket_size = create_time_buckets(base_interval, candle_interval)
-            st.metric("Time Buckets", len(bucket_labels))
+            st.metric("Source Files", len(filenames))
         
-        # Show analysis types
-        st.write("### Analysis Types Processed:")
+        # Show level totals preview
+        st.write("### 📊 Level Totals Preview")
+        st.write("Total completion rates calculated across all time buckets:")
+        
+        # Show top performing levels
+        top_levels = level_totals_df.nlargest(10, 'TotalCompletionRate')
+        if len(top_levels) > 0:
+            st.dataframe(
+                top_levels[['AnalysisType', 'Direction', 'TriggerLevel', 'GoalLevel', 'TotalTriggers', 'TotalHits', 'TotalCompletionRate']],
+                use_container_width=True
+            )
+        
+        # Show analysis types breakdown
+        st.write("### 📋 Analysis Types Processed:")
         for analysis_type in metadata['analysis_types']:
-            type_data = summary_df[summary_df['AnalysisType'] == analysis_type]
-            st.write(f"- **{analysis_type}**: {len(type_data):,} records")
+            type_data = level_totals_df[level_totals_df['AnalysisType'] == analysis_type]
+            avg_completion = type_data['TotalCompletionRate'].mean() if len(type_data) > 0 else 0
+            st.write(f"- **{analysis_type}**: {len(type_data):,} level combinations, {avg_completion:.1f}% avg completion rate")
         
         st.success("🎉 Processing complete!")
         
