@@ -11,30 +11,51 @@ except ImportError:
     import pytz  # Fallback for older Python versions
     USE_ZONEINFO = False
 from daily_atr_updater import calculate_atr_levels, TICKER_CONFIG
+from shared_chart_functions import (
+    create_zonebaseline_heatmap,
+    create_statecheck_matrix,
+    get_rolling_8_hours,
+    get_total_probability
+)
 
-# --- Updated Ticker Configuration (now matches the ATR calculator) ---
-ticker_config = {
-    "SPX": {
-        "summary_file": "atr_dashboard_summary_ENHANCED.csv",
-        "display_name": "S&P 500 (SPX)",
-        "ticker_symbol": "^GSPC"
-    },
-    "QQQ": {
-        "summary_file": "atr_dashboard_summary_QQQ.csv",  # You'll need to create this
-        "display_name": "Nasdaq 100 (QQQ)",
-        "ticker_symbol": "QQQ"
-    },
-    "IWM": {
-        "summary_file": "atr_dashboard_summary_IWM.csv",  # You'll need to create this
-        "display_name": "Russell 2000 (IWM)",
-        "ticker_symbol": "IWM"
-    },
-    "NVDA": {
-        "summary_file": "atr_dashboard_summary_NVDA.csv",
-        "display_name": "S&P 500 (NVDA)",
-        "ticker_symbol": "NVDA"
-    },
-    # Add more tickers as needed - make sure they match TICKER_CONFIG in daily_atr_updater.py
+# --- Grouped Ticker Selection ---
+st.title("📈 Daily ATR Analysis")
+st.caption("🔧 App Version: v3.0.0 - Multi-Instrument Daily Viewer")
+
+# Create grouped ticker options
+ticker_groups = {
+    "📊 Indices": [
+        "SPX - S&P 500",
+        "NDX - Nasdaq 100", 
+        "RUT - Russell 2000"
+    ],
+    "📈 Stocks": [
+        "NVDA - NVIDIA",
+        "AAPL - Apple",
+        "GOOGL - Google",
+        "TSLA - Tesla"
+    ],
+    "🏢 Sectors": [
+        "XLF - Financial Select",
+        "XLE - Energy Select", 
+        "XLK - Technology Select",
+        "XLV - Health Care Select"
+    ],
+    "🔮 Futures": [
+        "ES - E-mini S&P 500",
+        "NQ - E-mini Nasdaq",
+        "YM - E-mini Dow",
+        "RTY - E-mini Russell"
+    ],
+    "💰 Forex": [
+        "EURUSD - Euro/US Dollar",
+        "GBPUSD - British Pound/US Dollar",
+        "USDJPY - US Dollar/Japanese Yen"
+    ],
+    "₿ Crypto": [
+        "BTCUSD - Bitcoin",
+        "ETHUSD - Ethereum"
+    ]
 }
 
 def get_current_market_time():
@@ -178,20 +199,7 @@ col_title1, col_title2 = st.columns([4, 1])
 with col_title1:
     st.title("📈 ATR Levels Roadmap")
     st.caption("🔧 App Version: v2.5.0 - Multi-Ticker Support") # VERSION BUMP
-with col_title2:
-    # Only show tickers that have summary files available
-    available_tickers = []
-    for ticker_key, config in ticker_config.items():
-        if os.path.exists(config["summary_file"]):
-            available_tickers.append(ticker_key)
-        else:
-            st.warning(f"⚠️ {config['summary_file']} not found for {ticker_key}")
-    
-    if not available_tickers:
-        st.error("❌ No ticker data files found!")
-        st.stop()
-    
-    selected_ticker = st.selectbox("Ticker", available_tickers, index=0)
+
 
 # --- Load data based on selected ticker ---
 try:
