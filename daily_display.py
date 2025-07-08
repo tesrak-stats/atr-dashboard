@@ -18,6 +18,15 @@ from shared_chart_functions import (
     get_total_probability
 )
 
+# Temporary fix - add this after imports
+selected_ticker = "SPX"  # Hardcode for testing
+ticker_config = {
+    "SPX": {
+        "summary_file": "atr_summary_SPX_SESSION_20250707_115941.csv",
+        "display_name": "S&P 500",
+        "ticker_symbol": "SPX"
+    }
+}
 # --- Grouped Ticker Selection ---
 st.title("📈 Daily ATR Analysis")
 st.caption("🔧 App Version: v3.0.0 - Multi-Instrument Daily Viewer")
