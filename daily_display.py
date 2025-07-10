@@ -22,7 +22,7 @@ from shared_chart_functions import (
 selected_ticker = "SPX"  # Hardcode for testing
 ticker_config = {
     "SPX": {
-        "summary_file": "atr_summary_SPX_SESSION_20250707_115941.csv",
+        "summary_file": "atr_summary_SPX_SESSION_20250710_064535.csv",
         "display_name": "S&P 500",
         "ticker_symbol": "SPX"
     }
