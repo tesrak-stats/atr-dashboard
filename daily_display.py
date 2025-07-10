@@ -120,7 +120,7 @@ else:
 # Create ticker config dynamically
 ticker_config = {
     "summary_file": f"atr_summary_{selected_ticker}_SESSION_20250710_064535.csv",
-    "display_name": selected_ticker_display.split(" - ")[1],  # Part after " - "
+    "display_name": selected_ticker_display.split(" - ")[1],  # Part after " - "    
     "ticker_symbol": selected_ticker
 }
     
