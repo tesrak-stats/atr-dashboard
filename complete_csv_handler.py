@@ -400,7 +400,10 @@ def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_
             
             # Create current ATR lookup and prior base close lookup
             for i, row in daily_with_atr.iterrows():
-                atr_lookup[row['Date']] = row['ATR']
+                 if i > 0:
+                    atr_lookup[row['Date']] = daily_with_atr.iloc[i-1]['ATR']
+                else:
+                    atr_lookup[row['Date']] = None  # Skip first day or use Na
                 
                 # Prior base close is the close from the previous row
                 if i > 0:
