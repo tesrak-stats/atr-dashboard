@@ -19,12 +19,110 @@ from shared_chart_functions import (
 )
 
 # Temporary fix - add this after imports
-selected_ticker = "SPX"  # Hardcode for testing
+# Create flattened list with group separators (show available tickers only)
+ticker_options = []
+ticker_mapping = {}  # Map display names to actual ticker symbols
+
+# Define ticker groups
+ticker_groups = {
+    "📊 Indices": [
+        "SPX - S&P 500",
+        "NDX - Nasdaq 100", 
+        "RUT - Russell 2000"
+    ],
+    "📈 Stocks": [
+        "NVDA - NVIDIA",
+        "AAPL - Apple",
+        "GOOGL - Google",
+        "TSLA - Tesla"
+    ],
+    "🏢 Sectors": [
+        "XLF - Financial Select",
+        "XLE - Energy Select", 
+        "XLK - Technology Select",
+        "XLV - Health Care Select"
+    ],
+    "🔮 Futures": [
+        "ES - E-mini S&P 500",
+        "NQ - E-mini Nasdaq",
+        "YM - E-mini Dow",
+        "RTY - E-mini Russell"
+    ],
+    "💰 Forex": [
+        "EURUSD - Euro/US Dollar",
+        "GBPUSD - British Pound/US Dollar",
+        "USDJPY - US Dollar/Japanese Yen"
+    ],
+    "₿ Crypto": [
+        "BTCUSD - Bitcoin",
+        "ETHUSD - Ethereum"
+    ]
+}
+
+# Check availability and build options list
+for group_name, tickers in ticker_groups.items():
+    # Always add group header
+    ticker_options.append(f"--- {group_name} ---")
+    
+    group_has_available = False
+    for ticker_display in tickers:
+        ticker_symbol = ticker_display.split(" - ")[0]
+        
+        # Check for session data file
+        summary_file = f"atr_summary_{ticker_symbol}_SESSION_{datetime.now().strftime('%Y%m%d')}_*.csv"
+        
+        # For now, just check if SPX file exists (since that's what we have)
+        if ticker_symbol == "SPX":
+            summary_file = "atr_summary_SPX_SESSION_20250707_115941.csv"
+            if os.path.exists(summary_file):
+                ticker_options.append(ticker_display)
+                ticker_mapping[ticker_display] = ticker_symbol
+                group_has_available = True
+        # Add other tickers as their data becomes available
+        # elif ticker_symbol == "ES" and os.path.exists(f"atr_summary_ES_SESSION_*.csv"):
+        #     ticker_options.append(ticker_display)
+        #     ticker_mapping[ticker_display] = ticker_symbol
+        #     group_has_available = True
+    
+    # If no available tickers in this group, show placeholder
+    if not group_has_available:
+        ticker_options.append("--- (Coming Soon) ---")
+
+# Ticker selector with availability check
+if len([opt for opt in ticker_options if not opt.startswith("---")]) == 0:
+    st.error("❌ No ticker data files found!")
+    st.info("📝 Have a ticker request? Check back soon!")
+    st.stop()
+
+selected_ticker_display = st.selectbox("Select Ticker", ticker_options, index=1)  # Skip first separator
+
+# Get actual ticker symbol (handle "Coming Soon" selections)
+if not selected_ticker_display.startswith("---"):
+    if selected_ticker_display in ticker_mapping:
+        selected_ticker = ticker_mapping[selected_ticker_display]
+        
+        # Determine instrument category
+        instrument_category = None
+        for group_name, tickers in ticker_groups.items():
+            if selected_ticker_display in tickers:
+                instrument_category = group_name.split(" ", 1)[1]  # Remove emoji
+                break
+        
+        st.success(f"✅ Selected: {selected_ticker_display} ({instrument_category})")
+    else:
+        st.error("❌ This ticker is not yet available")
+        st.info("📝 Check back soon or visit our ticker request page!")
+        st.stop()
+else:
+    st.error("Please select a valid ticker (not a header)")
+    st.stop()
+
+# Create ticker config dynamically
 ticker_config = {
-    "SPX": {
-        "summary_file": "atr_summary_SPX_SESSION_20250710_064535.csv",
-        "display_name": "S&P 500",
-        "ticker_symbol": "SPX"
+    "summary_file": f"atr_summary_{selected_ticker}_SESSION_20250707_115941.csv",
+    "display_name": selected_ticker_display.split(" - ")[1],  # Part after " - "
+    "ticker_symbol": selected_ticker
+}
     }
 }
 # --- Grouped Ticker Selection ---
