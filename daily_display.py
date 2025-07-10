@@ -73,7 +73,7 @@ for group_name, tickers in ticker_groups.items():
         
         # For now, just check if SPX file exists (since that's what we have)
         if ticker_symbol == "SPX":
-            summary_file = "atr_summary_SPX_SESSION_20250707_115941.csv"
+            summary_file = "atr_summary_SPX_SESSION_20250710_064535.csv"
             if os.path.exists(summary_file):
                 ticker_options.append(ticker_display)
                 ticker_mapping[ticker_display] = ticker_symbol
