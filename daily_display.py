@@ -464,17 +464,6 @@ fibo_styles = {
     -1.0: ("lightgray", 3, 16),
 }
 
-# --- Controls (define before display configuration) ---
-col1, col2, col3 = st.columns(3)
-
-price_direction = col1.selectbox("Price Location", sorted(df["Direction"].unique()), 
-                                index=sorted(df["Direction"].unique()).index("Above"))
-
-trigger_level = col2.selectbox("Trigger Level", sorted(set(df["TriggerLevel"]).union(fib_levels)), 
-                              index=sorted(set(df["TriggerLevel"]).union(fib_levels)).index(0.0))
-
-trigger_time = col3.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
-
 # --- Handle URL Parameters from Parent Website ---
 query_params = st.query_params if hasattr(st, 'query_params') else {}
 
