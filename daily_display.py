@@ -122,7 +122,7 @@ ticker_config = {
     "summary_file": f"atr_summary_{selected_ticker}_SESSION_20250707_115941.csv",
     "display_name": selected_ticker_display.split(" - ")[1],  # Part after " - "
     "ticker_symbol": selected_ticker
-}
+        }
     }
 }
 # --- Grouped Ticker Selection ---
