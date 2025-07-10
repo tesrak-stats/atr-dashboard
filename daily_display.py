@@ -123,7 +123,7 @@ ticker_config = {
     "display_name": selected_ticker_display.split(" - ")[1],  # Part after " - "
     "ticker_symbol": selected_ticker
         }
-    }
+}
 }
 # --- Grouped Ticker Selection ---
 st.title("📈 Daily ATR Analysis")
