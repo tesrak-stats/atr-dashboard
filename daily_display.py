@@ -165,7 +165,86 @@ ticker_groups = {
         "ETHUSD - Ethereum"
     ]
 }
+# --- Analysis Type Selection ---
+st.subheader("📊 Analysis Type")
+analysis_type = st.selectbox(
+    "Select Analysis Type",
+    ["Session", "Rolling", "StateCheck", "ZoneBaseline"],
+    index=0,
+    help="Session: Full session analysis | Rolling: 8-hour window | StateCheck: Zone transitions | ZoneBaseline: Static zone probability"
+)
 
+# --- Conditional Controls Based on Analysis Type ---
+st.subheader("⚙️ Analysis Parameters")
+
+if analysis_type == "ZoneBaseline":
+    st.info("📍 **ZoneBaseline**: Static probability heatmap showing zone occupancy throughout the session")
+    st.caption("No additional parameters needed - shows probability of being in each zone at each time")
+    
+elif analysis_type == "StateCheck":
+    st.info("🔄 **StateCheck**: Zone transition probabilities from trigger zone over time")
+    
+    # Zone definitions
+    zone_definitions = [
+        "Zone 1: Above +1.0",
+        "Zone 2: +0.786 to +1.0", 
+        "Zone 3: +0.618 to +0.786",
+        "Zone 4: +0.382 to +0.618",
+        "Zone 5: +0.236 to +0.382",
+        "Zone 6: 0.0 to +0.236",
+        "Zone 7: -0.236 to 0.0",
+        "Zone 8: -0.382 to -0.236",
+        "Zone 9: -0.5 to -0.382",
+        "Zone 10: -0.618 to -0.5",
+        "Zone 11: -0.786 to -0.618",
+        "Zone 12: Below -1.0"
+    ]
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        trigger_zone = st.selectbox("Trigger Zone", zone_definitions, index=6)  # Default to Zone 7
+    with col2:
+        # For now, use standard time slots - we'll add session configuration later
+        trigger_time = st.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
+    
+elif analysis_type == "Rolling":
+    st.info("⏰ **Rolling**: 8-hour rolling window analysis from trigger time")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        price_direction = st.selectbox("Price Location", ["Above", "Below"], index=0)
+    with col2:
+        # Use fib_levels from existing code
+        fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+        trigger_level = st.selectbox("Trigger Level", fib_levels, index=6)  # Default to 0.0
+    with col3:
+        trigger_time = st.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
+    
+    # Show rolling window preview
+    rolling_hours = get_rolling_8_hours(trigger_time)
+    st.caption(f"🔄 Rolling window: {' → '.join(rolling_hours[:4])} → {' → '.join(rolling_hours[4:])}")
+    
+else:  # Session
+    st.info("📈 **Session**: Full session analysis with trigger conditions")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        price_direction = st.selectbox("Price Location", ["Above", "Below"], index=0)
+    with col2:
+        # Use fib_levels from existing code
+        fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+        trigger_level = st.selectbox("Trigger Level", fib_levels, index=6)  # Default to 0.0
+    with col3:
+        trigger_time = st.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
+
+# Show analysis summary
+st.divider()
+if analysis_type == "ZoneBaseline":
+    st.write(f"**Analysis**: {analysis_type}")
+elif analysis_type == "StateCheck":
+    st.write(f"**Analysis**: {analysis_type} | **From**: {trigger_zone} at {trigger_time}")
+else:  # Session or Rolling
+    st.write(f"**Analysis**: {analysis_type} | **Trigger**: {price_direction} {trigger_level} at {trigger_time}")
 def get_current_market_time():
     """Get current Eastern Time and determine market time slot"""
     if USE_ZONEINFO:
