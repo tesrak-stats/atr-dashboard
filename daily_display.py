@@ -545,27 +545,27 @@ if analysis_type == "Session":
     time_order = display_columns.copy()
 
 # --- Debug trigger level data ---
-    if st.checkbox("🔍 Debug Mode - Show Data Structure"):
-       st.write("**Selected Ticker Configuration:**")
-       st.json(ticker_config[selected_ticker])
+   # if st.checkbox("🔍 Debug Mode - Show Data Structure"):
+    #   st.write("**Selected Ticker Configuration:**")
+     #  st.json(ticker_config[selected_ticker])
     
-       st.write("**ATR Data Status:**")
-       st.json({
-            "status": atr_data.get("status"),
-            "ticker": atr_data.get("ticker"),
-            "reference_date": atr_data.get("reference_date"),
-            "data_age_days": atr_data.get("data_age_days")
-        })
+      # st.write("**ATR Data Status:**")
+       #st.json({
+        #    "status": atr_data.get("status"),
+         #   "ticker": atr_data.get("ticker"),
+          #  "reference_date": atr_data.get("reference_date"),
+           # "data_age_days": atr_data.get("data_age_days")
+        #})
     
-       st.write("**Filtered Data for Current Selection:**")
-       st.dataframe(filtered.head(10))
+       #st.write("**Filtered Data for Current Selection:**")
+       #st.dataframe(filtered.head(10))
     
-       st.write("**Available Goal Levels in Data:**")
-       available_goals = sorted(filtered['GoalLevel'].unique())
-       st.write(available_goals)
+     #  st.write("**Available Goal Levels in Data:**")
+      # available_goals = sorted(filtered['GoalLevel'].unique())
+       #st.write(available_goals)
     
-       st.write("**Trigger Level Being Searched:**")
-       st.write(f"Trigger Level: {trigger_level} (type: {type(trigger_level)})")
+       #st.write("**Trigger Level Being Searched:**")
+       #st.write(f"Trigger Level: {trigger_level} (type: {type(trigger_level)})")
 
 # STEP 1: Replace lines 562-570 (the data filtering section) with this:
 # Add this debug section RIGHT AFTER the analysis_type selection
