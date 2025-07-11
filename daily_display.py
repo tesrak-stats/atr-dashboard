@@ -652,6 +652,19 @@ if trigger_time == "OPEN" and len(filtered) > 0:
         }
 
 # --- Build chart ---
+if analysis_type != "Session":
+    # Simple placeholders that respect your mobile design
+    if analysis_type == "ZoneBaseline":
+        st.info("📊 ZoneBaseline Heatmap - Coming Soon")
+    elif analysis_type == "StateCheck": 
+        st.info(f"🔄 StateCheck: {trigger_zone} at {trigger_time} - Coming Soon")
+    elif analysis_type == "Rolling":
+        rolling_hours = get_rolling_8_hours(trigger_time)
+        st.info(f"⏰ Rolling: {' → '.join(rolling_hours)} - Coming Soon")
+    
+    st.stop()  # Don't build the chart
+
+# Session analysis - keep existing chart logic
 fig = go.Figure()
 text_offset = 0.03
 
