@@ -703,41 +703,41 @@ elif analysis_type == "StateCheck":
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
 
         # DEBUG: Check what we have for chart building
-st.write("**DEBUG: Final data for chart:**")
-st.write(f"Filtered data shape: {filtered.shape}")
-st.write(f"Filtered columns: {list(filtered.columns)}")
+        st.write("**DEBUG: Final data for chart:**")
+        st.write(f"Filtered data shape: {filtered.shape}")
+        st.write(f"Filtered columns: {list(filtered.columns)}")
 
-if len(filtered) > 0:
-    st.write("**Sample adapted data:**")
-    st.dataframe(filtered.head())
+        if len(filtered) > 0:
+            st.write("**Sample adapted data:**")
+            st.dataframe(filtered.head())
     
     # Check GoalLevel values
-    st.write("**Unique GoalLevel values:**")
-    st.write(sorted(filtered['GoalLevel'].unique()))
+            st.write("**Unique GoalLevel values:**")
+            st.write(sorted(filtered['GoalLevel'].unique()))
     
     # Check GoalTime values  
-    st.write("**Unique GoalTime values:**")
-    st.write(sorted(filtered['GoalTime'].unique()))
+            st.write("**Unique GoalTime values:**")
+            st.write(sorted(filtered['GoalTime'].unique()))
     
     # Check if we have the key columns chart expects
-    expected_cols = ['GoalLevel', 'GoalTime', 'NumHits', 'NumTriggers', 'PctCompletion']
-    missing_cols = [col for col in expected_cols if col not in filtered.columns]
+            expected_cols = ['GoalLevel', 'GoalTime', 'NumHits', 'NumTriggers', 'PctCompletion']
+            missing_cols = [col for col in expected_cols if col not in filtered.columns]
     
-    if missing_cols:
-        st.error(f"Missing columns: {missing_cols}")
-    else:
-        st.success("✅ All required columns present")
+            if missing_cols:
+                st.error(f"Missing columns: {missing_cols}")
+            else:
+                st.success("✅ All required columns present")
         
         # Check data types
-        st.write("**Data types:**")
-        for col in expected_cols:
-            st.write(f"{col}: {filtered[col].dtype} | Sample: {filtered[col].iloc[0]}")
+                st.write("**Data types:**")
+                for col in expected_cols:
+                    st.write(f"{col}: {filtered[col].dtype} | Sample: {filtered[col].iloc[0]}")
 
 # Check what the chart building variables are set to
-st.write("**Chart building variables:**")
-st.write(f"price_direction: {price_direction}")
-st.write(f"trigger_level: {trigger_level}")
-st.write(f"analysis_type: {analysis_type}")
+        st.write("**Chart building variables:**")
+        st.write(f"price_direction: {price_direction}")
+        st.write(f"trigger_level: {trigger_level}")
+        st.write(f"analysis_type: {analysis_type}")
         
     except Exception as e:
         st.error(f"Error loading StateCheck data: {str(e)}")
