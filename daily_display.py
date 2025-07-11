@@ -674,7 +674,14 @@ elif analysis_type == "StateCheck":
         # Column mapping based on your actual data structure
         # Replace the column mapping section with this corrected version:
 
-
+# Define column mapping
+column_mapping = {
+    "GoalZone": "GoalLevel",
+    "GoalTime": "GoalTime",
+    "TransitionCount": "NumHits", 
+    "TotalTriggerOccurrences": "NumTriggers",
+    "TransitionPercentage": "PctCompletion"
+}
 
 # Apply column renaming
     for old_col, new_col in column_mapping.items():
