@@ -662,60 +662,60 @@ if analysis_type != "Session":
     # Load StateCheck data
         statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"
         
-            try:
+        try:
             # Load the StateCheck data
-                statecheck_df = pd.read_csv(statecheck_file)
-                st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
+            statecheck_df = pd.read_csv(statecheck_file)
+            st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
             
             # Debug: Show data structure
-                if st.checkbox("🔍 Debug StateCheck Data"):
-                    st.write("**StateCheck Data Columns:**")
-                    st.write(list(statecheck_df.columns))
-                    st.write("**Sample StateCheck Data:**")
-                    st.dataframe(statecheck_df.head())
+            if st.checkbox("🔍 Debug StateCheck Data"):
+                st.write("**StateCheck Data Columns:**")
+                st.write(list(statecheck_df.columns))
+                st.write("**Sample StateCheck Data:**")
+                st.dataframe(statecheck_df.head())
                
             # Filter StateCheck data for current selection
-                statecheck_filtered = statecheck_df[
-                    (statecheck_df["TriggerZone"] == trigger_zone) &
-                    (statecheck_df["TriggerTime"] == trigger_time)
-                ].copy()
+            statecheck_filtered = statecheck_df[
+                (statecheck_df["TriggerZone"] == trigger_zone) &
+                (statecheck_df["TriggerTime"] == trigger_time)
+            ].copy()
             
-                if len(statecheck_filtered) == 0:
-                    st.warning(f"No StateCheck data found for {trigger_zone} at {trigger_time}")
-                    st.stop()
+            if len(statecheck_filtered) == 0:
+                st.warning(f"No StateCheck data found for {trigger_zone} at {trigger_time}")
+                st.stop()
             
             # Adapt StateCheck data to look like Session data
             # Map StateCheck columns to Session column names so existing logic works
-                adapted_data = statecheck_filtered.copy()
+            adapted_data = statecheck_filtered.copy()
             
             # Rename columns to match Session expectations
-                column_mapping = {
+            column_mapping = {
                 # Map StateCheck columns to Session columns
                 # We'll need to see your actual column names to do this properly
-                    "GoalZone": "GoalLevel",  # Example - adjust based on actual columns
-                    "TransitionTime": "GoalTime",  # Example - adjust based on actual columns  
-                    "Probability": "PctCompletion",  # Example - adjust based on actual columns
+                "GoalZone": "GoalLevel",  # Example - adjust based on actual columns
+                "TransitionTime": "GoalTime",  # Example - adjust based on actual columns  
+                "Probability": "PctCompletion",  # Example - adjust based on actual columns
                 # Add more mappings as needed
-                }
+            }
             
             # Apply column renaming
-                for old_col, new_col in column_mapping.items():
-                    if old_col in adapted_data.columns:
-                        adapted_data = adapted_data.rename(columns={old_col: new_col})
+            for old_col, new_col in column_mapping.items():
+                if old_col in adapted_data.columns:
+                    adapted_data = adapted_data.rename(columns={old_col: new_col})
             
             # Set this as the filtered data for the existing chart logic to use
-                filtered = adapted_data
+            filtered = adapted_data
             
             # Create dummy variables that Session logic expects
-                price_direction = "Zone Transition"  # Descriptive name
-                trigger_level = 0.0  # Not used for StateCheck but needed for compatibility
+            price_direction = "Zone Transition"  # Descriptive name
+            trigger_level = 0.0  # Not used for StateCheck but needed for compatibility
             
             # Don't stop here - let the existing chart logic run with adapted data
-                st.info(f"📊 StateCheck: Transitions from {trigger_zone} at {trigger_time}")
+            st.info(f"📊 StateCheck: Transitions from {trigger_zone} at {trigger_time}")
             
-            except Exception as e:
-                st.error(f"Error loading StateCheck data: {str(e)}")
-                st.info("Falling back to Session analysis...")
+        except Exception as e:
+            st.error(f"Error loading StateCheck data: {str(e)}")
+            st.info("Falling back to Session analysis...")
             # Fall through to Session logic
         
         # Fall through to Session logic
