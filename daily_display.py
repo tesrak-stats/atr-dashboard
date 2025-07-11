@@ -561,11 +561,12 @@ if st.checkbox("🔍 Debug Mode - Show Data Structure"):
     st.write("**Trigger Level Being Searched:**")
     st.write(f"Trigger Level: {trigger_level} (type: {type(trigger_level)})")
 
-filtered = df[
-    (df["Direction"] == price_direction) &
-    (df["TriggerLevel"] == trigger_level) &
-    (df["TriggerTime"] == trigger_time)
-].copy()
+if analysis_type == "Session":
+    filtered = df[
+        (df["Direction"] == price_direction) &
+        (df["TriggerLevel"] == trigger_level) &
+        (df["TriggerTime"] == trigger_time)
+    ].copy()
 
 # --- Create lookup dictionary from pre-calculated data ---
 data_lookup = {}
