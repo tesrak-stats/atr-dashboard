@@ -656,8 +656,51 @@ if analysis_type != "Session":
     # Simple placeholders that respect your mobile design
     if analysis_type == "ZoneBaseline":
         st.info("📊 ZoneBaseline Heatmap - Coming Soon")
-    elif analysis_type == "StateCheck": 
-        st.info(f"🔄 StateCheck: {trigger_zone} at {trigger_time} - Coming Soon")
+    elif analysis_type == "StateCheck":
+    # Check if StateCheck data exists
+        statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_*.csv"  # Adjust filename as needed
+    
+        try:
+        # For now, use placeholder data structure - we'll update when you have StateCheck CSV
+            st.warning("⚠️ StateCheck data file not found. Using placeholder display.")
+        
+        # Create placeholder chart with your mobile-responsive layout
+            fig = go.Figure()
+        
+        # Use your existing chart dimensions and styling
+            fig.add_annotation(
+                text=f"🔄 StateCheck Analysis<br><br>From: {trigger_zone}<br>At: {trigger_time}<br><br>Shows probability of transitioning to each zone<br><br>Matrix layout will match Session design<br>Coming soon with StateCheck data...", 
+                x=0.5, y=0.5, xref="paper", yref="paper",
+                showarrow=False, font=dict(size=14 * font_size_multiplier, color="white"),
+                xanchor="center", yanchor="middle"
+            )
+        
+        # Apply your existing responsive layout settings
+            fig.update_layout(
+                title=f"{ticker_config[selected_ticker]['display_name']} - Zone Transitions from {trigger_zone} at {trigger_time}",
+                plot_bgcolor="black",
+                paper_bgcolor="black",
+                font=dict(color="white", size=12 * font_size_multiplier),
+                height=chart_height,  # Uses your mobile-responsive height
+                width=chart_width,    # Uses your mobile-responsive width
+                margin=dict(l=40 if not show_expanded_view else 80, r=80 if not show_expanded_view else 150, t=30 if not show_expanded_view else 60, b=80 if not show_expanded_view else 60),
+                xaxis=dict(showticklabels=False),
+                yaxis=dict(showticklabels=False)
+            )
+        
+        # Display the chart with your container settings
+            st.plotly_chart(fig, use_container_width=use_container_width)
+        
+        # Show StateCheck-specific info
+            st.caption(f"📋 **StateCheck Analysis**: Zone transition probabilities from {trigger_zone} starting at {trigger_time}")
+        
+        # Stop here - don't continue to Session chart
+            st.stop()
+        
+        except Exception as e:
+            st.error(f"Error loading StateCheck data: {str(e)}")
+            st.info("Falling back to Session analysis...")
+        # Fall through to Session logic
     elif analysis_type == "Rolling":
         rolling_hours = get_rolling_8_hours(trigger_time)
         st.info(f"⏰ Rolling: {' → '.join(rolling_hours)} - Coming Soon")
