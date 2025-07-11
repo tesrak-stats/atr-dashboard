@@ -659,53 +659,64 @@ if analysis_type != "Session":
     if analysis_type == "ZoneBaseline":
         st.info("📊 ZoneBaseline Heatmap - Coming Soon")
     elif analysis_type == "StateCheck":
-    # Check if StateCheck data exists
-        statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"  # Adjust filename as needed
+    # Load StateCheck data
+    statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"
+    
+    try:
+        # Load the StateCheck data
         statecheck_df = pd.read_csv(statecheck_file)
         st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
-        trigger_level = 0.0  # Dummy value for compatibility
-        price_direction = "Above"  # Dummy value for compatibility
-    
-        try:
-        # For now, use placeholder data structure - we'll update when you have StateCheck CSV
-            st.warning("⚠️ StateCheck data file not found. Using placeholder display.")
         
-        # Create placeholder chart with your mobile-responsive layout
-            fig = go.Figure()
+        # Debug: Show data structure
+        if st.checkbox("🔍 Debug StateCheck Data"):
+            st.write("**StateCheck Data Columns:**")
+            st.write(list(statecheck_df.columns))
+            st.write("**Sample StateCheck Data:**")
+            st.dataframe(statecheck_df.head())
         
-        # Use your existing chart dimensions and styling
-            fig.add_annotation(
-                text=f"🔄 StateCheck Analysis<br><br>From: {trigger_zone}<br>At: {trigger_time}<br><br>Shows probability of transitioning to each zone<br><br>Matrix layout will match Session design<br>Coming soon with StateCheck data...", 
-                x=0.5, y=0.5, xref="paper", yref="paper",
-                showarrow=False, font=dict(size=14 * font_size_multiplier, color="white"),
-                xanchor="center", yanchor="middle"
-            )
+        # Filter StateCheck data for current selection
+        statecheck_filtered = statecheck_df[
+            (statecheck_df["TriggerZone"] == trigger_zone) &
+            (statecheck_df["TriggerTime"] == trigger_time)
+        ].copy()
         
-        # Apply your existing responsive layout settings
-            fig.update_layout(
-                title=f"{ticker_config[selected_ticker]['display_name']} - Zone Transitions from {trigger_zone} at {trigger_time}",
-                plot_bgcolor="black",
-                paper_bgcolor="black",
-                font=dict(color="white", size=12 * font_size_multiplier),
-                height=chart_height,  # Uses your mobile-responsive height
-                width=chart_width,    # Uses your mobile-responsive width
-                margin=dict(l=40 if not show_expanded_view else 80, r=80 if not show_expanded_view else 150, t=30 if not show_expanded_view else 60, b=80 if not show_expanded_view else 60),
-                xaxis=dict(showticklabels=False),
-                yaxis=dict(showticklabels=False)
-            )
-        
-        # Display the chart with your container settings
-            st.plotly_chart(fig, use_container_width=use_container_width)
-        
-        # Show StateCheck-specific info
-            st.caption(f"📋 **StateCheck Analysis**: Zone transition probabilities from {trigger_zone} starting at {trigger_time}")
-        
-        # Stop here - don't continue to Session chart
+        if len(statecheck_filtered) == 0:
+            st.warning(f"No StateCheck data found for {trigger_zone} at {trigger_time}")
             st.stop()
         
-        except Exception as e:
-            st.error(f"Error loading StateCheck data: {str(e)}")
-            st.info("Falling back to Session analysis...")
+        # Adapt StateCheck data to look like Session data
+        # Map StateCheck columns to Session column names so existing logic works
+        adapted_data = statecheck_filtered.copy()
+        
+        # Rename columns to match Session expectations
+        column_mapping = {
+            # Map StateCheck columns to Session columns
+            # We'll need to see your actual column names to do this properly
+            "GoalZone": "GoalLevel",  # Example - adjust based on actual columns
+            "TransitionTime": "GoalTime",  # Example - adjust based on actual columns  
+            "Probability": "PctCompletion",  # Example - adjust based on actual columns
+            # Add more mappings as needed
+        }
+        
+        # Apply column renaming
+        for old_col, new_col in column_mapping.items():
+            if old_col in adapted_data.columns:
+                adapted_data = adapted_data.rename(columns={old_col: new_col})
+        
+        # Set this as the filtered data for the existing chart logic to use
+        filtered = adapted_data
+        
+        # Create dummy variables that Session logic expects
+        price_direction = "Zone Transition"  # Descriptive name
+        trigger_level = 0.0  # Not used for StateCheck but needed for compatibility
+        
+        # Don't stop here - let the existing chart logic run with adapted data
+        st.info(f"📊 StateCheck: Transitions from {trigger_zone} at {trigger_time}")
+        
+    except Exception as e:
+        st.error(f"Error loading StateCheck data: {str(e)}")
+        st.info("Falling back to Session analysis...")
+        # Fall through to Session logic
         
         # Fall through to Session logic
     elif analysis_type == "Rolling":
