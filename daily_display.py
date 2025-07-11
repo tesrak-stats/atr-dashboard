@@ -186,19 +186,21 @@ elif analysis_type == "StateCheck":
     
     # Zone definitions
     zone_definitions = [
-        "Zone 1: Above +1.0",
-        "Zone 2: +0.786 to +1.0", 
-        "Zone 3: +0.618 to +0.786",
-        "Zone 4: +0.382 to +0.618",
-        "Zone 5: +0.236 to +0.382",
-        "Zone 6: 0.0 to +0.236",
-        "Zone 7: -0.236 to 0.0",
-        "Zone 8: -0.382 to -0.236",
-        "Zone 9: -0.5 to -0.382",
-        "Zone 10: -0.618 to -0.5",
-        "Zone 11: -0.786 to -0.618",
-        "Zone 12: Below -1.0"
-    ]
+    "Zone 1: Above +1.0",
+    "Zone 2: +0.786 to +1.0", 
+    "Zone 3: +0.618 to +0.786",
+    "Zone 4: +0.5 to +0.618",      # <-- Added 0.5 level
+    "Zone 5: +0.382 to +0.5",      # <-- Added 0.5 level
+    "Zone 6: +0.236 to +0.382",
+    "Zone 7: 0.0 to +0.236",
+    "Zone 8: -0.236 to 0.0",
+    "Zone 9: -0.382 to -0.236",
+    "Zone 10: -0.5 to -0.382",     # <-- Added 0.5 level
+    "Zone 11: -0.618 to -0.5",     # <-- Added 0.5 level
+    "Zone 12: -0.786 to -0.618",
+    "Zone 13: -1.0 to -0.786",
+    "Zone 14: Below -1.0"
+]
     
     col1, col2 = st.columns(2)
     with col1:
@@ -632,16 +634,18 @@ elif analysis_type == "StateCheck":
             "Zone 1: Above +1.0": "above_1.0",
             "Zone 2: +0.786 to +1.0": "0.786_to_1.0", 
             "Zone 3: +0.618 to +0.786": "0.618_to_0.786",
-            "Zone 4: +0.382 to +0.618": "0.382_to_0.618",
-            "Zone 5: +0.236 to +0.382": "0.236_to_0.382",
-            "Zone 6: 0.0 to +0.236": "0.0_to_0.236",
-            "Zone 7: -0.236 to 0.0": "-0.236_to_0.0",
-            "Zone 8: -0.382 to -0.236": "-0.382_to_-0.236",
-            "Zone 9: -0.5 to -0.382": "-0.5_to_-0.382",
-            "Zone 10: -0.618 to -0.5": "-0.618_to_-0.5",
-            "Zone 11: -0.786 to -0.618": "-0.786_to_-0.618",
-            "Zone 12: Below -1.0": "below_-1.0"
-        }
+            "Zone 4: +0.5 to +0.618": "0.5_to_0.618",         # <-- Added
+            "Zone 5: +0.382 to +0.5": "0.382_to_0.5",         # <-- Added
+            "Zone 6: +0.236 to +0.382": "0.236_to_0.382",
+            "Zone 7: 0.0 to +0.236": "0.0_to_0.236",
+            "Zone 8: -0.236 to 0.0": "-0.236_to_0.0",
+            "Zone 9: -0.382 to -0.236": "-0.382_to_-0.236",
+            "Zone 10: -0.5 to -0.382": "-0.5_to_-0.382",      # <-- Added
+            "Zone 11: -0.618 to -0.5": "-0.618_to_-0.5",      # <-- Added
+            "Zone 12: -0.786 to -0.618": "-0.786_to_-0.618",
+            "Zone 13: -1.0 to -0.786": "-1.0_to_-0.786",      # <-- Matches your data
+            "Zone 14: Below -1.0": "below_-1.0"
+}
         
         trigger_zone_key = zone_mapping[trigger_zone]
         
