@@ -204,8 +204,14 @@ elif analysis_type == "StateCheck":
     with col1:
         trigger_zone = st.selectbox("Trigger Zone", zone_definitions, index=6)  # Default to Zone 7
     with col2:
-        # For now, use standard time slots - we'll add session configuration later
-        trigger_time = st.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
+        # Remove OPEN for StateCheck - use only regular hours (full trading day)
+        trigger_time = st.selectbox("Trigger Time", [
+            "0930", "0940", "0950", "1000", "1010", "1020", "1030", "1040", "1050", 
+            "1100", "1110", "1120", "1130", "1140", "1150", "1200", "1210", "1220", 
+            "1230", "1240", "1250", "1300", "1310", "1320", "1330", "1340", "1350", 
+            "1400", "1410", "1420", "1430", "1440", "1450", "1500", "1510", "1520", 
+            "1530", "1540", "1550"
+        ], index=0)
     
 elif analysis_type == "Rolling":
     st.info("⏰ **Rolling**: 8-hour rolling window analysis from trigger time")
@@ -620,82 +626,97 @@ elif analysis_type == "StateCheck":
         statecheck_df = pd.read_csv(statecheck_file)
         st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
         
-        # Debug: Show StateCheck data structure FIRST
-        if st.checkbox("🔍 Debug StateCheck Data"):
-            st.write("**StateCheck Data Columns:**")
-            st.write(list(statecheck_df.columns))
-            st.write("**Available Trigger Zones:**")
-            if 'TriggerZone' in statecheck_df.columns:
-                st.write(sorted(statecheck_df['TriggerZone'].unique()))
-            st.write("**Available Trigger Times:**")
-            if 'TriggerTime' in statecheck_df.columns:
-                st.write(sorted(statecheck_df['TriggerTime'].unique()))
-            st.write("**Sample StateCheck Data:**")
-            st.dataframe(statecheck_df.head())
+        # Convert trigger zone string to match data format
+        # "Zone 7: -0.236 to 0.0" -> "-0.236_to_0.0"
+        zone_mapping = {
+            "Zone 1: Above +1.0": "above_1.0",
+            "Zone 2: +0.786 to +1.0": "0.786_to_1.0", 
+            "Zone 3: +0.618 to +0.786": "0.618_to_0.786",
+            "Zone 4: +0.382 to +0.618": "0.382_to_0.618",
+            "Zone 5: +0.236 to +0.382": "0.236_to_0.382",
+            "Zone 6: 0.0 to +0.236": "0.0_to_0.236",
+            "Zone 7: -0.236 to 0.0": "-0.236_to_0.0",
+            "Zone 8: -0.382 to -0.236": "-0.382_to_-0.236",
+            "Zone 9: -0.5 to -0.382": "-0.5_to_-0.382",
+            "Zone 10: -0.618 to -0.5": "-0.618_to_-0.5",
+            "Zone 11: -0.786 to -0.618": "-0.786_to_-0.618",
+            "Zone 12: Below -1.0": "below_-1.0"
+        }
         
-        # Parse trigger_zone to get zone number
-        trigger_zone_num = int(trigger_zone.split(":")[0].split(" ")[1])  # Extract "7" from "Zone 7: -0.236 to 0.0"
+        trigger_zone_key = zone_mapping[trigger_zone]
+        
+        # Convert trigger time to numpy int64 format
+        trigger_time_int = int(trigger_time)
         
         # Filter StateCheck data for current selection
         statecheck_filtered = statecheck_df[
-            (statecheck_df["TriggerZone"] == trigger_zone_num) &
-            (statecheck_df["TriggerTime"] == trigger_time)
+            (statecheck_df["TriggerZone"] == trigger_zone_key) &
+            (statecheck_df["TriggerTime"] == trigger_time_int)
         ].copy()
         
         if len(statecheck_filtered) == 0:
-            st.warning(f"No StateCheck data found for Zone {trigger_zone_num} at {trigger_time}")
-            st.info("Available combinations:")
-            available_combos = statecheck_df[['TriggerZone', 'TriggerTime']].drop_duplicates()
-            st.dataframe(available_combos.head(10))
+            st.warning(f"No StateCheck data found for {trigger_zone} at {trigger_time}")
+            st.info("Try a different trigger zone or time combination.")
             st.stop()
+        
+        # Debug option
+        if st.checkbox("🔍 Debug StateCheck Data"):
+            st.write("**Filtered StateCheck Data:**")
+            st.dataframe(statecheck_filtered)
         
         # Adapt StateCheck data to Session format
         adapted_data = statecheck_filtered.copy()
         
-        # Column mapping - adjust these based on your actual StateCheck columns
+        # Column mapping based on your actual data structure
         column_mapping = {
-            # Map StateCheck columns to Session format
-            "GoalZone": "GoalLevel",          # Zone number → Level
-            "GoalTime": "GoalTime",           # Keep as is
-            "TotalTriggers": "NumTriggers",   # Total triggers
-            "TotalHits": "NumHits",           # Total hits
-            "HitPercentage": "PctCompletion"  # Percentage
+            "GoalZone": "GoalLevel",              # Goal zone string
+            "GoalTime": "GoalTime",               # Goal time
+            "TransitionCount": "NumHits",         # Number of transitions
+            "TotalTriggerOccurrences": "NumTriggers",  # Total triggers
+            "TransitionPercentage": "PctCompletion"    # Percentage
         }
         
-        # Apply column renaming where columns exist
+        # Apply column renaming
         for old_col, new_col in column_mapping.items():
             if old_col in adapted_data.columns:
                 adapted_data = adapted_data.rename(columns={old_col: new_col})
         
-        # Convert zone numbers to fib levels for compatibility
-        # Zone 1 = +1.0, Zone 2 = +0.786, etc.
-        zone_to_fib = {
-            1: 1.0, 2: 0.786, 3: 0.618, 4: 0.382, 5: 0.236, 6: 0.0,
-            7: 0.0, 8: -0.236, 9: -0.382, 10: -0.5, 11: -0.618, 12: -0.786, 13: -1.0
+        # Convert goal zone strings to fibonacci levels for chart compatibility
+        goal_zone_to_fib = {
+            "above_1.0": 1.0,
+            "0.786_to_1.0": 0.786,
+            "0.618_to_0.786": 0.618,
+            "0.5_to_0.618": 0.5,
+            "0.382_to_0.5": 0.382,
+            "0.236_to_0.382": 0.236,
+            "0.0_to_0.236": 0.0,
+            "-0.236_to_0.0": -0.236,
+            "-0.382_to_-0.236": -0.382,
+            "-0.5_to_-0.382": -0.5,
+            "-0.618_to_-0.5": -0.618,
+            "-0.786_to_-0.618": -0.786,
+            "below_-1.0": -1.0
         }
         
         if 'GoalLevel' in adapted_data.columns:
-            adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(zone_to_fib)
+            adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
+        
+        # Convert goal times to string format expected by chart
+        if 'GoalTime' in adapted_data.columns:
+            adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
         
         # Set as filtered data for chart logic
         filtered = adapted_data
         
         # Create compatibility variables for chart building
-        price_direction = f"Zone Transition from {trigger_zone}"
+        price_direction = f"Zone Transitions from {trigger_zone}"
         trigger_level = 0.0  # Not used for StateCheck display
         
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
         
-        # Show adapted data structure
-        if st.checkbox("🔍 Show Adapted StateCheck Data"):
-            st.write("**Adapted Columns:**")
-            st.write(list(filtered.columns))
-            st.write("**Sample Adapted Data:**")
-            st.dataframe(filtered.head())
-        
     except Exception as e:
         st.error(f"Error loading StateCheck data: {str(e)}")
-        st.info("No StateCheck data available - check file exists and has correct format")
+        st.info("No StateCheck data available")
         st.stop()
 
 elif analysis_type == "Rolling":
