@@ -628,31 +628,28 @@ elif analysis_type == "StateCheck":
         statecheck_df = pd.read_csv(statecheck_file)
         st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
         
-        # Convert trigger zone string to match data format
-        # "Zone 7: -0.236 to 0.0" -> "-0.236_to_0.0"
+        # Zone mapping
         zone_mapping = {
             "Zone 1: Above +1.0": "above_1.0",
             "Zone 2: +0.786 to +1.0": "0.786_to_1.0", 
             "Zone 3: +0.618 to +0.786": "0.618_to_0.786",
-            "Zone 4: +0.5 to +0.618": "0.5_to_0.618",         # <-- Added
-            "Zone 5: +0.382 to +0.5": "0.382_to_0.5",         # <-- Added
+            "Zone 4: +0.5 to +0.618": "0.5_to_0.618",
+            "Zone 5: +0.382 to +0.5": "0.382_to_0.5",
             "Zone 6: +0.236 to +0.382": "0.236_to_0.382",
             "Zone 7: 0.0 to +0.236": "0.0_to_0.236",
             "Zone 8: -0.236 to 0.0": "-0.236_to_0.0",
             "Zone 9: -0.382 to -0.236": "-0.382_to_-0.236",
-            "Zone 10: -0.5 to -0.382": "-0.5_to_-0.382",      # <-- Added
-            "Zone 11: -0.618 to -0.5": "-0.618_to_-0.5",      # <-- Added
+            "Zone 10: -0.5 to -0.382": "-0.5_to_-0.382",
+            "Zone 11: -0.618 to -0.5": "-0.618_to_-0.5",
             "Zone 12: -0.786 to -0.618": "-0.786_to_-0.618",
-            "Zone 13: -1.0 to -0.786": "-1.0_to_-0.786",      # <-- Matches your data
+            "Zone 13: -1.0 to -0.786": "-1.0_to_-0.786",
             "Zone 14: Below -1.0": "below_-1.0"
         }
         
         trigger_zone_key = zone_mapping[trigger_zone]
-        
-        # Convert trigger time to numpy int64 format
         trigger_time_int = int(trigger_time)
         
-        # Filter StateCheck data for current selection
+        # Filter StateCheck data
         statecheck_filtered = statecheck_df[
             (statecheck_df["TriggerZone"] == trigger_zone_key) &
             (statecheck_df["TriggerTime"] == trigger_time_int)
@@ -663,80 +660,50 @@ elif analysis_type == "StateCheck":
             st.info("Try a different trigger zone or time combination.")
             st.stop()
         
-        # Debug option
-        #if st.checkbox("🔍 Debug StateCheck Data"):
-         #   st.write("**Filtered StateCheck Data:**")
-          #  st.dataframe(statecheck_filtered)
-# st.dataframe(filtered.head())        
         # Adapt StateCheck data to Session format
         adapted_data = statecheck_filtered.copy()
         
-        # Column mapping based on your actual data structure
-        # Replace the column mapping section with this corrected version:
-
-# Define column mapping
-column_mapping = {
-    "GoalZone": "GoalLevel",
-    "GoalTime": "GoalTime",
-    "TransitionCount": "NumHits", 
-    "TotalTriggerOccurrences": "NumTriggers",
-    "TransitionPercentage": "PctCompletion"
-}
-
-# Apply column renaming
-    for old_col, new_col in column_mapping.items():
-        if old_col in adapted_data.columns:
-            adapted_data = adapted_data.rename(columns={old_col: new_col})
-        else:
-            st.warning(f"Column '{old_col}' not found in data")
-
-# Convert goal zone strings to fibonacci levels for chart compatibility
-    goal_zone_to_fib = {
-        "above_1.0": 1.0,
-        "0.786_to_1.0": 0.786,
-        "0.618_to_0.786": 0.618,
-        "0.5_to_0.618": 0.5,
-        "0.382_to_0.5": 0.382,
-        "0.236_to_0.382": 0.236,
-        "0.0_to_0.236": 0.0,
-        "-0.236_to_0.0": -0.236,
-        "-0.382_to_-0.236": -0.382,
-        "-0.5_to_-0.382": -0.5,
-        "-0.618_to_-0.5": -0.618,
-        "-0.786_to_-0.618": -0.786,
-        "-1.0_to_-0.786": -1.0,
-        "below_-1.0": -1.0
-    }
-
-# Convert GoalZone strings to fibonacci levels
-    if 'GoalLevel' in adapted_data.columns:
-        adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
-    
-    # Handle any unmapped zones
-        unmapped = adapted_data['GoalLevel'].isnull().sum()
-        if unmapped > 0:
-            st.warning(f"Warning: {unmapped} goal zones could not be mapped to fibonacci levels")
-
-# Convert goal times to string format expected by chart (HHMM format)
-    if 'GoalTime' in adapted_data.columns:
-    # Convert to string and ensure 4-digit format
-        adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
-    
-    # Convert times like 940 -> "0940"
-        adapted_data.loc[adapted_data['GoalTime'].str.len() == 3, 'GoalTime'] = '0' + adapted_data['GoalTime']
+        # Column mapping - INSIDE the try block
+        column_mapping = {
+            "GoalZone": "GoalLevel",
+            "GoalTime": "GoalTime",
+            "TransitionCount": "NumHits",
+            "TotalTriggerOccurrences": "NumTriggers",
+            "TransitionPercentage": "PctCompletion"
+        }
+        
+        # Apply column renaming
+        for old_col, new_col in column_mapping.items():
+            if old_col in adapted_data.columns:
+                adapted_data = adapted_data.rename(columns={old_col: new_col})
+        
+        # Convert goal zone strings to fibonacci levels
+        goal_zone_to_fib = {
+            "above_1.0": 1.0, "0.786_to_1.0": 0.786, "0.618_to_0.786": 0.618,
+            "0.5_to_0.618": 0.5, "0.382_to_0.5": 0.382, "0.236_to_0.382": 0.236,
+            "0.0_to_0.236": 0.0, "-0.236_to_0.0": -0.236, "-0.382_to_-0.236": -0.382,
+            "-0.5_to_-0.382": -0.5, "-0.618_to_-0.5": -0.618, "-0.786_to_-0.618": -0.786,
+            "-1.0_to_-0.786": -1.0, "below_-1.0": -1.0
+        }
+        
+        if 'GoalLevel' in adapted_data.columns:
+            adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
+        
+        # Convert goal times to string format
+        if 'GoalTime' in adapted_data.columns:
+            adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
         
         # Set as filtered data for chart logic
         filtered = adapted_data
         
         # Create compatibility variables for chart building
         price_direction = f"Zone Transitions from {trigger_zone}"
-        trigger_level = 0.0  # Not used for StateCheck display
+        trigger_level = 0.0
         
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
         
     except Exception as e:
         st.error(f"Error loading StateCheck data: {str(e)}")
-        st.info("No StateCheck data available")
         st.stop()
 
 elif analysis_type == "Rolling":
