@@ -704,6 +704,7 @@ if analysis_type != "Session":
         except Exception as e:
             st.error(f"Error loading StateCheck data: {str(e)}")
             st.info("Falling back to Session analysis...")
+        st.stop()
         # Fall through to Session logic
     elif analysis_type == "Rolling":
         rolling_hours = get_rolling_8_hours(trigger_time)
