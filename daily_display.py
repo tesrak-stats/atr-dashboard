@@ -866,7 +866,7 @@ if analysis_type != "Session":
             st.write(list(filtered.columns))
             st.write("**Sample StateCheck Data:**")
             st.dataframe(filtered.head())
-            st.stop()  # Temporarily stop here to see the data
+            #st.stop()  # Temporarily stop here to see the data
             
             # Debug: Show data structure
             if st.checkbox("🔍 Debug StateCheck Data"):
