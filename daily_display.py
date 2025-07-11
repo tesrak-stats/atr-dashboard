@@ -682,7 +682,7 @@ elif analysis_type == "StateCheck":
         "TransitionCount": "NumHits",               # C: TransitionCount -> NumHits
         "TotalTriggerOccurrences": "NumTriggers",   # F: TotalTriggerOccurrences -> NumTriggers  
         "TransitionPercentage": "PctCompletion"     # G: TransitionPercentage -> PctCompletion
-    }
+    }    
 
 # Apply column renaming
     for old_col, new_col in column_mapping.items():
