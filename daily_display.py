@@ -504,7 +504,7 @@ if show_expanded_view != st.session_state.expanded_view_pref:
     st.session_state.expanded_view_pref = show_expanded_view
 
 # --- Display configuration ---
-if analysis_type == "Session"
+if analysis_type == "Session":
     if show_expanded_view:
         display_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "TOTAL", "REMAINING"]
         display_fib_levels = fib_levels
