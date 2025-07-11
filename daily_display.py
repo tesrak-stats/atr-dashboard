@@ -660,10 +660,10 @@ elif analysis_type == "StateCheck":
             st.stop()
         
         # Debug option
-        if st.checkbox("🔍 Debug StateCheck Data"):
-            st.write("**Filtered StateCheck Data:**")
-            st.dataframe(statecheck_filtered)
-        
+        #if st.checkbox("🔍 Debug StateCheck Data"):
+         #   st.write("**Filtered StateCheck Data:**")
+          #  st.dataframe(statecheck_filtered)
+# st.dataframe(filtered.head())        
         # Adapt StateCheck data to Session format
         adapted_data = statecheck_filtered.copy()
         
