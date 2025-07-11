@@ -672,42 +672,59 @@ elif analysis_type == "StateCheck":
         adapted_data = statecheck_filtered.copy()
         
         # Column mapping based on your actual data structure
-        column_mapping = {
-            "GoalZone": "GoalLevel",              # Goal zone string
-            "GoalTime": "GoalTime",               # Goal time
-            "TransitionCount": "NumHits",         # Number of transitions
-            "TotalTriggerOccurrences": "NumTriggers",  # Total triggers
-            "TransitionPercentage": "PctCompletion"    # Percentage
-        }
-        
-        # Apply column renaming
-        for old_col, new_col in column_mapping.items():
-            if old_col in adapted_data.columns:
-                adapted_data = adapted_data.rename(columns={old_col: new_col})
-        
-        # Convert goal zone strings to fibonacci levels for chart compatibility
-        goal_zone_to_fib = {
-            "above_1.0": 1.0,
-            "0.786_to_1.0": 0.786,
-            "0.618_to_0.786": 0.618,
-            "0.5_to_0.618": 0.5,
-            "0.382_to_0.5": 0.382,
-            "0.236_to_0.382": 0.236,
-            "0.0_to_0.236": 0.0,
-            "-0.236_to_0.0": -0.236,
-            "-0.382_to_-0.236": -0.382,
-            "-0.5_to_-0.382": -0.5,
-            "-0.618_to_-0.5": -0.618,
-            "-0.786_to_-0.618": -0.786,
-            "below_-1.0": -1.0
-        }
-        
-        if 'GoalLevel' in adapted_data.columns:
-            adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
-        
-        # Convert goal times to string format expected by chart
-        if 'GoalTime' in adapted_data.columns:
-            adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
+        # Replace the column mapping section with this corrected version:
+
+# Column mapping based on your actual CSV structure
+    column_mapping = {
+    # Your actual CSV columns -> Session format expected by chart
+        "GoalZone": "GoalLevel",                    # A: GoalZone -> GoalLevel
+        "GoalTime": "GoalTime",                     # B: GoalTime (keep as is)
+        "TransitionCount": "NumHits",               # C: TransitionCount -> NumHits
+        "TotalTriggerOccurrences": "NumTriggers",   # F: TotalTriggerOccurrences -> NumTriggers  
+        "TransitionPercentage": "PctCompletion"     # G: TransitionPercentage -> PctCompletion
+    }
+
+# Apply column renaming
+    for old_col, new_col in column_mapping.items():
+        if old_col in adapted_data.columns:
+            adapted_data = adapted_data.rename(columns={old_col: new_col})
+        else:
+            st.warning(f"Column '{old_col}' not found in data")
+
+# Convert goal zone strings to fibonacci levels for chart compatibility
+    goal_zone_to_fib = {
+        "above_1.0": 1.0,
+        "0.786_to_1.0": 0.786,
+        "0.618_to_0.786": 0.618,
+        "0.5_to_0.618": 0.5,
+        "0.382_to_0.5": 0.382,
+        "0.236_to_0.382": 0.236,
+        "0.0_to_0.236": 0.0,
+        "-0.236_to_0.0": -0.236,
+        "-0.382_to_-0.236": -0.382,
+        "-0.5_to_-0.382": -0.5,
+        "-0.618_to_-0.5": -0.618,
+        "-0.786_to_-0.618": -0.786,
+        "-1.0_to_-0.786": -1.0,
+        "below_-1.0": -1.0
+    }
+
+# Convert GoalZone strings to fibonacci levels
+    if 'GoalLevel' in adapted_data.columns:
+        adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
+    
+    # Handle any unmapped zones
+        unmapped = adapted_data['GoalLevel'].isnull().sum()
+        if unmapped > 0:
+            st.warning(f"Warning: {unmapped} goal zones could not be mapped to fibonacci levels")
+
+# Convert goal times to string format expected by chart (HHMM format)
+    if 'GoalTime' in adapted_data.columns:
+    # Convert to string and ensure 4-digit format
+        adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
+    
+    # Convert times like 940 -> "0940"
+        adapted_data.loc[adapted_data['GoalTime'].str.len() == 3, 'GoalTime'] = '0' + adapted_data['GoalTime']
         
         # Set as filtered data for chart logic
         filtered = adapted_data
