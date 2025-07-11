@@ -561,12 +561,115 @@ if analysis_type == "Session":
     #st.write("**Trigger Level Being Searched:**")
     #st.write(f"Trigger Level: {trigger_level} (type: {type(trigger_level)})")
 
+# STEP 1: Replace lines 562-570 (the data filtering section) with this:
+
+# --- Conditional Data Processing Based on Analysis Type ---
 if analysis_type == "Session":
+    # Session data filtering (existing logic)
     filtered = df[
         (df["Direction"] == price_direction) &
         (df["TriggerLevel"] == trigger_level) &
         (df["TriggerTime"] == trigger_time)
     ].copy()
+    
+elif analysis_type == "StateCheck":
+    # StateCheck data processing
+    try:
+        statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"
+        statecheck_df = pd.read_csv(statecheck_file)
+        st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
+        
+        # Filter StateCheck data for current selection
+        statecheck_filtered = statecheck_df[
+            (statecheck_df["TriggerZone"] == trigger_zone) &
+            (statecheck_df["TriggerTime"] == trigger_time)
+        ].copy()
+        
+        if len(statecheck_filtered) == 0:
+            st.warning(f"No StateCheck data found for {trigger_zone} at {trigger_time}")
+            st.stop()
+        
+        # Debug: Show StateCheck data structure
+        if st.checkbox("🔍 Debug StateCheck Data"):
+            st.write("**StateCheck Data Columns:**")
+            st.write(list(statecheck_filtered.columns))
+            st.write("**Sample StateCheck Data:**")
+            st.dataframe(statecheck_filtered.head())
+        
+        # Adapt StateCheck data to Session format
+        # Map StateCheck columns to Session columns
+        adapted_data = statecheck_filtered.copy()
+        
+        # Rename columns based on actual StateCheck structure
+        # We'll need to adjust this based on what the debug shows
+        column_mapping = {
+            "GoalZone": "GoalLevel",
+            "TransitionTrigger": "NumTriggers", 
+            "TransitionHits": "NumHits",
+            "TransitionPercentage": "PctCompletion",
+            "GoalTime": "GoalTime"  # Keep if it exists
+        }
+        
+        # Apply column renaming where columns exist
+        for old_col, new_col in column_mapping.items():
+            if old_col in adapted_data.columns:
+                adapted_data = adapted_data.rename(columns={old_col: new_col})
+        
+        # Set as filtered data for chart logic
+        filtered = adapted_data
+        
+        # Create compatibility variables for chart building
+        price_direction = f"Zone Transition from {trigger_zone}"
+        trigger_level = 0.0  # Dummy value
+        
+    except Exception as e:
+        st.error(f"Error loading StateCheck data: {str(e)}")
+        st.info("No StateCheck data available")
+        st.stop()
+
+elif analysis_type == "Rolling":
+    # Rolling data processing (placeholder for now)
+    st.info("⏰ Rolling analysis - Coming soon")
+    st.stop()
+    
+elif analysis_type == "ZoneBaseline":
+    # ZoneBaseline processing (placeholder for now)
+    st.info("📊 ZoneBaseline analysis - Coming soon")
+    st.stop()
+
+else:
+    st.error("Unknown analysis type")
+    st.stop()
+
+# STEP 2: The rest of the data processing (lines 571+) stays the same
+# because now 'filtered' exists for both Session and StateCheck
+
+# --- Create lookup dictionary from pre-calculated data ---
+data_lookup = {}
+for _, row in filtered.iterrows():
+    goal_time = row["GoalTime"]
+    if pd.notna(goal_time):
+        if isinstance(goal_time, (int, float)):
+            time_int = int(goal_time)
+            if time_int == 900:
+                goal_time_str = "0900"
+            elif time_int < 1000:
+                goal_time_str = f"0{time_int}"
+            else:
+                goal_time_str = str(time_int)
+        else:
+            goal_time_str = str(goal_time)
+    else:
+        goal_time_str = "Unknown"
+    
+    key = (float(row["GoalLevel"]), goal_time_str)
+    data_lookup[key] = {
+        "hits": row["NumHits"],
+        "triggers": row["NumTriggers"], 
+        "pct": row["PctCompletion"]
+    }
+
+# Continue with existing goal_totals and goal_remaining calculations...
 
 # --- Create lookup dictionary from pre-calculated data ---
 data_lookup = {}
