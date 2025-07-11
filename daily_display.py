@@ -504,38 +504,39 @@ if show_expanded_view != st.session_state.expanded_view_pref:
     st.session_state.expanded_view_pref = show_expanded_view
 
 # --- Display configuration ---
-if show_expanded_view:
-    display_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "TOTAL", "REMAINING"]
-    display_fib_levels = fib_levels
-    chart_height = 700
-    chart_width = 1800
-    font_size_multiplier = 1.0
-    use_container_width = False
-else:
-    current_hour_index = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"].index(trigger_time)
+if analysis_type == "Session"
+    if show_expanded_view:
+        display_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "TOTAL", "REMAINING"]
+        display_fib_levels = fib_levels
+        chart_height = 700
+        chart_width = 1800
+        font_size_multiplier = 1.0
+        use_container_width = False
+    else:    
+        current_hour_index = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"].index(trigger_time)
     
-    if trigger_time == "OPEN":
+        if trigger_time == "OPEN":
         # For OPEN trigger: 0900, 1000, 1100, TOTAL, REMAINING
-        display_columns = ["0900", "1000", "1100", "TOTAL", "REMAINING"]
-    else:
+            display_columns = ["0900", "1000", "1100", "TOTAL", "REMAINING"]
+        else:
         # For other triggers: trigger + 2 more hours + TOTAL + REMAINING
-        end_index = min(current_hour_index + 3, 7)
-        time_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"][current_hour_index:end_index + 1]
-        display_columns = time_columns + ["TOTAL", "REMAINING"]
+            end_index = min(current_hour_index + 3, 7)
+            time_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"][current_hour_index:end_index + 1]
+            display_columns = time_columns + ["TOTAL", "REMAINING"]
     
-    trigger_index = fib_levels.index(trigger_level)
-    start_fib = max(0, trigger_index - 3)
-    end_fib = min(len(fib_levels), trigger_index + 4)
-    display_fib_levels = fib_levels[start_fib:end_fib]
+        trigger_index = fib_levels.index(trigger_level)
+        start_fib = max(0, trigger_index - 3)
+        end_fib = min(len(fib_levels), trigger_index + 4)
+        display_fib_levels = fib_levels[start_fib:end_fib]
     
     # Mobile focused view - optimize for readability
-    chart_height = 400
-    chart_width = 700
-    font_size_multiplier = 1.0
-    use_container_width = False
+        chart_height = 400
+        chart_width = 700
+        font_size_multiplier = 1.0
+        use_container_width = False
 
 # Create time_order to match display_columns exactly
-time_order = display_columns.copy()
+    time_order = display_columns.copy()
 
 # --- Debug trigger level data ---
 if st.checkbox("🔍 Debug Mode - Show Data Structure"):
@@ -704,7 +705,7 @@ if analysis_type != "Session":
         except Exception as e:
             st.error(f"Error loading StateCheck data: {str(e)}")
             st.info("Falling back to Session analysis...")
-        st.stop()
+        
         # Fall through to Session logic
     elif analysis_type == "Rolling":
         rolling_hours = get_rolling_8_hours(trigger_time)
