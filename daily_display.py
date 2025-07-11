@@ -562,7 +562,48 @@ if analysis_type == "Session":
        st.write(f"Trigger Level: {trigger_level} (type: {type(trigger_level)})")
 
 # STEP 1: Replace lines 562-570 (the data filtering section) with this:
+# Add this debug section RIGHT AFTER the analysis_type selection
+# This will help us see what's happening before StateCheck logic runs
 
+st.write("🔍 **Debug Info:**")
+st.write(f"Selected Analysis Type: {analysis_type}")
+st.write(f"Selected Ticker: {selected_ticker}")
+
+# Add early debug for StateCheck file
+if analysis_type == "StateCheck":
+    st.write("**StateCheck Debug - Before Processing:**")
+    statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"
+    st.write(f"Looking for file: {statecheck_file}")
+    st.write(f"File exists: {os.path.exists(statecheck_file)}")
+    
+    if os.path.exists(statecheck_file):
+        try:
+            # Just peek at the file without processing
+            test_df = pd.read_csv(statecheck_file)
+            st.write(f"File loaded successfully: {len(test_df)} rows")
+            st.write("**Columns in StateCheck file:**")
+            st.write(list(test_df.columns))
+            st.write("**First few rows:**")
+            st.dataframe(test_df.head())
+            
+            # Show available trigger zones and times
+            if 'TriggerZone' in test_df.columns:
+                st.write("**Available TriggerZone values:**")
+                st.write(sorted(test_df['TriggerZone'].unique()))
+            if 'TriggerTime' in test_df.columns:
+                st.write("**Available TriggerTime values:**")
+                st.write(sorted(test_df['TriggerTime'].unique()))
+                
+        except Exception as e:
+            st.error(f"Error reading StateCheck file: {str(e)}")
+    else:
+        st.error(f"StateCheck file not found: {statecheck_file}")
+        # Show what files are available
+        st.write("**Available files in directory:**")
+        available_files = [f for f in os.listdir('.') if f.endswith('.csv')]
+        st.write(available_files)
+
+# Continue with the rest of your conditional logic...
 # --- Conditional Data Processing Based on Analysis Type ---
 if analysis_type == "Session":
     # Session data filtering (existing logic)
