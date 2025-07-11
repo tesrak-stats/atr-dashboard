@@ -645,7 +645,7 @@ elif analysis_type == "StateCheck":
             "Zone 12: -0.786 to -0.618": "-0.786_to_-0.618",
             "Zone 13: -1.0 to -0.786": "-1.0_to_-0.786",      # <-- Matches your data
             "Zone 14: Below -1.0": "below_-1.0"
-}
+        }
         
         trigger_zone_key = zone_mapping[trigger_zone]
         
