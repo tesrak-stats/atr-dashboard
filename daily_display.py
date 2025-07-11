@@ -659,6 +659,10 @@ if analysis_type != "Session":
     elif analysis_type == "StateCheck":
     # Check if StateCheck data exists
         statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"  # Adjust filename as needed
+        statecheck_df = pd.read_csv(statecheck_file)
+        st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
+        trigger_level = 0.0  # Dummy value for compatibility
+        price_direction = "Above"  # Dummy value for compatibility
     
         try:
         # For now, use placeholder data structure - we'll update when you have StateCheck CSV
