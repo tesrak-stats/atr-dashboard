@@ -674,15 +674,7 @@ elif analysis_type == "StateCheck":
         # Column mapping based on your actual data structure
         # Replace the column mapping section with this corrected version:
 
-# Column mapping based on your actual CSV structure
-    column_mapping = {
-    # Your actual CSV columns -> Session format expected by chart
-        "GoalZone": "GoalLevel",                    # A: GoalZone -> GoalLevel
-        "GoalTime": "GoalTime",                     # B: GoalTime (keep as is)
-        "TransitionCount": "NumHits",               # C: TransitionCount -> NumHits
-        "TotalTriggerOccurrences": "NumTriggers",   # F: TotalTriggerOccurrences -> NumTriggers  
-        "TransitionPercentage": "PctCompletion"     # G: TransitionPercentage -> PctCompletion
-    }    
+
 
 # Apply column renaming
     for old_col, new_col in column_mapping.items():
