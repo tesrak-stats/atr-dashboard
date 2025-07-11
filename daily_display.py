@@ -658,7 +658,7 @@ if analysis_type != "Session":
         st.info("📊 ZoneBaseline Heatmap - Coming Soon")
     elif analysis_type == "StateCheck":
     # Check if StateCheck data exists
-        statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_*.csv"  # Adjust filename as needed
+        statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"  # Adjust filename as needed
     
         try:
         # For now, use placeholder data structure - we'll update when you have StateCheck CSV
