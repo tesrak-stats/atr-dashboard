@@ -666,6 +666,12 @@ if analysis_type != "Session":
             # Load the StateCheck data
             statecheck_df = pd.read_csv(statecheck_file)
             st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
+
+            st.write("**StateCheck Columns After Adaptation:**")
+            st.write(list(filtered.columns))
+            st.write("**Sample StateCheck Data:**")
+            st.dataframe(filtered.head())
+            st.stop()  # Temporarily stop here to see the data
             
             # Debug: Show data structure
             if st.checkbox("🔍 Debug StateCheck Data"):
@@ -688,11 +694,7 @@ if analysis_type != "Session":
             # Map StateCheck columns to Session column names so existing logic works
             adapted_data = statecheck_filtered.copy()
             # Add this after: filtered = adapted_data
-            st.write("**StateCheck Columns After Adaptation:**")
-            st.write(list(filtered.columns))
-            st.write("**Sample StateCheck Data:**")
-            st.dataframe(filtered.head())
-            st.stop()  # Temporarily stop here to see the data
+
             
             # Rename columns to match Session expectations
             column_mapping = {
