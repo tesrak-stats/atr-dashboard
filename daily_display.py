@@ -701,7 +701,7 @@ elif analysis_type == "StateCheck":
         trigger_level = 0.0
         
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
-        st.write("**TRACE A: After StateCheck success**")
+        
         
         if analysis_type == "StateCheck":
     # For StateCheck, show all fibonacci levels that exist in the data
@@ -784,7 +784,7 @@ else:
 
 # STEP 2: The rest of the data processing (lines 571+) stays the same
 # because now 'filtered' exists for both Session and StateCheck
-st.write("**TRACE C: About to create data_lookup**")
+
 
 # --- Create lookup dictionary from pre-calculated data ---
 data_lookup = {}
@@ -820,7 +820,7 @@ if len(data_lookup) > 0:
     st.write(f"Sample data: {list(data_lookup.values())[0]}")
 
 # Continue with existing goal_totals and goal_remaining calculations...
-st.write("**TRACE B: Before data processing section**")
+
 
 # --- Calculate total completion rate for each goal level ---
 goal_totals = {}
