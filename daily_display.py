@@ -824,7 +824,7 @@ if len(data_lookup) > 0:
     st.write(f"Sample data: {list(data_lookup.values())[0]}")
 
 # Continue with existing goal_totals and goal_remaining calculations...
-
+st.write("**TRACE B: Before data processing section**")
 
 # --- Calculate total completion rate for each goal level ---
 goal_totals = {}
