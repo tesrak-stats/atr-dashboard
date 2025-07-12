@@ -1050,58 +1050,58 @@ hits = data["hits"]
 total = data["triggers"]
     
     # Check if times are before trigger time
+if analysis_type == "StateCheck":
+    is_before_trigger = False
+elif trigger_time == "OPEN":
+    is_before_trigger = False
+elif trigger_time in time_order and t in time_order:
+    is_before_trigger = time_order.index(t) < time_order.index(trigger_time)
+else:
+    is_before_trigger = False
+    
+if is_before_trigger:
+    display_text = ""
+    hover = "Before trigger time"
+    text_color = "gray"
+else:
+    warn = " ⚠️" if total < 30 else ""
+       
+       # Reduced decimal places for readability
     if analysis_type == "StateCheck":
-        is_before_trigger = False
-    elif trigger_time == "OPEN":
-        is_before_trigger = False
-    elif trigger_time in time_order and t in time_order:
-        is_before_trigger = time_order.index(t) < time_order.index(trigger_time)
+        display_text = f"{pct:.0f}%" if pct >= 10 else f"{pct:.1f}%"
     else:
-        is_before_trigger = False
-    
-    if is_before_trigger:
-        display_text = ""
-        hover = "Before trigger time"
-        text_color = "gray"
-    else:
-        warn = " ⚠️" if total < 30 else ""
-        
-        # Reduced decimal places for readability
-        if analysis_type == "StateCheck":
-            display_text = f"{pct:.0f}%" if pct >= 10 else f"{pct:.1f}%"
-        else:
-            display_text = f"{pct:.1f}%"
+        display_text = f"{pct:.1f}%"
             
-        hover = f"{pct:.1f}% ({hits}/{total}){warn}"
-        
+    hover = f"{pct:.1f}% ({hits}/{total}){warn}"
+       
         # Color coding based on probability levels
-        if analysis_type == "StateCheck":
-            if pct >= 50:
-                text_color = "lime"        # Very high probability - bright green
-            elif pct >= 30:
-                text_color = "lightgreen" # High probability - light green  
-            elif pct >= 20:
-                text_color = "yellow"     # Medium-high probability - yellow
-            elif pct >= 10:
-                text_color = "orange"     # Medium probability - orange
-            elif pct >= 5:
-                text_color = "lightcoral" # Low probability - light red
-            else:
-                text_color = "gray"       # Very low probability - gray
+    if analysis_type == "StateCheck":
+        if pct >= 50:
+            text_color = "lime"        # Very high probability - bright green
+        elif pct >= 30:
+            text_color = "lightgreen" # High probability - light green  
+        elif pct >= 20:
+            text_color = "yellow"     # Medium-high probability - yellow
+        elif pct >= 10:
+            text_color = "orange"     # Medium probability - orange
+        elif pct >= 5:
+            text_color = "lightcoral" # Low probability - light red
         else:
+            text_color = "gray"       # Very low probability - gray
+    else:
             # Keep existing Session color logic
-            line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
-            text_color = line_color
+        line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
+        text_color = line_color
+   
+font_size = 12 * font_size_multiplier
     
-    font_size = 12 * font_size_multiplier
-    
-    fig.add_trace(go.Scatter(
-        x=[t], y=[level + text_offset],
-        mode="text", text=[display_text],
-        hovertext=[hover], hoverinfo="text",
-        textfont=dict(color=text_color, size=font_size),
-        showlegend=False
-    ))
+fig.add_trace(go.Scatter(
+    x=[t], y=[level + text_offset],
+    mode="text", text=[display_text],
+    hovertext=[hover], hoverinfo="text",
+    textfont=dict(color=text_color, size=font_size),
+    showlegend=False
+))
 
 # Also add a legend for StateCheck color coding:
 # Add this after the chart is created:
