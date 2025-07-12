@@ -1051,7 +1051,24 @@ data = data_lookup[key]
 pct = data["pct"]
 hits = data["hits"]
 total = data["triggers"]
-    
+for level in display_fib_levels:
+    for t in time_order:
+        key = (float(level), t)
+        
+        # Debug the first few iterations in detail
+        if level in [-1.0, -0.786, 1.0] and t in ['0940', '0950', '1550']:
+            st.write(f"Checking level={level} (type: {type(level)}), time={t} (type: {type(t)})")
+            st.write(f"Key created: {key} (types: {type(key[0])}, {type(key[1])})")
+            
+            # Check if this exact key exists
+            if key in data_lookup:
+                st.write(f"✅ Found exact match for {key}")
+            else:
+                st.write(f"❌ No match for {key}")
+                
+                # Show similar keys
+                similar = [k for k in data_lookup.keys() if abs(k[0] - float(level)) < 0.001 and k[1] == t]
+                st.write(f"Similar keys: {similar}")    
     # Check if times are before trigger time
 if analysis_type == "StateCheck":
     is_before_trigger = False
