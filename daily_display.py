@@ -701,6 +701,16 @@ elif analysis_type == "StateCheck":
         trigger_level = 0.0
         
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
+
+        fig = create_statecheck_matrix(
+            filtered_data=filtered,
+            display_fib_levels=display_fib_levels,
+            display_columns=display_columns,
+            time_order=time_order,
+            trigger_zone=trigger_zone,
+            price_direction=price_direction,
+            ticker_name=ticker_config[selected_ticker]['display_name']
+        )
         
         
         if analysis_type == "StateCheck":
@@ -1162,24 +1172,7 @@ if price_levels_dict:
 # --- Anchor invisible point for OPEN ---
 
 # --- Matrix cells ---
-for level in display_fib_levels:
-    for t in time_order:
-        if t not in display_columns:
-            continue
-            
-        key = (float(level), t)
-        if key in data_lookup:
-            data = data_lookup[key]
-            pct = data["pct"]
-            
-            fig.add_trace(go.Scatter(
-                x=[t], y=[level + text_offset],
-                mode="text", text=[f"{pct:.1f}%"],
-                textfont=dict(color="white", size=12),
-                showlegend=False,
-                hovertext=[f"{pct:.1f}%"],
-                hoverinfo="text"
-            ))
+
 fig.add_trace(go.Scatter(
     x=["OPEN"], y=[0.0],
     mode="markers",
