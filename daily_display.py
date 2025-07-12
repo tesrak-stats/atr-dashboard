@@ -1111,9 +1111,14 @@ for level in display_fib_levels:
                 # Check if times are before trigger time (handle OPEN special case)
                 if trigger_time == "OPEN":
                     is_before_trigger = False
-                elif time_order.index(t) < time_order.index(trigger_time):
-                    is_before_trigger = True
+                elif analysis_type == "StateCheck":
+    # For StateCheck, show all transition data
+                    is_before_trigger = False
+                elif trigger_time in time_order and t in time_order:
+    # For Session, check if time is before trigger
+                    is_before_trigger = time_order.index(t) < time_order.index(trigger_time)
                 else:
+    # If trigger_time not in time_order, show all data
                     is_before_trigger = False
                 
                 if is_before_trigger:
