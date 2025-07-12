@@ -812,7 +812,10 @@ for _, row in filtered.iterrows():
         "triggers": row["NumTriggers"], 
         "pct": row["PctCompletion"]
     }
-
+st.write(f"**data_lookup created: {len(data_lookup)} entries**")
+if len(data_lookup) > 0:
+    sample_key = list(data_lookup.keys())[0]
+    st.write(f"Sample entry: {sample_key} -> {data_lookup[sample_key]}")
 st.write(f"**DEBUG: data_lookup created successfully with {len(data_lookup)} keys**")
 if len(data_lookup) > 0:
     st.write(f"Sample keys: {list(data_lookup.keys())[:3]}")
