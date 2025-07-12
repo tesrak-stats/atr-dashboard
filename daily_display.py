@@ -1149,8 +1149,57 @@ for level in display_fib_levels:
             line=dict(color=color, width=width), layer="below"
         )
 
-# --- Add trigger level highlighting ---
-if trigger_level in display_fib_levels:
+# Replace the trigger level highlighting section with this:
+
+# --- Add trigger/zone level highlighting ---
+if analysis_type == "StateCheck":
+    # For StateCheck: Highlight the trigger zone (where transitions start from)
+    # Convert trigger zone back to fibonacci level for highlighting
+    trigger_zone_fib_mapping = {
+        "Zone 1: Above +1.0": 1.0,
+        "Zone 2: +0.786 to +1.0": 0.786,
+        "Zone 3: +0.618 to +0.786": 0.618,
+        "Zone 4: +0.5 to +0.618": 0.5,
+        "Zone 5: +0.382 to +0.5": 0.382,
+        "Zone 6: +0.236 to +0.382": 0.236,
+        "Zone 7: 0.0 to +0.236": 0.0,
+        "Zone 8: -0.236 to 0.0": -0.236,
+        "Zone 9: -0.382 to -0.236": -0.382,
+        "Zone 10: -0.5 to -0.382": -0.5,
+        "Zone 11: -0.618 to -0.5": -0.618,
+        "Zone 12: -0.786 to -0.618": -0.786,
+        "Zone 13: -1.0 to -0.786": -1.0,
+        "Zone 14: Below -1.0": -1.0
+    }
+    
+    trigger_zone_level = trigger_zone_fib_mapping.get(trigger_zone)
+    
+    if trigger_zone_level in display_fib_levels:
+        trigger_index = display_fib_levels.index(trigger_zone_level)
+        
+        # Blue highlighting for the trigger zone - more distinct
+        if trigger_index > 0:  # Not the top level
+            next_level_up = display_fib_levels[trigger_index - 1]
+        else:
+            next_level_up = trigger_zone_level + 0.1  # Extend slightly above
+            
+        if trigger_index < len(display_fib_levels) - 1:  # Not the bottom level
+            next_level_down = display_fib_levels[trigger_index + 1]
+        else:
+            next_level_down = trigger_zone_level - 0.1  # Extend slightly below
+            
+        # Distinctive blue highlight for trigger zone
+        fig.add_shape(
+            type="rect",
+            x0=0, x1=1, xref="paper",
+            y0=next_level_down, y1=next_level_up, yref="y",
+            fillcolor="rgba(0, 150, 255, 0.2)",  # Distinctive blue
+            line=dict(color="rgba(0, 150, 255, 0.6)", width=2),  # Blue border
+            layer="below"
+        )
+
+elif analysis_type == "Session" and trigger_level in display_fib_levels:
+    # Original Session logic: Green above, yellow below
     trigger_index = display_fib_levels.index(trigger_level)
     
     # Green shading above trigger level (to next level up)
