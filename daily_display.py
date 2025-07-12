@@ -701,7 +701,27 @@ elif analysis_type == "StateCheck":
         trigger_level = 0.0
         
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
-
+        if analysis_type == "StateCheck":
+    # For StateCheck, show all fibonacci levels that exist in the data
+            available_levels = sorted(filtered['GoalLevel'].unique())
+            display_fib_levels = available_levels
+    
+    # Use standard time columns for StateCheck (no OPEN, TOTAL, REMAINING)
+            available_times = sorted(filtered['GoalTime'].unique())
+            display_columns = available_times
+    
+    # Standard chart dimensions for StateCheck
+            chart_height = 700
+            chart_width = 1800
+            font_size_multiplier = 1.0
+            use_container_width = True
+    
+    # Create time_order to match display_columns
+            time_order = display_columns.copy()
+    
+            st.write(f"**StateCheck Display Config:**")
+            st.write(f"Levels to show: {display_fib_levels}")
+            st.write(f"Times to show: {display_columns}")
         # DEBUG: Check what we have for chart building
         st.write("**DEBUG: Final data for chart:**")
         st.write(f"Filtered data shape: {filtered.shape}")
