@@ -1106,7 +1106,7 @@ if is_before_trigger:
     st.write(f"✅ Added trace for {key}")
 else:
     warn = " ⚠️" if total < 30 else ""
-       s
+       
        # Reduced decimal places for readability
     if analysis_type == "StateCheck":
         display_text = f"{pct:.0f}%" if pct >= 10 else f"{pct:.1f}%"
