@@ -813,6 +813,11 @@ for _, row in filtered.iterrows():
         "pct": row["PctCompletion"]
     }
 
+st.write(f"**DEBUG: data_lookup created successfully with {len(data_lookup)} keys**")
+if len(data_lookup) > 0:
+    st.write(f"Sample keys: {list(data_lookup.keys())[:3]}")
+    st.write(f"Sample data: {list(data_lookup.values())[0]}")
+
 # Continue with existing goal_totals and goal_remaining calculations...
 
 
