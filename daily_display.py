@@ -1043,37 +1043,7 @@ for level in display_fib_levels:
         
         # Regular time columns
         # Regular time columns
-key = (level, t)
-if key in data_lookup:
-    if key in data_lookup:
-        st.write(f"✅ FOUND: level={level}, time={t}")
-    else:
-        st.write(f"❌ MISSING: level={level}, time={t}")
-    # Show what keys actually exist for level 1.0
-    matching_keys = [k for k in data_lookup.keys() if k[0] == 1.0]
-    st.write(f"Keys for level 1.0: {matching_keys[:5]}")
-
-# Show what keys exist for time 1550  
-    time_keys = [k for k in data_lookup.keys() if k[1] == "1550"]
-    st.write(f"Keys for time 1550: {time_keys[:5]}")
-    st.write(f"display_fib_levels: {display_fib_levels}")
-    st.write(f"time_order (first 5): {time_order[:5]}")
-    st.write(f"time_order (last 5): {time_order[-5:]}")
-
-# And check if other combinations should exist:
-    st.write("Checking a few specific combinations:")
-    test_combos = [
-        (1.0, '0940'),    # Should exist based on keys shown
-        (-0.236, '1550'), # Should exist based on keys shown  
-        (-0.236, '0940'), # Should exist based on our earlier sample
-    ]
-
-    for test_level, test_time in test_combos:
-        test_key = (test_level, test_time)
-        if test_key in data_lookup:
-            st.write(f"✅ {test_key} exists")
-        else:
-            st.write(f"❌ {test_key} missing")
+key = (float(level), t)
     data = data_lookup[key]
     pct = data["pct"]
     hits = data["hits"]
