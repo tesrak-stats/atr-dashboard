@@ -1097,13 +1097,16 @@ if is_before_trigger:
     else:
         st.write(f"✅ Processing {key} - after trigger")
         # ... color coding logic ...
-        
+    
+    st.write(f"display_text will be: '{display_text}', text_color will be: '{text_color}'")
+    st.write(f"About to call fig.add_trace for {key}")
+    
     st.write(f"About to add trace for {key} with text='{display_text}'")
     fig.add_trace(...)
     st.write(f"✅ Added trace for {key}")
 else:
     warn = " ⚠️" if total < 30 else ""
-       
+       s
        # Reduced decimal places for readability
     if analysis_type == "StateCheck":
         display_text = f"{pct:.0f}%" if pct >= 10 else f"{pct:.1f}%"
