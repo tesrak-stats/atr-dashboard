@@ -1045,6 +1045,10 @@ for level in display_fib_levels:
         # Regular time columns
 key = (level, t)
 if key in data_lookup:
+    if key in data_lookup:
+    st.write(f"✅ FOUND: level={level}, time={t}")
+    else:
+    st.write(f"❌ MISSING: level={level}, time={t}")
     data = data_lookup[key]
     pct = data["pct"]
     hits = data["hits"]
