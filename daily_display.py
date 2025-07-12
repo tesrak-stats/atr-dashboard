@@ -877,19 +877,19 @@ if analysis_type != "Session":
     # Simple placeholders that respect your mobile design
     if analysis_type == "ZoneBaseline":
         st.info("📊 ZoneBaseline Heatmap - Coming Soon")
-    elif analysis_type == "StateCheck":
+    #elif analysis_type == "StateCheck":
     # Load StateCheck data
-        statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"
+     #   statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"
         
-        try:
+      #  try:
             # Load the StateCheck data
-            statecheck_df = pd.read_csv(statecheck_file)
-            st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
+       #     statecheck_df = pd.read_csv(statecheck_file)
+        #    st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
 
-            st.write("**StateCheck Columns After Adaptation:**")
-            st.write(list(filtered.columns))
-            st.write("**Sample StateCheck Data:**")
-            st.dataframe(filtered.head())
+         #   st.write("**StateCheck Columns After Adaptation:**")
+          #  st.write(list(filtered.columns))
+           # st.write("**Sample StateCheck Data:**")
+            #st.dataframe(filtered.head())
             #st.stop()  # Temporarily stop here to see the data
             
             # Debug: Show data structure
