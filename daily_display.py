@@ -1187,9 +1187,7 @@ if analysis_type == "StateCheck":
         # Debug: Show what we're highlighting
         st.write(f"**Highlighting zone range:** {zone_bottom} to {zone_top}")
 
-elif analysis_type == "Session" and trigger_level in display_fib_levels:
-
-elif analysis_type == "Session" and trigger_level in display_fib_levels:
+    elif analysis_type == "Session" and trigger_level in display_fib_levels:
     # Original Session logic: Green above, yellow below
     trigger_index = display_fib_levels.index(trigger_level)
     
