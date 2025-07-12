@@ -720,6 +720,12 @@ elif analysis_type == "StateCheck":
             chart_width = 3200  # Very wide - about 80px per time column
             font_size_multiplier = 1.2  # Slightly larger font for readability
             use_container_width = False  # Use fixed width to enable scroll
+
+             st.write("**DEBUG - Display Issues:**")
+            st.write(f"display_columns: {display_columns}")
+            st.write(f"Chart width: {chart_width}")
+            st.write(f"Number of data_lookup keys: {len(data_lookup)}")
+            st.write(f"Sample data_lookup keys: {list(data_lookup.keys())[:5]}")
     
     # Create time_order to match display_columns
             time_order = display_columns.copy()
