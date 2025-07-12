@@ -726,24 +726,12 @@ elif analysis_type == "StateCheck":
             st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
           
     
-            st.write(f"**StateCheck Display Config:**")
-            st.write(f"Levels to show: {display_fib_levels}")
-            st.write(f"Times to show: {display_columns}")
+            
         # DEBUG: Check what we have for chart building
        
 
-        if len(filtered) > 0:
-            st.write("**Sample adapted data:**")
-            st.dataframe(filtered.head())
     
-    # Check GoalLevel values
-            st.write("**Unique GoalLevel values:**")
-            st.write(sorted(filtered['GoalLevel'].unique()))
-    
-    # Check GoalTime values  
-            st.write("**Unique GoalTime values:**")
-            st.write(sorted(filtered['GoalTime'].unique()))
-    
+
     # Check if we have the key columns chart expects
             expected_cols = ['GoalLevel', 'GoalTime', 'NumHits', 'NumTriggers', 'PctCompletion']
             missing_cols = [col for col in expected_cols if col not in filtered.columns]
