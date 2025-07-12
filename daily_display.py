@@ -887,12 +887,7 @@ elif analysis_type == "Rolling":
 # Session analysis - works for both Session and StateCheck since data is in same format
 fig = go.Figure()
 text_offset = 0.03
-    elif analysis_type == "Rolling":
-        rolling_hours = get_rolling_8_hours(trigger_time)
-        st.info(f"⏰ Rolling: {' → '.join(rolling_hours)} - Coming Soon")
     
-    st.stop()  # Don't build the chart
-
 # Session analysis - keep existing chart logic
 fig = go.Figure()
 text_offset = 0.03
