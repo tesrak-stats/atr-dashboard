@@ -936,230 +936,250 @@ if price_levels_dict:
         )
 
 # --- Matrix cells ---
+#for level in display_fib_levels:
+ #   for t in time_order:
+  #      if t not in display_columns:
+   #         continue
+            
+    #    if t == "OPEN":
+     #       if trigger_time == "OPEN" and level in open_trigger_data:
+      #          triggers = open_trigger_data[level]["triggers"]
+       #         completions = open_trigger_data[level]["completions"]
+        #        hover = f"OPEN Triggers: {triggers}, Goal {level} Completed at OPEN: {completions}"
+                
+         #       fig.add_trace(go.Scatter(
+          #          x=[t], y=[level + text_offset],
+           #         mode="text", text=[""],
+            #        hovertext=[hover], hoverinfo="text",
+             #       textfont=dict(color="white", size=13),
+              #      showlegend=False
+               # ))
+            #else:
+             #   fig.add_trace(go.Scatter(
+              #      x=[t], y=[level + text_offset],
+               #     mode="text", text=[""],
+                #    hoverinfo="skip",
+                 #   textfont=dict(color="white", size=13),
+                  #  showlegend=False
+                #))
+            #continue
+        
+        #if t == "TOTAL":
+         #   if level in goal_totals:
+          #      total_data = goal_totals[level]
+           #     pct = total_data["pct"]
+            #    hits = total_data["hits"]
+             #   triggers = total_data["triggers"]
+              #  
+               # line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
+                # Use consistent font size for all levels
+                #font_size = 12 * font_size_multiplier
+                
+                #warn = " ⚠️" if triggers < 30 else ""
+                #display_text = f"{pct:.1f}%"
+                #hover = f"Total: {pct:.1f}% ({hits}/{triggers}){warn}"
+                
+                #fig.add_trace(go.Scatter(
+                 #   x=[t], y=[level + text_offset],
+                  #  mode="text", text=[display_text],
+                   # hovertext=[hover], hoverinfo="text",
+                    #textfont=dict(color=line_color, size=font_size),
+                    #showlegend=False
+                #))
+            #else:
+             #   fig.add_trace(go.Scatter(
+              #      x=[t], y=[level + text_offset],
+               #     mode="text", text=[""],
+                #    hoverinfo="skip",
+                 #   textfont=dict(color="white", size=12),
+                  #  showlegend=False
+                #))
+            #continue
+        
+        #if t == "REMAINING":
+         #   if level in goal_remaining:
+          #      remaining_data = goal_remaining[level]
+           #     remaining_pct = remaining_data["pct"]
+            #    total_pct = remaining_data["total_pct"]
+             #   current_slot = remaining_data["current_slot"]
+              #  
+               # line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
+                # Use consistent font size for all levels
+                #font_size = 12 * font_size_multiplier
+                
+                #if current_slot == "N/A":
+                 #   display_text = "N/A"
+                  #  hover = "Market closed or no data"
+                   # text_color = "gray"
+                #else:
+                 #   display_text = f"{remaining_pct:.1f}%"
+                  #  completed_pct = total_pct - remaining_pct
+                   # hover = f"Remaining: {remaining_pct:.1f}% (Total: {total_pct:.1f}%, Completed: {completed_pct:.1f}%) | Current: {current_slot}"
+                    #
+                    # Color code based on remaining probability
+                    #if remaining_pct > 15:
+                     #   text_color = "lime"
+                    #elif remaining_pct > 5:
+                     #   text_color = "orange"
+                    #else:
+                     #   text_color = "red"
+                
+                #fig.add_trace(go.Scatter(
+                 #   x=[t], y=[level + text_offset],
+                  #  mode="text", text=[display_text],
+                   # hovertext=[hover], hoverinfo="text",
+                    #textfont=dict(color=text_color, size=font_size),
+                    #showlegend=False
+                #))
+            #else:
+             #   fig.add_trace(go.Scatter(
+              #      x=[t], y=[level + text_offset],
+               #     mode="text", text=[""],
+                #    hoverinfo="skip",
+                 #   textfont=dict(color="white", size=12),
+                  #  showlegend=False
+                #))
+            #continue
+        
+        # Regular time columns
+        # Regular time columns
+#trace_count = 0
+#key = (float(level), t)
+#trace_count += 1
+#st.write(f"Adding trace #{trace_count} for {level}, {t}")
+#data = data_lookup[key]
+#pct = data["pct"]
+#hits = data["hits"]
+#total = data["triggers"]
+#for level in display_fib_levels:
+ #   for t in time_order:
+  #      key = (float(level), t)
+        
+        # Debug the first few iterations in detail
+    #    if level in [-1.0, -0.786, 1.0] and t in ['0940', '0950', '1550']:
+     #       st.write(f"Checking level={level} (type: {type(level)}), time={t} (type: {type(t)})")
+      #      st.write(f"Key created: {key} (types: {type(key[0])}, {type(key[1])})")
+            
+            # Check if this exact key exists
+       #     if key in data_lookup:
+        #        st.write(f"✅ Found exact match for {key}")
+         #       data = data_lookup[key]
+          #      pct = data["pct"]
+           #     hits = data["hits"]
+            #    total = data["triggers"]
+    #
+     #           st.write(f"🔍 Processing {key}: pct={pct}, hits={hits}, total={total}")
+      #      else:
+       #         st.write(f"❌ No match for {key}")
+        #        
+                # Show similar keys
+         #       similar = [k for k in data_lookup.keys() if abs(k[0] - float(level)) < 0.001 and k[1] == t]
+          #      st.write(f"Similar keys: {similar}")    
+    # Check if times are before trigger time
+#if analysis_type == "StateCheck":
+ #   is_before_trigger = False
+#elif trigger_time == "OPEN":
+ #   is_before_trigger = False
+#elif trigger_time in time_order and t in time_order:
+ #   is_before_trigger = time_order.index(t) < time_order.index(trigger_time)
+#else:
+    #is_before_trigger = False
+    
+#if is_before_trigger:
+ #   display_text = ""
+  #  hover = "Before trigger time"
+   # text_color = "gray"
+    #if is_before_trigger:
+     #   st.write(f"❌ Skipping {key} - before trigger")
+      #  display_text = ""
+       # hover = "Before trigger time"
+        #text_color = "gray"
+    #else:
+     #   st.write(f"✅ Processing {key} - after trigger")
+        # ... color coding logic ...
+    
+    #st.write(f"display_text will be: '{display_text}', text_color will be: '{text_color}'")
+    #st.write(f"About to call fig.add_trace for {key}")
+    
+    #st.write(f"About to add trace for {key} with text='{display_text}'")
+    #fig.add_trace(...)
+    #st.write(f"✅ Added trace for {key}")
+#else:
+ #   warn = " ⚠️" if total < 30 else ""
+       
+       # Reduced decimal places for readability
+  #  if analysis_type == "StateCheck":
+   #     display_text = f"{pct:.0f}%" if pct >= 10 else f"{pct:.1f}%"
+    #else:
+     #   display_text = f"{pct:.1f}%"
+            
+    #hover = f"{pct:.1f}% ({hits}/{total}){warn}"
+       
+        # Color coding based on probability levels
+    #if analysis_type == "StateCheck":
+     #   if pct >= 50:
+      #      text_color = "lime"        # Very high probability - bright green
+       # elif pct >= 30:
+            #text_color = "lightgreen" # High probability - light green  
+        #elif pct >= 20:
+         #   text_color = "yellow"     # Medium-high probability - yellow
+        #elif pct >= 10:
+         #   text_color = "orange"     # Medium probability - orange
+        #elif pct >= 5:
+         #   text_color = "lightcoral" # Low probability - light red
+        #else:
+         #   text_color = "gray"       # Very low probability - gray
+    #else:
+            # Keep existing Session color logic
+     #   line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
+      #  text_color = line_color
+   
+#font_size = 12 * font_size_multiplier
+    
+#fig.add_trace(go.Scatter(
+ #   x=[t], y=[level + text_offset],
+  #  mode="text", text=[display_text],
+    #hovertext=[hover], hoverinfo="text",
+   # textfont=dict(color=text_color, size=font_size),
+    #showlegend=False
+#))
+#st.write(f"Total traces added: {trace_count}")
+
+# Also add a legend for StateCheck color coding:
+# Add this after the chart is created:
+
+#if analysis_type == "StateCheck":
+ #   st.markdown("""
+  #  **🎨 Color Legend:**
+   # - 🟢 **Bright Green** (≥50%): Very High Probability
+    #- 🌟 **Light Green** (30-49%): High Probability  
+    #- 🟡 **Yellow** (20-29%): Medium-High Probability
+    #- 🟠 **Orange** (10-19%): Medium Probability
+    #- 🔶 **Light Red** (5-9%): Low Probability
+    #- ⚫ **Gray** (<5%): Very Low Probability
+    #""")
+
+# --- Anchor invisible point for OPEN ---
+
+# --- Matrix cells ---
 for level in display_fib_levels:
     for t in time_order:
         if t not in display_columns:
             continue
             
-        if t == "OPEN":
-            if trigger_time == "OPEN" and level in open_trigger_data:
-                triggers = open_trigger_data[level]["triggers"]
-                completions = open_trigger_data[level]["completions"]
-                hover = f"OPEN Triggers: {triggers}, Goal {level} Completed at OPEN: {completions}"
-                
-                fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],
-                    mode="text", text=[""],
-                    hovertext=[hover], hoverinfo="text",
-                    textfont=dict(color="white", size=13),
-                    showlegend=False
-                ))
-            else:
-                fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],
-                    mode="text", text=[""],
-                    hoverinfo="skip",
-                    textfont=dict(color="white", size=13),
-                    showlegend=False
-                ))
-            continue
-        
-        if t == "TOTAL":
-            if level in goal_totals:
-                total_data = goal_totals[level]
-                pct = total_data["pct"]
-                hits = total_data["hits"]
-                triggers = total_data["triggers"]
-                
-                line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
-                # Use consistent font size for all levels
-                font_size = 12 * font_size_multiplier
-                
-                warn = " ⚠️" if triggers < 30 else ""
-                display_text = f"{pct:.1f}%"
-                hover = f"Total: {pct:.1f}% ({hits}/{triggers}){warn}"
-                
-                fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],
-                    mode="text", text=[display_text],
-                    hovertext=[hover], hoverinfo="text",
-                    textfont=dict(color=line_color, size=font_size),
-                    showlegend=False
-                ))
-            else:
-                fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],
-                    mode="text", text=[""],
-                    hoverinfo="skip",
-                    textfont=dict(color="white", size=12),
-                    showlegend=False
-                ))
-            continue
-        
-        if t == "REMAINING":
-            if level in goal_remaining:
-                remaining_data = goal_remaining[level]
-                remaining_pct = remaining_data["pct"]
-                total_pct = remaining_data["total_pct"]
-                current_slot = remaining_data["current_slot"]
-                
-                line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
-                # Use consistent font size for all levels
-                font_size = 12 * font_size_multiplier
-                
-                if current_slot == "N/A":
-                    display_text = "N/A"
-                    hover = "Market closed or no data"
-                    text_color = "gray"
-                else:
-                    display_text = f"{remaining_pct:.1f}%"
-                    completed_pct = total_pct - remaining_pct
-                    hover = f"Remaining: {remaining_pct:.1f}% (Total: {total_pct:.1f}%, Completed: {completed_pct:.1f}%) | Current: {current_slot}"
-                    
-                    # Color code based on remaining probability
-                    if remaining_pct > 15:
-                        text_color = "lime"
-                    elif remaining_pct > 5:
-                        text_color = "orange"
-                    else:
-                        text_color = "red"
-                
-                fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],
-                    mode="text", text=[display_text],
-                    hovertext=[hover], hoverinfo="text",
-                    textfont=dict(color=text_color, size=font_size),
-                    showlegend=False
-                ))
-            else:
-                fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],
-                    mode="text", text=[""],
-                    hoverinfo="skip",
-                    textfont=dict(color="white", size=12),
-                    showlegend=False
-                ))
-            continue
-        
-        # Regular time columns
-        # Regular time columns
-trace_count = 0
-key = (float(level), t)
-trace_count += 1
-st.write(f"Adding trace #{trace_count} for {level}, {t}")
-data = data_lookup[key]
-pct = data["pct"]
-hits = data["hits"]
-total = data["triggers"]
-for level in display_fib_levels:
-    for t in time_order:
         key = (float(level), t)
-        
-        # Debug the first few iterations in detail
-        if level in [-1.0, -0.786, 1.0] and t in ['0940', '0950', '1550']:
-            st.write(f"Checking level={level} (type: {type(level)}), time={t} (type: {type(t)})")
-            st.write(f"Key created: {key} (types: {type(key[0])}, {type(key[1])})")
+        if key in data_lookup:
+            data = data_lookup[key]
+            pct = data["pct"]
             
-            # Check if this exact key exists
-            if key in data_lookup:
-                st.write(f"✅ Found exact match for {key}")
-                data = data_lookup[key]
-                pct = data["pct"]
-                hits = data["hits"]
-                total = data["triggers"]
-    
-                st.write(f"🔍 Processing {key}: pct={pct}, hits={hits}, total={total}")
-            else:
-                st.write(f"❌ No match for {key}")
-                
-                # Show similar keys
-                similar = [k for k in data_lookup.keys() if abs(k[0] - float(level)) < 0.001 and k[1] == t]
-                st.write(f"Similar keys: {similar}")    
-    # Check if times are before trigger time
-if analysis_type == "StateCheck":
-    is_before_trigger = False
-elif trigger_time == "OPEN":
-    is_before_trigger = False
-elif trigger_time in time_order and t in time_order:
-    is_before_trigger = time_order.index(t) < time_order.index(trigger_time)
-else:
-    is_before_trigger = False
-    
-if is_before_trigger:
-    display_text = ""
-    hover = "Before trigger time"
-    text_color = "gray"
-    if is_before_trigger:
-        st.write(f"❌ Skipping {key} - before trigger")
-        display_text = ""
-        hover = "Before trigger time"
-        text_color = "gray"
-    else:
-        st.write(f"✅ Processing {key} - after trigger")
-        # ... color coding logic ...
-    
-    st.write(f"display_text will be: '{display_text}', text_color will be: '{text_color}'")
-    st.write(f"About to call fig.add_trace for {key}")
-    
-    st.write(f"About to add trace for {key} with text='{display_text}'")
-    fig.add_trace(...)
-    st.write(f"✅ Added trace for {key}")
-else:
-    warn = " ⚠️" if total < 30 else ""
-       
-       # Reduced decimal places for readability
-    if analysis_type == "StateCheck":
-        display_text = f"{pct:.0f}%" if pct >= 10 else f"{pct:.1f}%"
-    else:
-        display_text = f"{pct:.1f}%"
-            
-    hover = f"{pct:.1f}% ({hits}/{total}){warn}"
-       
-        # Color coding based on probability levels
-    if analysis_type == "StateCheck":
-        if pct >= 50:
-            text_color = "lime"        # Very high probability - bright green
-        elif pct >= 30:
-            text_color = "lightgreen" # High probability - light green  
-        elif pct >= 20:
-            text_color = "yellow"     # Medium-high probability - yellow
-        elif pct >= 10:
-            text_color = "orange"     # Medium probability - orange
-        elif pct >= 5:
-            text_color = "lightcoral" # Low probability - light red
-        else:
-            text_color = "gray"       # Very low probability - gray
-    else:
-            # Keep existing Session color logic
-        line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
-        text_color = line_color
-   
-font_size = 12 * font_size_multiplier
-    
-fig.add_trace(go.Scatter(
-    x=[t], y=[level + text_offset],
-    mode="text", text=[display_text],
-    hovertext=[hover], hoverinfo="text",
-    textfont=dict(color=text_color, size=font_size),
-    showlegend=False
-))
-st.write(f"Total traces added: {trace_count}")
-
-# Also add a legend for StateCheck color coding:
-# Add this after the chart is created:
-
-if analysis_type == "StateCheck":
-    st.markdown("""
-    **🎨 Color Legend:**
-    - 🟢 **Bright Green** (≥50%): Very High Probability
-    - 🌟 **Light Green** (30-49%): High Probability  
-    - 🟡 **Yellow** (20-29%): Medium-High Probability
-    - 🟠 **Orange** (10-19%): Medium Probability
-    - 🔶 **Light Red** (5-9%): Low Probability
-    - ⚫ **Gray** (<5%): Very Low Probability
-    """)
-
-# --- Anchor invisible point for OPEN ---
+            fig.add_trace(go.Scatter(
+                x=[t], y=[level + text_offset],
+                mode="text", text=[f"{pct:.1f}%"],
+                textfont=dict(color="white", size=12),
+                showlegend=False,
+                hovertext=[f"{pct:.1f}%"],
+                hoverinfo="text"
+            ))
 fig.add_trace(go.Scatter(
     x=["OPEN"], y=[0.0],
     mode="markers",
