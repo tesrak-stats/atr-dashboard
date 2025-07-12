@@ -701,6 +701,7 @@ elif analysis_type == "StateCheck":
         trigger_level = 0.0
         
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
+        
         if analysis_type == "StateCheck":
     # For StateCheck, show all fibonacci levels that exist in the data
             available_levels = sorted(filtered['GoalLevel'].unique())
@@ -710,22 +711,23 @@ elif analysis_type == "StateCheck":
             available_times = sorted(filtered['GoalTime'].unique())
             display_columns = available_times
     
-    # Standard chart dimensions for StateCheck
-            chart_height = 700
-            chart_width = 1800
-            font_size_multiplier = 1.0
-            use_container_width = True
+    # Make it REALLY wide for readability with horizontal scroll
+            chart_height = 600  # Keep height manageable
+            chart_width = 3200  # Very wide - about 80px per time column
+            font_size_multiplier = 1.2  # Slightly larger font for readability
+            use_container_width = False  # Use fixed width to enable scroll
     
     # Create time_order to match display_columns
             time_order = display_columns.copy()
+    
+            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
+          
     
             st.write(f"**StateCheck Display Config:**")
             st.write(f"Levels to show: {display_fib_levels}")
             st.write(f"Times to show: {display_columns}")
         # DEBUG: Check what we have for chart building
-        st.write("**DEBUG: Final data for chart:**")
-        st.write(f"Filtered data shape: {filtered.shape}")
-        st.write(f"Filtered columns: {list(filtered.columns)}")
+       
 
         if len(filtered) > 0:
             st.write("**Sample adapted data:**")
@@ -1064,77 +1066,81 @@ for level in display_fib_levels:
             continue
         
         # Regular time columns
-        key = (level, t)
-        if key in data_lookup:
-            data = data_lookup[key]
-            pct = data["pct"]
-            hits = data["hits"]
-            total = data["triggers"]
-            
-            # Check if times are before trigger time (handle OPEN special case)
-            if trigger_time == "OPEN":
-                is_before_trigger = False
-            elif analysis_type == "StateCheck":
-    # For StateCheck, show all transitions (no "before trigger" logic)
-                is_before_trigger = False
-            elif trigger_time in time_order and t in time_order:
-                is_before_trigger = time_order.index(t) < time_order.index(trigger_time)
-            else:
-    # If trigger_time not in time_order, don't hide any times
-                is_before_trigger = False
-                        
-            if is_before_trigger:
-                display_text = ""
-                hover = "Before trigger time"
-            else:
-                warn = " ⚠️" if total < 30 else ""
-                display_text = f"{pct:.1f}%"
-                hover = f"{pct:.1f}% ({hits}/{total}){warn}"
-            
-            line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
-            # Use consistent font size for all levels
-            font_size = 12 * font_size_multiplier
-            
-            fig.add_trace(go.Scatter(
-                x=[t], y=[level + text_offset],
-                mode="text", text=[display_text],
-                hovertext=[hover], hoverinfo="text",
-                textfont=dict(color=line_color, size=font_size),
-                showlegend=False
-            ))
+        # Regular time columns
+key = (level, t)
+if key in data_lookup:
+    data = data_lookup[key]
+    pct = data["pct"]
+    hits = data["hits"]
+    total = data["triggers"]
+    
+    # Check if times are before trigger time
+    if analysis_type == "StateCheck":
+        is_before_trigger = False
+    elif trigger_time == "OPEN":
+        is_before_trigger = False
+    elif trigger_time in time_order and t in time_order:
+        is_before_trigger = time_order.index(t) < time_order.index(trigger_time)
+    else:
+        is_before_trigger = False
+    
+    if is_before_trigger:
+        display_text = ""
+        hover = "Before trigger time"
+        text_color = "gray"
+    else:
+        warn = " ⚠️" if total < 30 else ""
+        
+        # Reduced decimal places for readability
+        if analysis_type == "StateCheck":
+            display_text = f"{pct:.0f}%" if pct >= 10 else f"{pct:.1f}%"
         else:
-            if t not in ["OPEN", "TOTAL", "REMAINING"]:
-                line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
-                # Use consistent font size for all levels
-                font_size = 12 * font_size_multiplier
-                
-                # Check if times are before trigger time (handle OPEN special case)
-                if trigger_time == "OPEN":
-                    is_before_trigger = False
-                elif analysis_type == "StateCheck":
-    # For StateCheck, show all transition data
-                    is_before_trigger = False
-                elif trigger_time in time_order and t in time_order:
-    # For Session, check if time is before trigger
-                    is_before_trigger = time_order.index(t) < time_order.index(trigger_time)
-                else:
-    # If trigger_time not in time_order, show all data
-                    is_before_trigger = False
-                
-                if is_before_trigger:
-                    display = ""
-                    hover = "Before trigger time"
-                else:
-                    display = "0.0%"
-                    hover = "No data available"
-                    
-                fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],
-                    mode="text", text=[display],
-                    hovertext=[hover], hoverinfo="text",
-                    textfont=dict(color=line_color, size=font_size),
-                    showlegend=False
-                ))
+            display_text = f"{pct:.1f}%"
+            
+        hover = f"{pct:.1f}% ({hits}/{total}){warn}"
+        
+        # Color coding based on probability levels
+        if analysis_type == "StateCheck":
+            if pct >= 50:
+                text_color = "lime"        # Very high probability - bright green
+            elif pct >= 30:
+                text_color = "lightgreen" # High probability - light green  
+            elif pct >= 20:
+                text_color = "yellow"     # Medium-high probability - yellow
+            elif pct >= 10:
+                text_color = "orange"     # Medium probability - orange
+            elif pct >= 5:
+                text_color = "lightcoral" # Low probability - light red
+            else:
+                text_color = "gray"       # Very low probability - gray
+        else:
+            # Keep existing Session color logic
+            line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
+            text_color = line_color
+    
+    font_size = 12 * font_size_multiplier
+    
+    fig.add_trace(go.Scatter(
+        x=[t], y=[level + text_offset],
+        mode="text", text=[display_text],
+        hovertext=[hover], hoverinfo="text",
+        textfont=dict(color=text_color, size=font_size),
+        showlegend=False
+    ))
+
+# Also add a legend for StateCheck color coding:
+# Add this after the chart is created:
+
+if analysis_type == "StateCheck":
+    st.markdown("""
+    **🎨 Color Legend:**
+    - 🟢 **Bright Green** (≥50%): Very High Probability
+    - 🌟 **Light Green** (30-49%): High Probability  
+    - 🟡 **Yellow** (20-29%): Medium-High Probability
+    - 🟠 **Orange** (10-19%): Medium Probability
+    - 🔶 **Light Red** (5-9%): Low Probability
+    - ⚫ **Gray** (<5%): Very Low Probability
+    """)
 
 # --- Anchor invisible point for OPEN ---
 fig.add_trace(go.Scatter(
@@ -1221,15 +1227,16 @@ elif analysis_type == "Session":
 
 # --- Chart layout ---
 fig.update_layout(
-    title=f"{ticker_config[selected_ticker]['display_name']} | {price_direction} | Trigger {trigger_level} at {trigger_time}",
+    title=f"{ticker_config[selected_ticker]['display_name']} | {price_direction}",
     xaxis=dict(
-        title="Projected Completion Time (Eastern Time)",
+        title="Transition Time (Eastern Time)" if analysis_type == "StateCheck" else "Projected Completion Time (Eastern Time)",
         categoryorder="array",
         categoryarray=display_columns,
         tickmode="array",
         tickvals=display_columns,
         ticktext=display_columns,
-        tickfont=dict(color="white"),
+        tickfont=dict(color="white", size=10 if analysis_type == "StateCheck" else 12),  # Smaller font for more columns
+        tickangle=45 if analysis_type == "StateCheck" and len(display_columns) > 10 else 0,  # Angle for readability
         fixedrange=False if not show_expanded_view else True
     ),
     yaxis=dict(
@@ -1248,7 +1255,7 @@ fig.update_layout(
     font=dict(color="white", size=12 * font_size_multiplier),
     height=chart_height,
     width=chart_width,
-    margin=dict(l=40 if not show_expanded_view else 80, r=80 if not show_expanded_view else 150, t=30 if not show_expanded_view else 60, b=80 if not show_expanded_view else 60)
+    margin=dict(l=80, r=150, t=60, b=100 if analysis_type == "StateCheck" else 60)  # More bottom margin for angled labels
 )
 
 st.plotly_chart(fig, use_container_width=use_container_width)
