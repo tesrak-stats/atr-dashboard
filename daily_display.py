@@ -1056,6 +1056,24 @@ if key in data_lookup:
 # Show what keys exist for time 1550  
     time_keys = [k for k in data_lookup.keys() if k[1] == "1550"]
     st.write(f"Keys for time 1550: {time_keys[:5]}")
+    st.write(f"display_fib_levels: {display_fib_levels}")
+    st.write(f"time_order (first 5): {time_order[:5]}")
+    st.write(f"time_order (last 5): {time_order[-5:]}")
+
+# And check if other combinations should exist:
+    st.write("Checking a few specific combinations:")
+    test_combos = [
+        (1.0, '0940'),    # Should exist based on keys shown
+        (-0.236, '1550'), # Should exist based on keys shown  
+        (-0.236, '0940'), # Should exist based on our earlier sample
+    ]
+
+    for test_level, test_time in test_combos:
+        test_key = (test_level, test_time)
+        if test_key in data_lookup:
+            st.write(f"✅ {test_key} exists")
+        else:
+            st.write(f"❌ {test_key} missing")
     data = data_lookup[key]
     pct = data["pct"]
     hits = data["hits"]
