@@ -121,87 +121,177 @@ def get_zone_probability(detailed_data, zone, time_period):
         return 0.0
 
 
-def create_statecheck_matrix(detailed_data, level_totals_data, display_columns, trigger_zone, trigger_time, ticker_name, font_size_multiplier=1.0):
+# --- Matrix cells ---
+for level in display_fib_levels:
+    for t in time_order:
+        if t not in display_columns:
+            continue
+            
+        key = (float(level), t)
+        if key in data_lookup:
+            data = data_lookup[key]
+            pct = data["pct"]
+            
+            fig.add_trace(go.Scatter(
+                x=[t], y=[level + text_offset],
+                mode="text", text=[f"{pct:.1f}%"],
+                textfont=dict(color="white", size=12),
+                showlegend=False,
+                hovertext=[f"{pct:.1f}%"],
+                hoverinfo="text"
+            ))
+                
+def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns, time_order, 
+                             trigger_zone, price_direction, ticker_name, 
+                             text_offset=0.03, font_size_multiplier=1.2):
     """
-    Create zone transition matrix for StateCheck analysis
-    Similar to session matrix but shows zone transitions
+    Create StateCheck transition probability matrix using actual working logic
     
     Args:
-        detailed_data: DataFrame with detailed StateCheck data
-        level_totals_data: DataFrame with aggregated totals
-        display_columns: List of time columns to display
-        trigger_zone: Starting zone for transitions
-        trigger_time: When trigger zone was entered
-        ticker_name: Name of ticker for chart title
+        filtered_data: DataFrame with StateCheck data (adapted format)
+        display_fib_levels: List of fibonacci levels to display
+        display_columns: List of time columns to display  
+        time_order: Time order for chart logic
+        trigger_zone: Trigger zone string for title
+        price_direction: Price direction string for title
+        ticker_name: Ticker name for title
+        text_offset: Y-axis offset for text positioning
         font_size_multiplier: Font scaling factor
     
     Returns:
         Plotly figure object
     """
-    # Zone definitions (same as baseline)
-    zones = [
-        "Zone 1 (>+1.0)",
-        "Zone 2 (+0.786 to +1.0)",
-        "Zone 3 (+0.618 to +0.786)", 
-        "Zone 4 (+0.382 to +0.618)",
-        "Zone 5 (+0.236 to +0.382)",
-        "Zone 6 (0.0 to +0.236)",
-        "Zone 7 (-0.236 to 0.0)",
-        "Zone 8 (-0.382 to -0.236)",
-        "Zone 9 (-0.5 to -0.382)",
-        "Zone 10 (-0.618 to -0.5)",
-        "Zone 11 (-0.786 to -0.618)",
-        "Zone 12 (<-1.0)"
-    ]
+    import plotly.graph_objects as go
+    
+    # Create data lookup from filtered data (your working logic)
+    data_lookup = {}
+    for _, row in filtered_data.iterrows():
+        goal_time = row["GoalTime"]
+        if pd.notna(goal_time):
+            if isinstance(goal_time, (int, float)):
+                time_int = int(goal_time)
+                if time_int == 900:
+                    goal_time_str = "0900"
+                elif time_int < 1000:
+                    goal_time_str = f"0{time_int}"
+                else:
+                    goal_time_str = str(time_int)
+            else:
+                goal_time_str = str(goal_time)
+        else:
+            goal_time_str = "Unknown"
+        
+        key = (float(row["GoalLevel"]), goal_time_str)
+        data_lookup[key] = {
+            "hits": row["NumHits"],
+            "triggers": row["NumTriggers"], 
+            "pct": row["PctCompletion"]
+        }
     
     # Create figure
     fig = go.Figure()
     
-    # Add zone transition data points (similar to current session matrix)
-    for zone in zones:
-        for time_col in display_columns:
-            if time_col in ["TOTAL", "REMAINING"]:
+    # Matrix cells (your working logic)
+    for level in display_fib_levels:
+        for t in time_order:
+            if t not in display_columns:
                 continue
                 
-            # Get transition probability
-            prob = get_zone_transition_probability(detailed_data, trigger_zone, zone, time_col)
-            
-            # Add data point
-            fig.add_trace(go.Scatter(
-                x=[time_col],
-                y=[zone],
-                mode="text",
-                text=[f"{prob:.1f}%" if prob > 0 else ""],
-                textfont=dict(color="white", size=12 * font_size_multiplier),
-                hovertext=[f"From {trigger_zone} at {trigger_time} → {zone} at {time_col}: {prob:.1f}%"],
-                hoverinfo="text",
-                showlegend=False
-            ))
+            key = (float(level), t)
+            if key in data_lookup:
+                data = data_lookup[key]
+                pct = data["pct"]
+                
+                # Color coding for StateCheck
+                if pct >= 50:
+                    text_color = "lime"        # Very high probability
+                elif pct >= 30:
+                    text_color = "lightgreen" # High probability  
+                elif pct >= 20:
+                    text_color = "yellow"     # Medium-high probability
+                elif pct >= 10:
+                    text_color = "orange"     # Medium probability
+                elif pct >= 5:
+                    text_color = "lightcoral" # Low probability
+                else:
+                    text_color = "gray"       # Very low probability
+                
+                # Reduced decimal places for readability
+                display_text = f"{pct:.0f}%" if pct >= 10 else f"{pct:.1f}%"
+                hover = f"{pct:.1f}% ({data['hits']}/{data['triggers']})"
+                
+                fig.add_trace(go.Scatter(
+                    x=[t], y=[level + text_offset],
+                    mode="text", text=[display_text],
+                    textfont=dict(color=text_color, size=12 * font_size_multiplier),
+                    showlegend=False,
+                    hovertext=[hover],
+                    hoverinfo="text"
+                ))
     
-    # Update layout
+    # Zone highlighting
+    trigger_zone_ranges = {
+        "Zone 1: Above +1.0": (1.0, 1.2),
+        "Zone 2: +0.786 to +1.0": (0.786, 1.0),
+        "Zone 3: +0.618 to +0.786": (0.618, 0.786),
+        "Zone 4: +0.5 to +0.618": (0.5, 0.618),
+        "Zone 5: +0.382 to +0.5": (0.382, 0.5),
+        "Zone 6: +0.236 to +0.382": (0.236, 0.382),
+        "Zone 7: 0.0 to +0.236": (0.0, 0.236),
+        "Zone 8: -0.236 to 0.0": (-0.236, 0.0),
+        "Zone 9: -0.382 to -0.236": (-0.382, -0.236),
+        "Zone 10: -0.5 to -0.382": (-0.5, -0.382),
+        "Zone 11: -0.618 to -0.5": (-0.618, -0.5),
+        "Zone 12: -0.786 to -0.618": (-0.786, -0.618),
+        "Zone 13: -1.0 to -0.786": (-1.0, -0.786),
+        "Zone 14: Below -1.0": (-1.2, -1.0)
+    }
+    
+    if trigger_zone in trigger_zone_ranges:
+        zone_bottom, zone_top = trigger_zone_ranges[trigger_zone]
+        fig.add_shape(
+            type="rect",
+            x0=0, x1=1, xref="paper",
+            y0=zone_bottom, y1=zone_top, yref="y",
+            fillcolor="rgba(0, 150, 255, 0.2)",
+            line=dict(color="rgba(0, 150, 255, 0.6)", width=2),
+            layer="below"
+        )
+    
+    # Chart layout
     fig.update_layout(
-        title=f"{ticker_name} - Zone Transitions from {trigger_zone} at {trigger_time}",
+        title=f"{ticker_name} | {price_direction}",
         xaxis=dict(
-            title="Time (Eastern)",
+            title="Transition Time (Eastern Time)",
             categoryorder="array",
             categoryarray=display_columns,
-            tickfont=dict(color="white", size=10 * font_size_multiplier)
+            tickmode="array",
+            tickvals=display_columns,
+            ticktext=display_columns,
+            tickfont=dict(color="white", size=10),
+            tickangle=45 if len(display_columns) > 10 else 0,
+            fixedrange=True
         ),
         yaxis=dict(
-            title="Target Zones",
-            categoryorder="array", 
-            categoryarray=zones,
-            tickfont=dict(color="white", size=10 * font_size_multiplier)
+            title="",
+            categoryorder="array",
+            categoryarray=display_fib_levels,
+            tickmode="array",
+            tickvals=display_fib_levels,
+            ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
+            tickfont=dict(color="white", size=12 * font_size_multiplier),
+            side="left",
+            fixedrange=True
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
         font=dict(color="white", size=12 * font_size_multiplier),
         height=600,
-        width=1000
+        width=3200,
+        margin=dict(l=80, r=150, t=60, b=100)
     )
     
     return fig
-
 
 def get_zone_transition_probability(detailed_data, trigger_zone, target_zone, time_period):
     """
