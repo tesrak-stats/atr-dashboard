@@ -1044,10 +1044,10 @@ for level in display_fib_levels:
         # Regular time columns
         # Regular time columns
 key = (float(level), t)
-    data = data_lookup[key]
-    pct = data["pct"]
-    hits = data["hits"]
-    total = data["triggers"]
+data = data_lookup[key]
+pct = data["pct"]
+hits = data["hits"]
+total = data["triggers"]
     
     # Check if times are before trigger time
     if analysis_type == "StateCheck":
