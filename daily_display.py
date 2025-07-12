@@ -1153,50 +1153,41 @@ for level in display_fib_levels:
 
 # --- Add trigger/zone level highlighting ---
 if analysis_type == "StateCheck":
-    # For StateCheck: Highlight the trigger zone (where transitions start from)
-    # Convert trigger zone back to fibonacci level for highlighting
-    trigger_zone_fib_mapping = {
-        "Zone 1: Above +1.0": 1.0,
-        "Zone 2: +0.786 to +1.0": 0.786,
-        "Zone 3: +0.618 to +0.786": 0.618,
-        "Zone 4: +0.5 to +0.618": 0.5,
-        "Zone 5: +0.382 to +0.5": 0.382,
-        "Zone 6: +0.236 to +0.382": 0.236,
-        "Zone 7: 0.0 to +0.236": 0.0,
-        "Zone 8: -0.236 to 0.0": -0.236,
-        "Zone 9: -0.382 to -0.236": -0.382,
-        "Zone 10: -0.5 to -0.382": -0.5,
-        "Zone 11: -0.618 to -0.5": -0.618,
-        "Zone 12: -0.786 to -0.618": -0.786,
-        "Zone 13: -1.0 to -0.786": -1.0,
-        "Zone 14: Below -1.0": -1.0
+    # For StateCheck: Highlight the exact trigger zone range
+    trigger_zone_ranges = {
+        "Zone 1: Above +1.0": (1.0, 1.2),  # Above 1.0
+        "Zone 2: +0.786 to +1.0": (0.786, 1.0),
+        "Zone 3: +0.618 to +0.786": (0.618, 0.786),
+        "Zone 4: +0.5 to +0.618": (0.5, 0.618),
+        "Zone 5: +0.382 to +0.5": (0.382, 0.5),
+        "Zone 6: +0.236 to +0.382": (0.236, 0.382),
+        "Zone 7: 0.0 to +0.236": (0.0, 0.236),      # This should highlight 0.0 to 0.236
+        "Zone 8: -0.236 to 0.0": (-0.236, 0.0),
+        "Zone 9: -0.382 to -0.236": (-0.382, -0.236),
+        "Zone 10: -0.5 to -0.382": (-0.5, -0.382),
+        "Zone 11: -0.618 to -0.5": (-0.618, -0.5),
+        "Zone 12: -0.786 to -0.618": (-0.786, -0.618),
+        "Zone 13: -1.0 to -0.786": (-1.0, -0.786),
+        "Zone 14: Below -1.0": (-1.2, -1.0)  # Below -1.0
     }
     
-    trigger_zone_level = trigger_zone_fib_mapping.get(trigger_zone)
-    
-    if trigger_zone_level in display_fib_levels:
-        trigger_index = display_fib_levels.index(trigger_zone_level)
+    if trigger_zone in trigger_zone_ranges:
+        zone_bottom, zone_top = trigger_zone_ranges[trigger_zone]
         
-        # Blue highlighting for the trigger zone - more distinct
-        if trigger_index > 0:  # Not the top level
-            next_level_up = display_fib_levels[trigger_index - 1]
-        else:
-            next_level_up = trigger_zone_level + 0.1  # Extend slightly above
-            
-        if trigger_index < len(display_fib_levels) - 1:  # Not the bottom level
-            next_level_down = display_fib_levels[trigger_index + 1]
-        else:
-            next_level_down = trigger_zone_level - 0.1  # Extend slightly below
-            
-        # Distinctive blue highlight for trigger zone
+        # Highlight the exact zone range
         fig.add_shape(
             type="rect",
             x0=0, x1=1, xref="paper",
-            y0=next_level_down, y1=next_level_up, yref="y",
+            y0=zone_bottom, y1=zone_top, yref="y",
             fillcolor="rgba(0, 150, 255, 0.2)",  # Distinctive blue
             line=dict(color="rgba(0, 150, 255, 0.6)", width=2),  # Blue border
             layer="below"
         )
+        
+        # Debug: Show what we're highlighting
+        st.write(f"**Highlighting zone range:** {zone_bottom} to {zone_top}")
+
+elif analysis_type == "Session" and trigger_level in display_fib_levels:
 
 elif analysis_type == "Session" and trigger_level in display_fib_levels:
     # Original Session logic: Green above, yellow below
