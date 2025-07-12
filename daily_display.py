@@ -1046,7 +1046,7 @@ for level in display_fib_levels:
 trace_count = 0
 key = (float(level), t)
 trace_count += 1
-    st.write(f"Adding trace #{trace_count} for {level}, {t}")
+st.write(f"Adding trace #{trace_count} for {level}, {t}")
 data = data_lookup[key]
 pct = data["pct"]
 hits = data["hits"]
