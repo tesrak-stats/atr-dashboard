@@ -1049,6 +1049,13 @@ if key in data_lookup:
         st.write(f"✅ FOUND: level={level}, time={t}")
     else:
         st.write(f"❌ MISSING: level={level}, time={t}")
+    # Show what keys actually exist for level 1.0
+    matching_keys = [k for k in data_lookup.keys() if k[0] == 1.0]
+    st.write(f"Keys for level 1.0: {matching_keys[:5]}")
+
+# Show what keys exist for time 1550  
+    time_keys = [k for k in data_lookup.keys() if k[1] == "1550"]
+    st.write(f"Keys for time 1550: {time_keys[:5]}")
     data = data_lookup[key]
     pct = data["pct"]
     hits = data["hits"]
