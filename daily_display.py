@@ -1063,6 +1063,12 @@ for level in display_fib_levels:
             # Check if this exact key exists
             if key in data_lookup:
                 st.write(f"✅ Found exact match for {key}")
+                data = data_lookup[key]
+                pct = data["pct"]
+                hits = data["hits"]
+                total = data["triggers"]
+    
+                st.write(f"🔍 Processing {key}: pct={pct}, hits={hits}, total={total}")
             else:
                 st.write(f"❌ No match for {key}")
                 
@@ -1083,6 +1089,18 @@ if is_before_trigger:
     display_text = ""
     hover = "Before trigger time"
     text_color = "gray"
+    if is_before_trigger:
+        st.write(f"❌ Skipping {key} - before trigger")
+        display_text = ""
+        hover = "Before trigger time"
+        text_color = "gray"
+    else:
+        st.write(f"✅ Processing {key} - after trigger")
+        # ... color coding logic ...
+        
+    st.write(f"About to add trace for {key} with text='{display_text}'")
+    fig.add_trace(...)
+    st.write(f"✅ Added trace for {key}")
 else:
     warn = " ⚠️" if total < 30 else ""
        
