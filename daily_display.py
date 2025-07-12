@@ -701,11 +701,7 @@ elif analysis_type == "StateCheck":
         trigger_level = 0.0
         
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
-        st.write("**DEBUG - Display Issues:**")
-        st.write(f"display_columns: {display_columns}")
-        st.write(f"Chart width: {chart_width}")
-        st.write(f"Number of data_lookup keys: {len(data_lookup)}")
-        st.write(f"Sample data_lookup keys: {list(data_lookup.keys())[:5]}")
+        
         if analysis_type == "StateCheck":
     # For StateCheck, show all fibonacci levels that exist in the data
             available_levels = sorted(filtered['GoalLevel'].unique())
