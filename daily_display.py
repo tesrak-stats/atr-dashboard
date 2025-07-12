@@ -1152,68 +1152,67 @@ for level in display_fib_levels:
 # Replace the trigger level highlighting section with this:
 
 # --- Add trigger/zone level highlighting ---
+# --- Add trigger/zone level highlighting ---
 if analysis_type == "StateCheck":
-    # For StateCheck: Highlight the exact trigger zone range
+    # StateCheck highlighting logic (your new code)
     trigger_zone_ranges = {
-        "Zone 1: Above +1.0": (1.0, 1.2),  # Above 1.0
+        "Zone 1: Above +1.0": (1.0, 1.2),
         "Zone 2: +0.786 to +1.0": (0.786, 1.0),
         "Zone 3: +0.618 to +0.786": (0.618, 0.786),
         "Zone 4: +0.5 to +0.618": (0.5, 0.618),
         "Zone 5: +0.382 to +0.5": (0.382, 0.5),
         "Zone 6: +0.236 to +0.382": (0.236, 0.382),
-        "Zone 7: 0.0 to +0.236": (0.0, 0.236),      # This should highlight 0.0 to 0.236
+        "Zone 7: 0.0 to +0.236": (0.0, 0.236),
         "Zone 8: -0.236 to 0.0": (-0.236, 0.0),
         "Zone 9: -0.382 to -0.236": (-0.382, -0.236),
         "Zone 10: -0.5 to -0.382": (-0.5, -0.382),
         "Zone 11: -0.618 to -0.5": (-0.618, -0.5),
         "Zone 12: -0.786 to -0.618": (-0.786, -0.618),
         "Zone 13: -1.0 to -0.786": (-1.0, -0.786),
-        "Zone 14: Below -1.0": (-1.2, -1.0)  # Below -1.0
+        "Zone 14: Below -1.0": (-1.2, -1.0)
     }
     
     if trigger_zone in trigger_zone_ranges:
         zone_bottom, zone_top = trigger_zone_ranges[trigger_zone]
-        
-        # Highlight the exact zone range
         fig.add_shape(
             type="rect",
             x0=0, x1=1, xref="paper",
             y0=zone_bottom, y1=zone_top, yref="y",
-            fillcolor="rgba(0, 150, 255, 0.2)",  # Distinctive blue
-            line=dict(color="rgba(0, 150, 255, 0.6)", width=2),  # Blue border
+            fillcolor="rgba(0, 150, 255, 0.2)",
+            line=dict(color="rgba(0, 150, 255, 0.6)", width=2),
             layer="below"
         )
-        
-        # Debug: Show what we're highlighting
         st.write(f"**Highlighting zone range:** {zone_bottom} to {zone_top}")
 
-    elif analysis_type == "Session" and trigger_level in display_fib_levels:
-    # Original Session logic: Green above, yellow below
+elif analysis_type == "Session":
+    # Session highlighting logic - ONLY for Session
+    if trigger_level in display_fib_levels:
         trigger_index = display_fib_levels.index(trigger_level)
-    
-    # Green shading above trigger level (to next level up)
-    if trigger_index > 0:  # Not the top level
-        next_level_up = display_fib_levels[trigger_index - 1]
-        fig.add_shape(
-            type="rect",
-            x0=0, x1=1, xref="paper",
-            y0=trigger_level, y1=next_level_up, yref="y",
-            fillcolor="rgba(0, 255, 0, 0.1)",  # Very light green
-            line=dict(width=0),
-            layer="below"
-        )
-    
-    # Yellow shading below trigger level (to next level down)
-    if trigger_index < len(display_fib_levels) - 1:  # Not the bottom level
-        next_level_down = display_fib_levels[trigger_index + 1]
-        fig.add_shape(
-            type="rect",
-            x0=0, x1=1, xref="paper",
-            y0=next_level_down, y1=trigger_level, yref="y",
-            fillcolor="rgba(255, 255, 0, 0.1)",  # Very light yellow
-            line=dict(width=0),
-            layer="below"
-        )
+        
+        # Green shading above trigger level
+        if trigger_index > 0:
+            next_level_up = display_fib_levels[trigger_index - 1]
+            fig.add_shape(
+                type="rect",
+                x0=0, x1=1, xref="paper",
+                y0=trigger_level, y1=next_level_up, yref="y",
+                fillcolor="rgba(0, 255, 0, 0.1)",
+                line=dict(width=0),
+                layer="below"
+            )
+        
+        # Yellow shading below trigger level
+        if trigger_index < len(display_fib_levels) - 1:
+            next_level_down = display_fib_levels[trigger_index + 1]
+            fig.add_shape(
+                type="rect",
+                x0=0, x1=1, xref="paper",
+                y0=next_level_down, y1=trigger_level, yref="y",
+                fillcolor="rgba(255, 255, 0, 0.1)",
+                line=dict(width=0),
+                layer="below"
+            )
+
 
 # --- Chart layout ---
 fig.update_layout(
