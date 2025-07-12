@@ -815,30 +815,6 @@ for _, row in filtered.iterrows():
 
 # Continue with existing goal_totals and goal_remaining calculations...
 
-# --- Create lookup dictionary from pre-calculated data ---
-data_lookup = {}
-for _, row in filtered.iterrows():
-    goal_time = row["GoalTime"]
-    if pd.notna(goal_time):
-        if isinstance(goal_time, (int, float)):
-            time_int = int(goal_time)
-            if time_int == 900:
-                goal_time_str = "0900"
-            elif time_int < 1000:
-                goal_time_str = f"0{time_int}"
-            else:
-                goal_time_str = str(time_int)
-        else:
-            goal_time_str = str(goal_time)
-    else:
-        goal_time_str = "Unknown"
-    
-    key = (float(row["GoalLevel"]), goal_time_str)
-    data_lookup[key] = {
-        "hits": row["NumHits"],
-        "triggers": row["NumTriggers"], 
-        "pct": row["PctCompletion"]
-    }
 
 # --- Calculate total completion rate for each goal level ---
 goal_totals = {}
