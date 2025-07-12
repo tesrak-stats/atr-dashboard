@@ -873,79 +873,20 @@ if trigger_time == "OPEN" and len(filtered) > 0:
         }
 
 # --- Build chart ---
-if analysis_type != "Session":
-    # Simple placeholders that respect your mobile design
-    if analysis_type == "ZoneBaseline":
-        st.info("📊 ZoneBaseline Heatmap - Coming Soon")
-    #elif analysis_type == "StateCheck":
-    # Load StateCheck data
-     #   statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"
-        
-      #  try:
-            # Load the StateCheck data
-       #     statecheck_df = pd.read_csv(statecheck_file)
-        #    st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
+if analysis_type == "ZoneBaseline":
+    st.info("📊 ZoneBaseline Heatmap - Coming Soon")
+    st.stop()
+elif analysis_type == "Rolling":
+    rolling_hours = get_rolling_8_hours(trigger_time)
+    st.info(f"⏰ Rolling: {' → '.join(rolling_hours)} - Coming Soon")
+    st.stop()
 
-         #   st.write("**StateCheck Columns After Adaptation:**")
-          #  st.write(list(filtered.columns))
-           # st.write("**Sample StateCheck Data:**")
-            #st.dataframe(filtered.head())
-            #st.stop()  # Temporarily stop here to see the data
-            
-            # Debug: Show data structure
-            #if st.checkbox("🔍 Debug StateCheck Data"):
-             #   st.write("**StateCheck Data Columns:**")
-              #  st.write(list(statecheck_df.columns))
-               # st.write("**Sample StateCheck Data:**")
-                #st.dataframe(statecheck_df.head())
-               
-            # Filter StateCheck data for current selection
-            #statecheck_filtered = statecheck_df[
-             #   (statecheck_df["TriggerZone"] == trigger_zone) &
-              #  (statecheck_df["TriggerTime"] == trigger_time)
-            #].copy()
-            
-            #if len(statecheck_filtered) == 0:
-             #   st.warning(f"No StateCheck data found for {trigger_zone} at {trigger_time}")
-              #  st.stop()
-            
-            # Adapt StateCheck data to look like Session data
-            # Map StateCheck columns to Session column names so existing logic works
-            #adapted_data = statecheck_filtered.copy()
-            # Add this after: filtered = adapted_data
+# For Session AND StateCheck - both use the same chart logic now
+# (Remove the st.stop() that was blocking StateCheck)
 
-            
-            # Rename columns to match Session expectations
-            #column_mapping = {
-                # Map StateCheck columns to Session columns
-                # We'll need to see your actual column names to do this properly
-             #   "GoalZone": "GoalLevel",  # Example - adjust based on actual columns
-              #  "TransitionTime": "GoalTime",  # Example - adjust based on actual columns  
-               # "Probability": "PctCompletion",  # Example - adjust based on actual columns
-                # Add more mappings as needed
-            #}
-            
-            # Apply column renaming
-            #for old_col, new_col in column_mapping.items():
-             #   if old_col in adapted_data.columns:
-              #      adapted_data = adapted_data.rename(columns={old_col: new_col})
-            
-            # Set this as the filtered data for the existing chart logic to use
-            #filtered = adapted_data
-            
-            # Create dummy variables that Session logic expects
-            #price_direction = "Zone Transition"  # Descriptive name
-            #trigger_level = 0.0  # Not used for StateCheck but needed for compatibility
-            
-            # Don't stop here - let the existing chart logic run with adapted data
-            #st.info(f"📊 StateCheck: Transitions from {trigger_zone} at {trigger_time}")
-            
-        #except Exception as e:
-         #   st.error(f"Error loading StateCheck data: {str(e)}")
-          #  st.info("Falling back to Session analysis...")
-            # Fall through to Session logic
-        
-        # Fall through to Session logic
+# Session analysis - works for both Session and StateCheck since data is in same format
+fig = go.Figure()
+text_offset = 0.03
     elif analysis_type == "Rolling":
         rolling_hours = get_rolling_8_hours(trigger_time)
         st.info(f"⏰ Rolling: {' → '.join(rolling_hours)} - Coming Soon")
