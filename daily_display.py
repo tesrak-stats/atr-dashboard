@@ -1189,7 +1189,7 @@ if analysis_type == "StateCheck":
 
     elif analysis_type == "Session" and trigger_level in display_fib_levels:
     # Original Session logic: Green above, yellow below
-    trigger_index = display_fib_levels.index(trigger_level)
+        trigger_index = display_fib_levels.index(trigger_level)
     
     # Green shading above trigger level (to next level up)
     if trigger_index > 0:  # Not the top level
