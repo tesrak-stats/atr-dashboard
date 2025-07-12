@@ -1043,7 +1043,10 @@ for level in display_fib_levels:
         
         # Regular time columns
         # Regular time columns
+trace_count = 0
 key = (float(level), t)
+trace_count += 1
+    st.write(f"Adding trace #{trace_count} for {level}, {t}")
 data = data_lookup[key]
 pct = data["pct"]
 hits = data["hits"]
@@ -1102,6 +1105,7 @@ fig.add_trace(go.Scatter(
     textfont=dict(color=text_color, size=font_size),
     showlegend=False
 ))
+st.write(f"Total traces added: {trace_count}")
 
 # Also add a legend for StateCheck color coding:
 # Add this after the chart is created:
