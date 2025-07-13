@@ -221,7 +221,23 @@ def get_current_market_time():
     
     return current_et, current_slot
 
-def get_atr_levels_for_ticker(ticker_key):
+def calculate_remaining_probability(total_pct, completed_hourly_pcts, current_time_slot, time_order):
+    """Calculate remaining probability based on current time"""
+    if current_time_slot in ["PREMARKET", "AFTERHOURS", "CLOSE"]:
+        return total_pct, "N/A"
+    
+    try:
+        current_index = time_order.index(current_time_slot)
+    except ValueError:
+        return total_pct, "Current"
+    
+    completed_probability = 0
+    for i, time_slot in enumerate(time_order):
+        if i < current_index and time_slot in completed_hourly_pcts:
+            completed_probability += completed_hourly_pcts[time_slot]
+    
+    remaining_pct = max(0, total_pct - completed_probability)
+    return remaining_pct, current_time_slot
     """Get ATR levels for specific ticker from multi-ticker JSON file"""
     try:
         json_file = "atr_levels.json"
@@ -497,8 +513,367 @@ else:  # Session
     
     time_order = display_columns.copy()
     
-    # TODO: Build Session chart (to be extracted to shared functions)
-    st.info("📈 Session chart - To be implemented with shared functions")
+    # --- Create lookup dictionary from pre-calculated data ---
+    data_lookup = {}
+    for _, row in filtered.iterrows():
+        goal_time = row["GoalTime"]
+        if pd.notna(goal_time):
+            if isinstance(goal_time, (int, float)):
+                time_int = int(goal_time)
+                if time_int == 900:
+                    goal_time_str = "0900"
+                elif time_int < 1000:
+                    goal_time_str = f"0{time_int}"
+                else:
+                    goal_time_str = str(time_int)
+            else:
+                goal_time_str = str(goal_time)
+        else:
+            goal_time_str = "Unknown"
+        
+        key = (float(row["GoalLevel"]), goal_time_str)
+        data_lookup[key] = {
+            "hits": row["NumHits"],
+            "triggers": row["NumTriggers"], 
+            "pct": row["PctCompletion"]
+        }
+    
+    # --- Calculate total completion rate for each goal level ---
+    goal_totals = {}
+    goal_remaining = {}
+    if len(filtered) > 0:
+        goal_summary = filtered.groupby('GoalLevel').agg({
+            'NumHits': 'sum',
+            'NumTriggers': 'first'
+        }).reset_index()
+        
+        standard_time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+        
+        for _, row in goal_summary.iterrows():
+            goal_level = row['GoalLevel']
+            total_hits = row['NumHits']
+            total_triggers = row['NumTriggers']
+            total_pct = (total_hits / total_triggers * 100) if total_triggers > 0 else 0
+            goal_totals[goal_level] = {
+                "hits": total_hits,
+                "triggers": total_triggers,
+                "pct": total_pct
+            }
+            
+            # Calculate remaining probability
+            hourly_pcts = {}
+            for time_slot in standard_time_order:
+                key = (goal_level, time_slot)
+                if key in data_lookup:
+                    hourly_pcts[time_slot] = data_lookup[key]["pct"]
+            
+            remaining_pct, current_slot_info = calculate_remaining_probability(
+                total_pct, hourly_pcts, current_market_slot, standard_time_order
+            )
+            
+            goal_remaining[goal_level] = {
+                "pct": remaining_pct,
+                "current_slot": current_slot_info,
+                "total_pct": total_pct
+            }
+    
+    # --- Get OPEN trigger data for tooltip ---
+    open_trigger_data = {}
+    if trigger_time == "OPEN" and len(filtered) > 0:
+        open_triggers = filtered['NumTriggers'].iloc[0]
+        
+        for _, row in filtered.iterrows():
+            goal_level = row['GoalLevel']
+            if 'OpenCompletions' in row:
+                open_completions = row['OpenCompletions']
+            else:
+                open_completions = "N/A"
+            
+            open_trigger_data[goal_level] = {
+                "triggers": open_triggers,
+                "completions": open_completions
+            }
+    
+    # --- Build Session chart ---
+    fig = go.Figure()
+    text_offset = 0.03
+    
+    # Add "Fib Level" title above left axis
+    fig.add_annotation(
+        text="Fib Level",
+        x=-0.05,
+        y=max(display_fib_levels) + 0.15,
+        xref="paper",
+        yref="y",
+        showarrow=False,
+        font=dict(color="gray", size=12 * font_size_multiplier),
+        xanchor="center",
+        yanchor="bottom"
+    )
+    
+    # Add "Price Level" title above right side
+    fig.add_annotation(
+        text="Price Level", 
+        x=1.08,
+        y=max(display_fib_levels) + 0.15,
+        xref="paper", 
+        yref="y",
+        showarrow=False,
+        font=dict(color="gray", size=12 * font_size_multiplier),
+        xanchor="center",
+        yanchor="bottom"
+    )
+    
+    # --- Price labels as annotations ---
+    if price_levels_dict:
+        for level in display_fib_levels:
+            level_key = f"{level:+.3f}"
+            price_val = price_levels_dict.get(level_key, 0)
+            
+            fig.add_annotation(
+                text=f"{price_val:.2f}",
+                x=1.08,
+                y=level + text_offset,
+                xref="paper",
+                yref="y",
+                showarrow=False,
+                font=dict(color="white", size=14 * font_size_multiplier),
+                xanchor="left",
+                yanchor="middle"
+            )
+    
+    # --- Matrix cells ---
+    for level in display_fib_levels:
+        for t in time_order:
+            if t not in display_columns:
+                continue
+                
+            if t == "OPEN":
+                if trigger_time == "OPEN" and level in open_trigger_data:
+                    triggers = open_trigger_data[level]["triggers"]
+                    completions = open_trigger_data[level]["completions"]
+                    hover = f"OPEN Triggers: {triggers}, Goal {level} Completed at OPEN: {completions}"
+                    
+                    fig.add_trace(go.Scatter(
+                        x=[t], y=[level + text_offset],
+                        mode="text", text=[""],
+                        hovertext=[hover], hoverinfo="text",
+                        textfont=dict(color="white", size=13),
+                        showlegend=False
+                    ))
+                else:
+                    fig.add_trace(go.Scatter(
+                        x=[t], y=[level + text_offset],
+                        mode="text", text=[""],
+                        hoverinfo="skip",
+                        textfont=dict(color="white", size=13),
+                        showlegend=False
+                    ))
+                continue
+            
+            if t == "TOTAL":
+                if level in goal_totals:
+                    total_data = goal_totals[level]
+                    pct = total_data["pct"]
+                    hits = total_data["hits"]
+                    triggers = total_data["triggers"]
+                    
+                    line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
+                    font_size = 12 * font_size_multiplier
+                    
+                    warn = " ⚠️" if triggers < 30 else ""
+                    display_text = f"{pct:.1f}%"
+                    hover = f"Total: {pct:.1f}% ({hits}/{triggers}){warn}"
+                    
+                    fig.add_trace(go.Scatter(
+                        x=[t], y=[level + text_offset],
+                        mode="text", text=[display_text],
+                        hovertext=[hover], hoverinfo="text",
+                        textfont=dict(color=line_color, size=font_size),
+                        showlegend=False
+                    ))
+                else:
+                    fig.add_trace(go.Scatter(
+                        x=[t], y=[level + text_offset],
+                        mode="text", text=[""],
+                        hoverinfo="skip",
+                        textfont=dict(color="white", size=12),
+                        showlegend=False
+                    ))
+                continue
+            
+            if t == "REMAINING":
+                if level in goal_remaining:
+                    remaining_data = goal_remaining[level]
+                    remaining_pct = remaining_data["pct"]
+                    total_pct = remaining_data["total_pct"]
+                    current_slot = remaining_data["current_slot"]
+                    
+                    line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
+                    font_size = 12 * font_size_multiplier
+                    
+                    if current_slot == "N/A":
+                        display_text = "N/A"
+                        hover = "Market closed or no data"
+                        text_color = "gray"
+                    else:
+                        display_text = f"{remaining_pct:.1f}%"
+                        completed_pct = total_pct - remaining_pct
+                        hover = f"Remaining: {remaining_pct:.1f}% (Total: {total_pct:.1f}%, Completed: {completed_pct:.1f}%) | Current: {current_slot}"
+                        
+                        # Color code based on remaining probability
+                        if remaining_pct > 15:
+                            text_color = "lime"
+                        elif remaining_pct > 5:
+                            text_color = "orange"
+                        else:
+                            text_color = "red"
+                    
+                    fig.add_trace(go.Scatter(
+                        x=[t], y=[level + text_offset],
+                        mode="text", text=[display_text],
+                        hovertext=[hover], hoverinfo="text",
+                        textfont=dict(color=text_color, size=font_size),
+                        showlegend=False
+                    ))
+                else:
+                    fig.add_trace(go.Scatter(
+                        x=[t], y=[level + text_offset],
+                        mode="text", text=[""],
+                        hoverinfo="skip",
+                        textfont=dict(color="white", size=12),
+                        showlegend=False
+                    ))
+                continue
+            
+            # Regular time columns
+            key = (float(level), t)
+            if key in data_lookup:
+                data = data_lookup[key]
+                pct = data["pct"]
+                hits = data["hits"]
+                total = data["triggers"]
+                
+                # Check if times are before trigger time
+                if trigger_time == "OPEN":
+                    is_before_trigger = False
+                elif trigger_time in time_order and t in time_order:
+                    is_before_trigger = time_order.index(t) < time_order.index(trigger_time)
+                else:
+                    is_before_trigger = False
+                
+                if is_before_trigger:
+                    display_text = ""
+                    hover = "Before trigger time"
+                    text_color = "gray"
+                else:
+                    warn = " ⚠️" if total < 30 else ""
+                    display_text = f"{pct:.1f}%"
+                    hover = f"{pct:.1f}% ({hits}/{total}){warn}"
+                    
+                    # Color coding based on fibonacci level
+                    line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
+                    text_color = line_color
+                
+                font_size = 12 * font_size_multiplier
+                
+                fig.add_trace(go.Scatter(
+                    x=[t], y=[level + text_offset],
+                    mode="text", text=[display_text],
+                    hovertext=[hover], hoverinfo="text",
+                    textfont=dict(color=text_color, size=font_size),
+                    showlegend=False
+                ))
+    
+    # --- Anchor invisible point for OPEN ---
+    fig.add_trace(go.Scatter(
+        x=["OPEN"], y=[0.0],
+        mode="markers",
+        marker=dict(opacity=0),
+        showlegend=False,
+        hoverinfo="skip"
+    ))
+    
+    # --- Horizontal lines for Fibonacci levels ---
+    for level in display_fib_levels:
+        if level in fibo_styles:
+            color, width, font_size = fibo_styles[level]
+            fig.add_shape(
+                type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
+                line=dict(color=color, width=width), layer="below"
+            )
+    
+    # --- Session trigger level highlighting ---
+    if trigger_level in display_fib_levels:
+        trigger_index = display_fib_levels.index(trigger_level)
+        
+        # Green shading above trigger level
+        if trigger_index > 0:
+            next_level_up = display_fib_levels[trigger_index - 1]
+            fig.add_shape(
+                type="rect",
+                x0=0, x1=1, xref="paper",
+                y0=trigger_level, y1=next_level_up, yref="y",
+                fillcolor="rgba(0, 255, 0, 0.1)",
+                line=dict(width=0),
+                layer="below"
+            )
+        
+        # Yellow shading below trigger level
+        if trigger_index < len(display_fib_levels) - 1:
+            next_level_down = display_fib_levels[trigger_index + 1]
+            fig.add_shape(
+                type="rect",
+                x0=0, x1=1, xref="paper",
+                y0=next_level_down, y1=trigger_level, yref="y",
+                fillcolor="rgba(255, 255, 0, 0.1)",
+                line=dict(width=0),
+                layer="below"
+            )
+    
+    # --- Session chart layout ---
+    fig.update_layout(
+        title=f"{ticker_config[selected_ticker]['display_name']} | {price_direction}",
+        xaxis=dict(
+            title="Projected Completion Time (Eastern Time)",
+            categoryorder="array",
+            categoryarray=display_columns,
+            tickmode="array",
+            tickvals=display_columns,
+            ticktext=display_columns,
+            tickfont=dict(color="white", size=12),
+            fixedrange=False if not show_expanded_view else True
+        ),
+        yaxis=dict(
+            title="",
+            categoryorder="array",
+            categoryarray=display_fib_levels,
+            tickmode="array",
+            tickvals=display_fib_levels,
+            ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
+            tickfont=dict(color="white", size=12 * font_size_multiplier),
+            side="left",
+            fixedrange=False if not show_expanded_view else True
+        ),
+        plot_bgcolor="black",
+        paper_bgcolor="black",
+        font=dict(color="white", size=12 * font_size_multiplier),
+        height=chart_height,
+        width=chart_width,
+        margin=dict(l=80, r=150, t=60, b=60)
+    )
+    
+    # Display the chart
+    st.plotly_chart(fig, use_container_width=use_container_width)
+    
+    # --- Chart Information Footer ---
+    if atr_data.get("status") == "success":
+        data_age = atr_data.get('data_age_days', 0)
+        age_warning = f" (⚠️ {data_age} days old)" if data_age > 0 else ""
+        st.caption(f"📊 ATR levels from {atr_data.get('reference_date', 'unknown')} | Close: {atr_data.get('reference_close', 'N/A')} | ATR: {atr_data.get('reference_atr', 'N/A')}{age_warning}")
+    
+    # Legend
+    st.caption("📋 **Chart Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | **Remaining Colors:** 🟢 >15% | 🟠 5-15% | 🔴 <5% | Percentages show probability of reaching target level by specified time")
 
 # --- Footer ---
 if current_market_slot in ["PREMARKET", "AFTERHOURS"]:
