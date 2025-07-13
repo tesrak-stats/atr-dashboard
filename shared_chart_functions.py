@@ -141,11 +141,13 @@ for level in display_fib_levels:
                 hoverinfo="text"
             ))
                 
+# REPLACE the existing create_statecheck_matrix function in shared_chart_functions.py with this:
+
 def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns, time_order, 
                              trigger_zone, price_direction, ticker_name, 
                              text_offset=0.03, font_size_multiplier=1.2):
     """
-    Create StateCheck transition probability matrix using actual working logic
+    Create StateCheck transition probability matrix with full features
     
     Args:
         filtered_data: DataFrame with StateCheck data (adapted format)
@@ -159,11 +161,12 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
         font_size_multiplier: Font scaling factor
     
     Returns:
-        Plotly figure object
+        Plotly figure object with horizontal scroll capability
     """
     import plotly.graph_objects as go
+    import pandas as pd
     
-    # Create data lookup from filtered data (your working logic)
+    # Create data lookup from filtered data
     data_lookup = {}
     for _, row in filtered_data.iterrows():
         goal_time = row["GoalTime"]
@@ -191,7 +194,32 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
     # Create figure
     fig = go.Figure()
     
-    # Matrix cells (your working logic)
+    # Add horizontal lines for Fibonacci levels first
+    fibo_styles = {
+        1.0: ("lightgray", 3, 16),
+        0.786: ("lightgray", 1, 12),
+        0.618: ("lightgray", 2, 14),
+        0.5: ("lightgray", 1, 12),
+        0.382: ("lightgray", 1, 12),
+        0.236: ("cyan", 2, 14),
+        0.0: ("lightgray", 1, 12),
+        -0.236: ("yellow", 2, 14),
+        -0.382: ("lightgray", 1, 12),
+        -0.5: ("lightgray", 1, 12),
+        -0.618: ("lightgray", 2, 14),
+        -0.786: ("lightgray", 1, 12),
+        -1.0: ("lightgray", 3, 16),
+    }
+    
+    for level in display_fib_levels:
+        if level in fibo_styles:
+            color, width, font_size = fibo_styles[level]
+            fig.add_shape(
+                type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
+                line=dict(color=color, width=width), layer="below"
+            )
+    
+    # Matrix cells with enhanced color coding
     for level in display_fib_levels:
         for t in time_order:
             if t not in display_columns:
@@ -201,8 +229,10 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
             if key in data_lookup:
                 data = data_lookup[key]
                 pct = data["pct"]
+                hits = data["hits"]
+                triggers = data["triggers"]
                 
-                # Color coding for StateCheck
+                # Enhanced color coding for StateCheck
                 if pct >= 50:
                     text_color = "lime"        # Very high probability
                 elif pct >= 30:
@@ -216,9 +246,15 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
                 else:
                     text_color = "gray"       # Very low probability
                 
-                # Reduced decimal places for readability
-                display_text = f"{pct:.0f}%" if pct >= 10 else f"{pct:.1f}%"
-                hover = f"{pct:.1f}% ({data['hits']}/{data['triggers']})"
+                # Smart text formatting
+                if pct >= 10:
+                    display_text = f"{pct:.0f}%"
+                else:
+                    display_text = f"{pct:.1f}%"
+                
+                # Enhanced hover with warning for low sample size
+                warn = " ⚠️" if triggers < 30 else ""
+                hover = f"{pct:.1f}% ({hits}/{triggers}){warn}"
                 
                 fig.add_trace(go.Scatter(
                     x=[t], y=[level + text_offset],
@@ -229,7 +265,7 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
                     hoverinfo="text"
                 ))
     
-    # Zone highlighting
+    # Zone highlighting with enhanced styling
     trigger_zone_ranges = {
         "Zone 1: Above +1.0": (1.0, 1.2),
         "Zone 2: +0.786 to +1.0": (0.786, 1.0),
@@ -258,7 +294,7 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
             layer="below"
         )
     
-    # Chart layout
+    # Enhanced chart layout optimized for horizontal scrolling
     fig.update_layout(
         title=f"{ticker_name} | {price_direction}",
         xaxis=dict(
@@ -268,12 +304,13 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
             tickmode="array",
             tickvals=display_columns,
             ticktext=display_columns,
-            tickfont=dict(color="white", size=10),
+            tickfont=dict(color="white", size=10 * font_size_multiplier),
             tickangle=45 if len(display_columns) > 10 else 0,
-            fixedrange=True
+            fixedrange=False,  # Allow horizontal scrolling
+            rangeslider=dict(visible=False)  # Hide range slider for cleaner look
         ),
         yaxis=dict(
-            title="",
+            title="Fibonacci Levels",
             categoryorder="array",
             categoryarray=display_fib_levels,
             tickmode="array",
@@ -281,14 +318,15 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
             ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
             tickfont=dict(color="white", size=12 * font_size_multiplier),
             side="left",
-            fixedrange=True
+            fixedrange=True  # Keep y-axis fixed
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
         font=dict(color="white", size=12 * font_size_multiplier),
         height=600,
-        width=3200,
-        margin=dict(l=80, r=150, t=60, b=100)
+        width=3200,  # Wide for horizontal scroll
+        margin=dict(l=80, r=50, t=60, b=100),  # Adjust margins
+        showlegend=False
     )
     
     return fig
