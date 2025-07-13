@@ -122,245 +122,146 @@ def get_zone_probability(detailed_data, zone, time_period):
 
 
 # --- Matrix cells ---
-for level in display_fib_levels:
-    for t in time_order:
-        if t not in display_columns:
-            continue
-            
-        key = (float(level), t)
-        if key in data_lookup:
-            data = data_lookup[key]
-            pct = data["pct"]
-            
-            fig.add_trace(go.Scatter(
-                x=[t], y=[level + text_offset],
-                mode="text", text=[f"{pct:.1f}%"],
-                textfont=dict(color="white", size=12),
-                showlegend=False,
-                hovertext=[f"{pct:.1f}%"],
-                hoverinfo="text"
-            ))
-                
+
 # REPLACE the existing create_statecheck_matrix function in shared_chart_functions.py with this:
 
-def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns, time_order, 
-                             trigger_zone, price_direction, ticker_name, 
-                             text_offset=0.03, font_size_multiplier=1.2):
-    """
-    Create StateCheck transition probability matrix with full features
-    
-    Args:
-        filtered_data: DataFrame with StateCheck data (adapted format)
-        display_fib_levels: List of fibonacci levels to display
-        display_columns: List of time columns to display  
-        time_order: Time order for chart logic
-        trigger_zone: Trigger zone string for title
-        price_direction: Price direction string for title
-        ticker_name: Ticker name for title
-        text_offset: Y-axis offset for text positioning
-        font_size_multiplier: Font scaling factor
-    
-    Returns:
-        Plotly figure object with horizontal scroll capability
-    """
-    import plotly.graph_objects as go
-    import pandas as pd
-    
-    # Create data lookup from filtered data
-    data_lookup = {}
-    for _, row in filtered_data.iterrows():
-        goal_time = row["GoalTime"]
-        if pd.notna(goal_time):
-            if isinstance(goal_time, (int, float)):
-                time_int = int(goal_time)
-                if time_int == 900:
-                    goal_time_str = "0900"
-                elif time_int < 1000:
-                    goal_time_str = f"0{time_int}"
-                else:
-                    goal_time_str = str(time_int)
-            else:
-                goal_time_str = str(goal_time)
-        else:
-            goal_time_str = "Unknown"
-        
-        key = (float(row["GoalLevel"]), goal_time_str)
-        data_lookup[key] = {
-            "hits": row["NumHits"],
-            "triggers": row["NumTriggers"], 
-            "pct": row["PctCompletion"]
-        }
-    
-    # Create figure
-    fig = go.Figure()
-    
-    # Add horizontal lines for Fibonacci levels first
-    fibo_styles = {
-        1.0: ("lightgray", 3, 16),
-        0.786: ("lightgray", 1, 12),
-        0.618: ("lightgray", 2, 14),
-        0.5: ("lightgray", 1, 12),
-        0.382: ("lightgray", 1, 12),
-        0.236: ("cyan", 2, 14),
-        0.0: ("lightgray", 1, 12),
-        -0.236: ("yellow", 2, 14),
-        -0.382: ("lightgray", 1, 12),
-        -0.5: ("lightgray", 1, 12),
-        -0.618: ("lightgray", 2, 14),
-        -0.786: ("lightgray", 1, 12),
-        -1.0: ("lightgray", 3, 16),
-    }
-    
-    for level in display_fib_levels:
-        if level in fibo_styles:
-            color, width, font_size = fibo_styles[level]
-            fig.add_shape(
-                type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
-                line=dict(color=color, width=width), layer="below"
-            )
-    
-    # Matrix cells with enhanced color coding
-    for level in display_fib_levels:
-        for t in time_order:
-            if t not in display_columns:
-                continue
-                
-            key = (float(level), t)
-            if key in data_lookup:
-                data = data_lookup[key]
-                pct = data["pct"]
-                hits = data["hits"]
-                triggers = data["triggers"]
-                
-                # Enhanced color coding for StateCheck
-                if pct >= 50:
-                    text_color = "lime"        # Very high probability
-                elif pct >= 30:
-                    text_color = "lightgreen" # High probability  
-                elif pct >= 20:
-                    text_color = "yellow"     # Medium-high probability
-                elif pct >= 10:
-                    text_color = "orange"     # Medium probability
-                elif pct >= 5:
-                    text_color = "lightcoral" # Low probability
-                else:
-                    text_color = "gray"       # Very low probability
-                
-                # Smart text formatting
-                if pct >= 10:
-                    display_text = f"{pct:.0f}%"
-                else:
-                    display_text = f"{pct:.1f}%"
-                
-                # Enhanced hover with warning for low sample size
-                warn = " ⚠️" if triggers < 30 else ""
-                hover = f"{pct:.1f}% ({hits}/{triggers}){warn}"
-                
-                fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],
-                    mode="text", text=[display_text],
-                    textfont=dict(color=text_color, size=12 * font_size_multiplier),
-                    showlegend=False,
-                    hovertext=[hover],
-                    hoverinfo="text"
-                ))
-    
-    # Zone highlighting with enhanced styling
-    trigger_zone_ranges = {
-        "Zone 1: Above +1.0": (1.0, 1.2),
-        "Zone 2: +0.786 to +1.0": (0.786, 1.0),
-        "Zone 3: +0.618 to +0.786": (0.618, 0.786),
-        "Zone 4: +0.5 to +0.618": (0.5, 0.618),
-        "Zone 5: +0.382 to +0.5": (0.382, 0.5),
-        "Zone 6: +0.236 to +0.382": (0.236, 0.382),
-        "Zone 7: 0.0 to +0.236": (0.0, 0.236),
-        "Zone 8: -0.236 to 0.0": (-0.236, 0.0),
-        "Zone 9: -0.382 to -0.236": (-0.382, -0.236),
-        "Zone 10: -0.5 to -0.382": (-0.5, -0.382),
-        "Zone 11: -0.618 to -0.5": (-0.618, -0.5),
-        "Zone 12: -0.786 to -0.618": (-0.786, -0.618),
-        "Zone 13: -1.0 to -0.786": (-1.0, -0.786),
-        "Zone 14: Below -1.0": (-1.2, -1.0)
-    }
-    
-    if trigger_zone in trigger_zone_ranges:
-        zone_bottom, zone_top = trigger_zone_ranges[trigger_zone]
-        fig.add_shape(
-            type="rect",
-            x0=0, x1=1, xref="paper",
-            y0=zone_bottom, y1=zone_top, yref="y",
-            fillcolor="rgba(0, 150, 255, 0.2)",
-            line=dict(color="rgba(0, 150, 255, 0.6)", width=2),
-            layer="below"
-        )
-    
-    # Enhanced chart layout optimized for horizontal scrolling
-    fig.update_layout(
-        title=f"{ticker_name} | {price_direction}",
-        xaxis=dict(
-            title="Transition Time (Eastern Time)",
-            categoryorder="array",
-            categoryarray=display_columns,
-            tickmode="array",
-            tickvals=display_columns,
-            ticktext=display_columns,
-            tickfont=dict(color="white", size=10 * font_size_multiplier),
-            tickangle=45 if len(display_columns) > 10 else 0,
-            fixedrange=False,  # Allow horizontal scrolling
-            rangeslider=dict(visible=False)  # Hide range slider for cleaner look
-        ),
-        yaxis=dict(
-            title="Fibonacci Levels",
-            categoryorder="array",
-            categoryarray=display_fib_levels,
-            tickmode="array",
-            tickvals=display_fib_levels,
-            ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
-            tickfont=dict(color="white", size=12 * font_size_multiplier),
-            side="left",
-            fixedrange=True  # Keep y-axis fixed
-        ),
-        plot_bgcolor="black",
-        paper_bgcolor="black",
-        font=dict(color="white", size=12 * font_size_multiplier),
-        height=600,
-        width=3200,  # Wide for horizontal scroll
-        margin=dict(l=80, r=50, t=60, b=100),  # Adjust margins
-        showlegend=False
-    )
-    
-    return fig
+# REPLACE the StateCheck section in daily_display.py (around lines 490-560) with this:
 
-def get_zone_transition_probability(detailed_data, trigger_zone, target_zone, time_period):
-    """
-    Get probability of transitioning from trigger zone to target zone by time period
-    
-    Args:
-        detailed_data: DataFrame with detailed transition data
-        trigger_zone: Starting zone (e.g., "Zone6")
-        target_zone: Ending zone (e.g., "Zone4")
-        time_period: Time period (e.g., "1000")
-    
-    Returns:
-        Probability percentage (float)
-    """
+elif analysis_type == "StateCheck":
+    # StateCheck data processing
     try:
-        # Look up in detailed CSV
-        transition_data = detailed_data[
-            (detailed_data['AnalysisType'] == 'StateCheck') &
-            (detailed_data['TriggerZone'] == trigger_zone) &
-            (detailed_data['TargetZone'] == target_zone) &
-            (detailed_data['TimePeriod'] == time_period)
-        ]
+        statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"
+        statecheck_df = pd.read_csv(statecheck_file)
+        st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
         
-        if not transition_data.empty:
-            return transition_data['Probability'].iloc[0]
-        else:
-            return 0.0
-            
-    except Exception:
-        # Fallback to zero if data not found
-        return 0.0
+        # Zone mapping
+        zone_mapping = {
+            "Zone 1: Above +1.0": "above_1.0",
+            "Zone 2: +0.786 to +1.0": "0.786_to_1.0", 
+            "Zone 3: +0.618 to +0.786": "0.618_to_0.786",
+            "Zone 4: +0.5 to +0.618": "0.5_to_0.618",
+            "Zone 5: +0.382 to +0.5": "0.382_to_0.5",
+            "Zone 6: +0.236 to +0.382": "0.236_to_0.382",
+            "Zone 7: 0.0 to +0.236": "0.0_to_0.236",
+            "Zone 8: -0.236 to 0.0": "-0.236_to_0.0",
+            "Zone 9: -0.382 to -0.236": "-0.382_to_-0.236",
+            "Zone 10: -0.5 to -0.382": "-0.5_to_-0.382",
+            "Zone 11: -0.618 to -0.5": "-0.618_to_-0.5",
+            "Zone 12: -0.786 to -0.618": "-0.786_to_-0.618",
+            "Zone 13: -1.0 to -0.786": "-1.0_to_-0.786",
+            "Zone 14: Below -1.0": "below_-1.0"
+        }
+        
+        trigger_zone_key = zone_mapping[trigger_zone]
+        trigger_time_int = int(trigger_time)
+        
+        # Filter StateCheck data
+        statecheck_filtered = statecheck_df[
+            (statecheck_df["TriggerZone"] == trigger_zone_key) &
+            (statecheck_df["TriggerTime"] == trigger_time_int)
+        ].copy()
+        
+        if len(statecheck_filtered) == 0:
+            st.warning(f"No StateCheck data found for {trigger_zone} at {trigger_time}")
+            st.info("Try a different trigger zone or time combination.")
+            st.stop()
+        
+        # Adapt StateCheck data to Session format
+        adapted_data = statecheck_filtered.copy()
+        
+        # Column mapping
+        column_mapping = {
+            "GoalZone": "GoalLevel",
+            "GoalTime": "GoalTime",
+            "TransitionCount": "NumHits",
+            "TotalTriggerOccurrences": "NumTriggers",
+            "TransitionPercentage": "PctCompletion"
+        }
+        
+        # Apply column renaming
+        for old_col, new_col in column_mapping.items():
+            if old_col in adapted_data.columns:
+                adapted_data = adapted_data.rename(columns={old_col: new_col})
+        
+        # Convert goal zone strings to fibonacci levels
+        goal_zone_to_fib = {
+            "above_1.0": 1.0, "0.786_to_1.0": 0.786, "0.618_to_0.786": 0.618,
+            "0.5_to_0.618": 0.5, "0.382_to_0.5": 0.382, "0.236_to_0.382": 0.236,
+            "0.0_to_0.236": 0.0, "-0.236_to_0.0": -0.236, "-0.382_to_-0.236": -0.382,
+            "-0.5_to_-0.382": -0.5, "-0.618_to_-0.5": -0.618, "-0.786_to_-0.618": -0.786,
+            "-1.0_to_-0.786": -1.0, "below_-1.0": -1.0
+        }
+        
+        if 'GoalLevel' in adapted_data.columns:
+            adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
+        
+        # Convert goal times to string format
+        if 'GoalTime' in adapted_data.columns:
+            adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
+        
+        # Set as filtered data
+        filtered = adapted_data
+        
+        # For StateCheck, show all fibonacci levels that exist in the data
+        available_levels = sorted(filtered['GoalLevel'].unique())
+        display_fib_levels = available_levels
+        
+        # Use standard time columns for StateCheck (no OPEN, TOTAL, REMAINING)
+        available_times = sorted(filtered['GoalTime'].unique())
+        display_columns = available_times
+        
+        # Create time_order to match display_columns
+        time_order = display_columns.copy()
+        
+        # StateCheck chart dimensions - wide for horizontal scroll
+        chart_height = 600
+        chart_width = 3200  # Very wide for horizontal scroll
+        font_size_multiplier = 1.2
+        use_container_width = False  # Critical for horizontal scroll
+        
+        st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
+        st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
+        
+        # Create compatibility variables for chart building
+        price_direction = f"Zone Transitions from {trigger_zone}"
+        
+        # BUILD THE CHART using shared function
+        from shared_chart_functions import create_statecheck_matrix
+        
+        fig = create_statecheck_matrix(
+            filtered_data=filtered,
+            display_fib_levels=display_fib_levels,
+            display_columns=display_columns,
+            time_order=time_order,
+            trigger_zone=trigger_zone,
+            price_direction=price_direction,
+            ticker_name=ticker_config[selected_ticker]['display_name'],
+            text_offset=0.03,
+            font_size_multiplier=font_size_multiplier
+        )
+        
+        # Display the chart
+        st.plotly_chart(fig, use_container_width=use_container_width)
+        
+        # Add color legend for StateCheck
+        st.markdown("""
+        **🎨 StateCheck Color Legend:**
+        - 🟢 **Bright Green** (≥50%): Very High Probability
+        - 🌟 **Light Green** (30-49%): High Probability  
+        - 🟡 **Yellow** (20-29%): Medium-High Probability
+        - 🟠 **Orange** (10-19%): Medium Probability
+        - 🔶 **Light Red** (5-9%): Low Probability
+        - ⚫ **Gray** (<5%): Very Low Probability
+        """)
+        
+        # Skip all the remaining chart building logic
+        st.stop()
+        
+    except Exception as e:
+        st.error(f"Error loading StateCheck data: {str(e)}")
+        st.stop()
+
+# Continue with other analysis types...
 
 
 def get_total_probability(level_totals_data, analysis_type, direction=None, trigger_level=None, trigger_time=None, trigger_zone=None):
