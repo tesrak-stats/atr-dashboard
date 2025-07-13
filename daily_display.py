@@ -564,6 +564,8 @@ if analysis_type == "Session":
 
 # REPLACE the StateCheck section in daily_display.py (around lines 490-560) with this:
 
+# REPLACE the StateCheck section in daily_display.py (around lines 490-560) with this:
+
 elif analysis_type == "StateCheck":
     # StateCheck data processing
     try:
@@ -655,6 +657,7 @@ elif analysis_type == "StateCheck":
         
         # Create compatibility variables for chart building
         price_direction = f"Zone Transitions from {trigger_zone}"
+        font_size_multiplier = 1.2  # Default font size for StateCheck
         
         # BUILD THE CHART using shared function
         from shared_chart_functions import create_statecheck_matrix
@@ -696,6 +699,8 @@ elif analysis_type == "StateCheck":
     except Exception as e:
         st.error(f"Error loading StateCheck data: {str(e)}")
         st.stop()
+
+# Continue with other analysis types...
 
 # Continue with other analysis types...
 
