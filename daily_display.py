@@ -622,6 +622,8 @@ if analysis_type == "Session":
     ].copy()
 # REPLACE the StateCheck section in daily_display.py (around lines 490-560) with this:
 
+# REPLACE the StateCheck section in daily_display.py (around lines 490-560) with this:
+
 elif analysis_type == "StateCheck":
     # StateCheck data processing
     try:
@@ -708,20 +710,22 @@ elif analysis_type == "StateCheck":
         # Create time_order to match display_columns
         time_order = display_columns.copy()
         
-        # StateCheck chart dimensions - wide for horizontal scroll
-        chart_height = 600
-        chart_width = 3200  # Very wide for horizontal scroll
-        font_size_multiplier = 1.2
-        use_container_width = False  # Critical for horizontal scroll
-        
+        # Remove the hardcoded chart dimensions since they're now dynamic
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
-        st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
+        
+        # Dynamic info message
+        if use_container_width:
+            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels")
+        else:
+            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
         
         # Create compatibility variables for chart building
         price_direction = f"Zone Transitions from {trigger_zone}"
         
         # BUILD THE CHART using shared function
-        fig = create_statecheck_matrix(
+        from shared_chart_functions import create_statecheck_matrix
+        
+        fig, use_container_width = create_statecheck_matrix(
             filtered_data=filtered,
             display_fib_levels=display_fib_levels,
             display_columns=display_columns,
@@ -730,7 +734,8 @@ elif analysis_type == "StateCheck":
             price_direction=price_direction,
             ticker_name=ticker_config[selected_ticker]['display_name'],
             text_offset=0.03,
-            font_size_multiplier=font_size_multiplier
+            font_size_multiplier=font_size_multiplier,
+            price_levels_dict=price_levels_dict
         )
         
         # Display the chart
@@ -753,6 +758,8 @@ elif analysis_type == "StateCheck":
     except Exception as e:
         st.error(f"Error loading StateCheck data: {str(e)}")
         st.stop()
+
+# Continue with other analysis types...
 
 # Continue with other analysis types...    
 
