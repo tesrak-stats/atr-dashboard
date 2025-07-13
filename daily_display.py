@@ -624,6 +624,8 @@ if analysis_type == "Session":
 
 # REPLACE the StateCheck section in daily_display.py (around lines 490-560) with this:
 
+# REPLACE the StateCheck section in daily_display.py (around lines 490-560) with this:
+
 elif analysis_type == "StateCheck":
     # StateCheck data processing
     try:
@@ -714,7 +716,7 @@ elif analysis_type == "StateCheck":
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
         
         # Dynamic info message
-        if use_container_width:
+        if chart_use_container_width:
             st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels")
         else:
             st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
@@ -725,7 +727,7 @@ elif analysis_type == "StateCheck":
         # BUILD THE CHART using shared function
         from shared_chart_functions import create_statecheck_matrix
         
-        fig, use_container_width = create_statecheck_matrix(
+        fig, chart_use_container_width = create_statecheck_matrix(
             filtered_data=filtered,
             display_fib_levels=display_fib_levels,
             display_columns=display_columns,
@@ -739,7 +741,7 @@ elif analysis_type == "StateCheck":
         )
         
         # Display the chart
-        st.plotly_chart(fig, use_container_width=use_container_width)
+        st.plotly_chart(fig, use_container_width=chart_use_container_width)
         
         # Add color legend for StateCheck
         st.markdown("""
@@ -759,6 +761,7 @@ elif analysis_type == "StateCheck":
         st.error(f"Error loading StateCheck data: {str(e)}")
         st.stop()
 
+# Continue with other analysis types...
 # Continue with other analysis types...
 
 # Continue with other analysis types...    
