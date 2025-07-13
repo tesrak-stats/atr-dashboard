@@ -121,12 +121,6 @@ def get_zone_probability(detailed_data, zone, time_period):
         return 0.0
 
 
-# --- Matrix cells ---
-
-# REPLACE the existing create_statecheck_matrix function in shared_chart_functions.py with this:
-
-# REPLACE the StateCheck section in daily_display.py (around lines 490-560) with this:
-
 """
 ADD this function to shared_chart_functions.py (replace the existing create_statecheck_matrix)
 Make sure plotly.graph_objects as go and pandas as pd are imported at the top
@@ -300,8 +294,8 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
     calculated_width = max(min_width, len(display_columns) * base_width_per_column)
     
     # Use container width for smaller charts, fixed width for large ones
-    use_container_width = calculated_width <= 1200
-    chart_width = None if use_container_width else calculated_width
+    use_container_width_setting = calculated_width <= 1200
+    chart_width = None if use_container_width_setting else calculated_width
     
     fig.update_layout(
         title=f"{ticker_name} | {price_direction}",
@@ -314,7 +308,7 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
             ticktext=display_columns,
             tickfont=dict(color="white", size=10 * font_size_multiplier),
             tickangle=45 if len(display_columns) > 10 else 0,
-            fixedrange=not use_container_width,  # Allow scrolling only for wide charts
+            fixedrange=not use_container_width_setting,  # Allow scrolling only for wide charts
             automargin=True
         ),
         yaxis=dict(
@@ -336,11 +330,11 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
         width=chart_width,  # Dynamic width or None for container
         margin=dict(l=60, r=150, t=60, b=80),  # Restored right margin for price levels
         showlegend=False,
-        autosize=use_container_width
+        autosize=use_container_width_setting
     )
     
     # Return both figure and container setting
-    return fig, use_container_width, use_container_width
+    return fig, use_container_width_setting, use_container_width
     
     return fig
 
