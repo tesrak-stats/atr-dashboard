@@ -238,6 +238,55 @@ def calculate_remaining_probability(total_pct, completed_hourly_pcts, current_ti
     
     remaining_pct = max(0, total_pct - completed_probability)
     return remaining_pct, current_time_slot
+
+def get_atr_levels_for_ticker(ticker_key):
+    """Get ATR levels for specific ticker from multi-ticker JSON file"""
+    try:
+        json_file = "atr_levels.json"
+        
+        if os.path.exists(json_file):
+            with open(json_file, 'r') as f:
+                saved_data = json.load(f)
+                
+            if "tickers" in saved_data and ticker_key in saved_data["tickers"]:
+                ticker_data = saved_data["tickers"][ticker_key]
+                if ticker_data.get("status") == "success":
+                    return ticker_data
+            elif ticker_key == "SPX" and saved_data.get("status") == "success":
+                return saved_data
+        
+        # Calculate fresh if no saved data
+        ticker_symbol = ticker_config[ticker_key]["ticker_symbol"]
+        levels_data = calculate_atr_levels(ticker=ticker_symbol)
+        
+        if levels_data.get("status") == "success":
+            # Save to multi-ticker format
+            if os.path.exists(json_file):
+                try:
+                    with open(json_file, 'r') as f:
+                        existing_data = json.load(f)
+                except:
+                    existing_data = {}
+                
+                if "tickers" not in existing_data:
+                    existing_data = {"last_updated": datetime.now().isoformat(), "tickers": {}}
+                
+                existing_data["tickers"][ticker_key] = levels_data
+                existing_data["last_updated"] = datetime.now().isoformat()
+            else:
+                existing_data = {
+                    "last_updated": datetime.now().isoformat(),
+                    "tickers": {ticker_key: levels_data}
+                }
+            
+            with open(json_file, 'w') as f:
+                json.dump(existing_data, f, indent=2)
+        
+        return levels_data
+        
+    except Exception as e:
+        st.error(f"Error getting ATR levels for {ticker_key}: {str(e)}")
+        return {"status": "error", "error": str(e)}
     """Get ATR levels for specific ticker from multi-ticker JSON file"""
     try:
         json_file = "atr_levels.json"
