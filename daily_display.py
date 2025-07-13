@@ -675,12 +675,7 @@ elif analysis_type == "StateCheck":
             price_levels_dict=price_levels_dict
         )
         
-        # Display the chart with fallback
-        try:
-            st.plotly_chart(fig, use_container_width=chart_use_container_width)
-        except NameError:
-            # Fallback if variable not defined
-            st.plotly_chart(fig, use_container_width=True)
+        
         
         # Add color legend for StateCheck
         st.markdown("""
