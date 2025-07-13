@@ -562,6 +562,8 @@ if analysis_type == "Session":
 
 # REPLACE the StateCheck section in daily_display.py (around lines 490-560) with this:
 
+# REPLACE the StateCheck section in daily_display.py (around lines 490-560) with this:
+
 elif analysis_type == "StateCheck":
     # StateCheck data processing
     try:
@@ -651,12 +653,6 @@ elif analysis_type == "StateCheck":
         # Remove the hardcoded chart dimensions since they're now dynamic
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
         
-        # Dynamic info message
-        if chart_use_container_width:
-            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels")
-        else:
-            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
-        
         # Create compatibility variables for chart building
         price_direction = f"Zone Transitions from {trigger_zone}"
         
@@ -700,6 +696,8 @@ elif analysis_type == "StateCheck":
     except Exception as e:
         st.error(f"Error loading StateCheck data: {str(e)}")
         st.stop()
+
+# Continue with other analysis types...
 
 # Continue with other analysis types...
      
