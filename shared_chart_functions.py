@@ -134,7 +134,7 @@ Make sure plotly.graph_objects as go and pandas as pd are imported at the top
 
 def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns, time_order, 
                              trigger_zone, price_direction, ticker_name, 
-                             text_offset=0.03, font_size_multiplier=1.2):
+                             text_offset=0.03, font_size_multiplier=1.2, price_levels_dict=None):
     """
     Create StateCheck transition probability matrix with full features
     """
@@ -167,6 +167,32 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
     # Create figure
     fig = go.Figure()
     
+    # Add "Fib Level" title above left axis
+    fig.add_annotation(
+        text="Fib Level",
+        x=-0.05,
+        y=max(display_fib_levels) + 0.15,
+        xref="paper",
+        yref="y",
+        showarrow=False,
+        font=dict(color="gray", size=12 * font_size_multiplier),
+        xanchor="center",
+        yanchor="bottom"
+    )
+
+    # Add "Price Level" title above right side
+    fig.add_annotation(
+        text="Price Level", 
+        x=1.08,
+        y=max(display_fib_levels) + 0.15,
+        xref="paper", 
+        yref="y",
+        showarrow=False,
+        font=dict(color="gray", size=12 * font_size_multiplier),
+        xanchor="center",
+        yanchor="bottom"
+    )
+
     # Add horizontal lines for Fibonacci levels
     fibo_styles = {
         1.0: ("lightgray", 3, 16),
@@ -267,7 +293,16 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
             layer="below"
         )
     
-    # Chart layout
+    # Dynamic chart layout based on data size
+    # Calculate optimal width based on number of columns
+    base_width_per_column = 120  # pixels per time column
+    min_width = 800  # minimum width
+    calculated_width = max(min_width, len(display_columns) * base_width_per_column)
+    
+    # Use container width for smaller charts, fixed width for large ones
+    use_container_width = calculated_width <= 1200
+    chart_width = None if use_container_width else calculated_width
+    
     fig.update_layout(
         title=f"{ticker_name} | {price_direction}",
         xaxis=dict(
@@ -279,7 +314,8 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
             ticktext=display_columns,
             tickfont=dict(color="white", size=10 * font_size_multiplier),
             tickangle=45 if len(display_columns) > 10 else 0,
-            fixedrange=False  # Allow horizontal scrolling
+            fixedrange=not use_container_width,  # Allow scrolling only for wide charts
+            automargin=True
         ),
         yaxis=dict(
             title="Fibonacci Levels",
@@ -290,16 +326,21 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
             ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
             tickfont=dict(color="white", size=12 * font_size_multiplier),
             side="left",
-            fixedrange=True
+            fixedrange=True,
+            automargin=True
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
         font=dict(color="white", size=12 * font_size_multiplier),
         height=600,
-        width=3200,  # Wide for horizontal scroll
-        margin=dict(l=80, r=50, t=60, b=100),
-        showlegend=False
+        width=chart_width,  # Dynamic width or None for container
+        margin=dict(l=60, r=150, t=60, b=80),  # Restored right margin for price levels
+        showlegend=False,
+        autosize=use_container_width
     )
+    
+    # Return both figure and container setting
+    return fig, use_container_width, use_container_width
     
     return fig
 
