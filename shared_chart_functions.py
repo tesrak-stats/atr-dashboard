@@ -295,7 +295,7 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
     
     # Use container width for smaller charts, fixed width for large ones
     use_container_width_setting = calculated_width <= 1200
-    chart_width = None if use_container_width_setting else calculated_width
+    chart_width = None if calculated_width <= 1200 else calculated_width
     
     fig.update_layout(
         title=f"{ticker_name} | {price_direction}",
