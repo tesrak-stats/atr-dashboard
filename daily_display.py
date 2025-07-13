@@ -560,6 +560,8 @@ if analysis_type == "Session":
 
 # REPLACE the StateCheck section in daily_display.py (around lines 490-560) with this:
 
+# REPLACE the StateCheck section in daily_display.py (around lines 490-560) with this:
+
 elif analysis_type == "StateCheck":
     # StateCheck data processing
     try:
@@ -698,6 +700,8 @@ elif analysis_type == "StateCheck":
     except Exception as e:
         st.error(f"Error loading StateCheck data: {str(e)}")
         st.stop()
+
+# Continue with other analysis types...
 
 # Continue with other analysis types...
 
