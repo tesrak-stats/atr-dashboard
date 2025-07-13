@@ -620,7 +620,8 @@ if analysis_type == "Session":
         (df["TriggerLevel"] == trigger_level) &
         (df["TriggerTime"] == trigger_time)
     ].copy()
-    
+# REPLACE the StateCheck section in daily_display.py (around lines 490-560) with this:
+
 elif analysis_type == "StateCheck":
     # StateCheck data processing
     try:
@@ -663,7 +664,7 @@ elif analysis_type == "StateCheck":
         # Adapt StateCheck data to Session format
         adapted_data = statecheck_filtered.copy()
         
-        # Column mapping - INSIDE the try block
+        # Column mapping
         column_mapping = {
             "GoalZone": "GoalLevel",
             "GoalTime": "GoalTime",
@@ -693,15 +694,33 @@ elif analysis_type == "StateCheck":
         if 'GoalTime' in adapted_data.columns:
             adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
         
-        # Set as filtered data for chart logic
+        # Set as filtered data
         filtered = adapted_data
+        
+        # For StateCheck, show all fibonacci levels that exist in the data
+        available_levels = sorted(filtered['GoalLevel'].unique())
+        display_fib_levels = available_levels
+        
+        # Use standard time columns for StateCheck (no OPEN, TOTAL, REMAINING)
+        available_times = sorted(filtered['GoalTime'].unique())
+        display_columns = available_times
+        
+        # Create time_order to match display_columns
+        time_order = display_columns.copy()
+        
+        # StateCheck chart dimensions - wide for horizontal scroll
+        chart_height = 600
+        chart_width = 3200  # Very wide for horizontal scroll
+        font_size_multiplier = 1.2
+        use_container_width = False  # Critical for horizontal scroll
+        
+        st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
+        st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
         
         # Create compatibility variables for chart building
         price_direction = f"Zone Transitions from {trigger_zone}"
-        trigger_level = 0.0
         
-        st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
-
+        # BUILD THE CHART using shared function
         fig = create_statecheck_matrix(
             filtered_data=filtered,
             display_fib_levels=display_fib_levels,
@@ -709,62 +728,35 @@ elif analysis_type == "StateCheck":
             time_order=time_order,
             trigger_zone=trigger_zone,
             price_direction=price_direction,
-            ticker_name=ticker_config[selected_ticker]['display_name']
+            ticker_name=ticker_config[selected_ticker]['display_name'],
+            text_offset=0.03,
+            font_size_multiplier=font_size_multiplier
         )
         
+        # Display the chart
+        st.plotly_chart(fig, use_container_width=use_container_width)
         
-        if analysis_type == "StateCheck":
-    # For StateCheck, show all fibonacci levels that exist in the data
-            available_levels = sorted(filtered['GoalLevel'].unique())
-            display_fib_levels = available_levels
-    
-    # Use standard time columns for StateCheck (no OPEN, TOTAL, REMAINING)
-            available_times = sorted(filtered['GoalTime'].unique())
-            display_columns = available_times
-    
-    # Make it REALLY wide for readability with horizontal scroll
-            chart_height = 600  # Keep height manageable
-            chart_width = 3200  # Very wide - about 80px per time column
-            font_size_multiplier = 1.2  # Slightly larger font for readability
-            use_container_width = False  # Use fixed width to enable scroll
-
-           
-    
-    # Create time_order to match display_columns
-            time_order = display_columns.copy()
-    
-            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
-          
-    
-            
-        # DEBUG: Check what we have for chart building
-       
-
-    
-
-    # Check if we have the key columns chart expects
-            expected_cols = ['GoalLevel', 'GoalTime', 'NumHits', 'NumTriggers', 'PctCompletion']
-            missing_cols = [col for col in expected_cols if col not in filtered.columns]
-    
-            if missing_cols:
-                st.error(f"Missing columns: {missing_cols}")
-            else:
-                st.success("✅ All required columns present")
+        # Add color legend for StateCheck
+        st.markdown("""
+        **🎨 StateCheck Color Legend:**
+        - 🟢 **Bright Green** (≥50%): Very High Probability
+        - 🌟 **Light Green** (30-49%): High Probability  
+        - 🟡 **Yellow** (20-29%): Medium-High Probability
+        - 🟠 **Orange** (10-19%): Medium Probability
+        - 🔶 **Light Red** (5-9%): Low Probability
+        - ⚫ **Gray** (<5%): Very Low Probability
+        """)
         
-        # Check data types
-                st.write("**Data types:**")
-                for col in expected_cols:
-                    st.write(f"{col}: {filtered[col].dtype} | Sample: {filtered[col].iloc[0]}")
-
-# Check what the chart building variables are set to
-        st.write("**Chart building variables:**")
-        st.write(f"price_direction: {price_direction}")
-        st.write(f"trigger_level: {trigger_level}")
-        st.write(f"analysis_type: {analysis_type}")
+        # Skip all the remaining chart building logic
+        st.stop()
         
     except Exception as e:
         st.error(f"Error loading StateCheck data: {str(e)}")
         st.stop()
+
+# Continue with other analysis types...    
+
+     
 
 elif analysis_type == "Rolling":
     # Rolling data processing (placeholder for now)
