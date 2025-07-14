@@ -484,7 +484,7 @@ if analysis_type == "StateCheck":
             trigger_zone=trigger_zone,
             price_direction=price_direction,
             ticker_name=ticker_config[selected_ticker]['display_name'],
-            text_offset=0.03,
+            text_offset=0.01,
             font_size_multiplier=font_size_multiplier,
             price_levels_dict=price_levels_dict
         )
