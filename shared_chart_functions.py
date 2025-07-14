@@ -334,7 +334,7 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
     )
     
     # Return both figure and container setting
-    return fig, use_container_width_setting, use_container_width
+    return fig, use_container_width_setting
     
     return fig
 
