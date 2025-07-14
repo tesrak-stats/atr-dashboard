@@ -128,7 +128,7 @@ Make sure plotly.graph_objects as go and pandas as pd are imported at the top
 
 def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns, time_order, 
                              trigger_zone, price_direction, ticker_name, 
-                             text_offset=0.03, font_size_multiplier=1.2, price_levels_dict=None):
+                             text_offset=0.01, font_size_multiplier=1.2, price_levels_dict=None):
     """
     Create StateCheck transition probability matrix with full features
     """
@@ -328,7 +328,7 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
         font=dict(color="white", size=12 * font_size_multiplier),
         height=600,
         width=chart_width,  # Dynamic width or None for container
-        margin=dict(l=60, r=150, t=60, b=80),  # Restored right margin for price levels
+        margin=dict(l=40, r=150, t=60, b=100),  # Restored right margin for price levels
         showlegend=False,
         autosize=use_container_width_setting
     )
