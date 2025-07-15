@@ -240,10 +240,7 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
                     text_color = "gray"
                 
                 # Text formatting
-                if pct >= 10:
-                    display_text = f"{pct:.0f}%"
-                else:
-                    display_text = f"{pct:.1f}%"
+                display_text = f"{pct:.0f}%"
                 
                 # Hover text
                 warn = " ⚠️" if triggers < 30 else ""
