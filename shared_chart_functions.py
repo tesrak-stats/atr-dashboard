@@ -293,6 +293,17 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
     # Use container width for smaller charts, fixed width for large ones
     use_container_width_setting = calculated_width <= 1200
     chart_width = None if calculated_width <= 1200 else calculated_width
+
+    # Add this after the matrix cells are created, before the layout update
+    # Add light gray vertical lines every hour for visual separation
+    for i, time_col in enumerate(display_columns):
+        # Add vertical line at every hour (times ending in 00)
+        if time_col.endswith('00'):  # 1000, 1100, 1200, etc.
+            fig.add_vline(
+                x=i,  # Use the index position
+                line=dict(color="gray", width=0.5, dash="dot"),
+                layer="below"
+            )                             
     
     fig.update_layout(
         title=f"{ticker_name} | {price_direction}",
