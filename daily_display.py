@@ -496,7 +496,9 @@ if analysis_type == "StateCheck":
             st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
         
         # Display the chart
-        st.plotly_chart(fig, use_container_width=chart_use_container_width)
+        st.markdown('<div style="width: 3200px; overflow-x: auto;">', unsafe_allow_html=True)
+        st.plotly_chart(fig, use_container_width=False)
+        st.markdown('</div>', unsafe_allow_html=True)       
         
         # Add color legend
         st.markdown("""
