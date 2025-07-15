@@ -327,10 +327,10 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
         paper_bgcolor="black",
         font=dict(color="white", size=12 * font_size_multiplier),
         height=600,
-        width=chart_width,  # Dynamic width or None for container
-        margin=dict(l=40, r=150, t=60, b=100),  # Restored right margin for price levels
+        width=3200,  # Dynamic width or None for container
+        margin=dict(l=20, r=150, t=60, b=100),  # Restored right margin for price levels
         showlegend=False,
-        autosize=use_container_width_setting
+        autosize=False
     )
     
     # Return both figure and container setting
