@@ -301,7 +301,7 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
         title=f"{ticker_name} | {price_direction}",
         xaxis=dict(
             title="Transition Time (Eastern Time)",
-            type="linear"
+            type="linear",
             categoryorder="array",
             categoryarray=display_columns,
             tickmode="array",
