@@ -17,6 +17,7 @@ from shared_chart_functions import (
     get_rolling_8_hours,
     get_total_probability
 )
+st.set_page_config(layout="wide")
 
 # --- Ticker Configuration ---
 ticker_groups = {
