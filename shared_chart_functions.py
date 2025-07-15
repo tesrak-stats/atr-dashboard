@@ -175,22 +175,22 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
     )
 
      # Add price level annotations on the right side
-    if price_levels_dict:
-        for level in display_fib_levels:
-            level_key = f"{level:+.3f}"
-            price_val = price_levels_dict.get(level_key, 0)
-            
-            fig.add_annotation(
-                text=f"{price_val:.2f}",
-                x=len(display_columns) + 0.5,
-                y=display_fib_levels.index(level) + text_offset,
-                xref="x",
-                yref="y", 
-                showarrow=False,
-                font=dict(color="white", size=14),
-                xanchor="left",
-                yanchor="middle"
-            )                             
+#    if price_levels_dict:
+#       for level in display_fib_levels:
+#            level_key = f"{level:+.3f}"
+#            price_val = price_levels_dict.get(level_key, 0)
+#            
+#            fig.add_annotation(
+#                text=f"{price_val:.2f}",
+#                x=len(display_columns) + 0.5,
+#                y=display_fib_levels.index(level) + text_offset,
+#                xref="x",
+#                yref="y", 
+#                showarrow=False,
+#                font=dict(color="white", size=14),
+#                xanchor="left",
+#                yanchor="middle"
+#            )                             
     # Add "Price Level" title above right side
     fig.add_annotation(
         text="Price Level", 
