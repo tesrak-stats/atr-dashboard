@@ -182,7 +182,7 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
             
             fig.add_annotation(
                 text=f"{price_val:.2f}",
-                x=len(display_columns) + 0.5,
+                x=len(display_columns) + 2.0,
                 y=level + text_offset,
                 xref="x",
                 yref="y", 
