@@ -211,7 +211,23 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
                 type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
                 line=dict(color=color, width=width), layer="below"
             )
-    
+            
+    if price_levels_dict:
+    for level in display_fib_levels:
+        level_key = f"{level:+.3f}"
+        price_val = price_levels_dict.get(level_key, 0)
+        
+        fig.add_annotation(
+            text=f"{price_val:.2f}",
+            x=len(display_columns) + 0.5,  # Position to the right of all columns
+            y=display_fib_levels.index(level) + text_offset,  # Use numeric position
+            xref="x",
+            yref="y", 
+            showarrow=False,
+            font=dict(color="white", size=14),
+            xanchor="left",
+            yanchor="middle"
+        )
     # Add matrix cells with color coding
     for level in display_fib_levels:
         for t in time_order:
