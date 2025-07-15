@@ -250,7 +250,7 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
                 hover = f"{pct:.1f}% ({hits}/{triggers}){warn}"
                 
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],
+                    x=[display_columns.index(t)], y=[level + text_offset],
                     mode="text", text=[display_text],
                     textfont=dict(color=text_color, size=12 * font_size_multiplier),
                     showlegend=False,
