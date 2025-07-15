@@ -301,10 +301,11 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
         title=f"{ticker_name} | {price_direction}",
         xaxis=dict(
             title="Transition Time (Eastern Time)",
+            type="linear"
             categoryorder="array",
             categoryarray=display_columns,
             tickmode="array",
-            tickvals=display_columns,
+            tickvals=list(range(len(display_columns))),
             ticktext=display_columns,
             tickfont=dict(color="white", size=10 * font_size_multiplier),
             tickangle=45 if len(display_columns) > 10 else 0,
