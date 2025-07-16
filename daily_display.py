@@ -193,6 +193,27 @@ else:
     st.write(f"**Analysis**: {analysis_type} | **Trigger**: {price_direction} {trigger_level} at {trigger_time}")
 
 # --- Utility Functions ---
+def aggregate_statecheck_to_hourly(detailed_df):
+    """Aggregate 10-minute StateCheck data to hourly buckets"""
+    hourly_data = detailed_df.copy()
+    
+    # Bucket goal times to hours (0940 → 0900, 1023 → 1000, etc.)
+    hourly_data['GoalTime'] = hourly_data['GoalTime'].apply(lambda x: int(int(x) / 100) * 100)
+    
+    # Convert back to string format
+    hourly_data['GoalTime'] = hourly_data['GoalTime'].astype(str).str.zfill(4)
+    
+    # Group by trigger conditions and hourly goal time, then aggregate
+    aggregated = hourly_data.groupby(['TriggerZone', 'TriggerTime', 'GoalLevel', 'GoalTime']).agg({
+        'NumHits': 'sum',
+        'NumTriggers': 'first',  # Should be same for all rows in group
+    }).reset_index()
+    
+    # Recalculate percentage
+    aggregated['PctCompletion'] = (aggregated['NumHits'] / aggregated['NumTriggers'] * 100).round(1)
+    
+    return aggregated
+
 def get_current_market_time():
     """Get current Eastern Time and determine market time slot"""
     if USE_ZONEINFO:
@@ -464,11 +485,21 @@ if analysis_type == "StateCheck":
         
         # Set data for chart building
         filtered = adapted_data
+        # Apply hourly bucketing based on expanded view setting
+        if not show_expanded_view:
+    # Aggregate to hourly buckets for mobile-friendly view
+            filtered = aggregate_statecheck_to_hourly(filtered)
+            display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} hourly periods × {len(display_fib_levels)} levels")
+        else:
+    # Use detailed 10-minute data
+            available_times = sorted(filtered['GoalTime'].unique())
+            display_columns = available_times
+            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
         available_levels = sorted(filtered['GoalLevel'].unique())
         display_fib_levels = available_levels
         available_times = sorted(filtered['GoalTime'].unique())
-        display_columns = available_times
-        time_order = display_columns.copy()
+        ime_order = display_columns.copy()
         
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
         
