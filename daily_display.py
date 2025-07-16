@@ -197,19 +197,18 @@ def aggregate_statecheck_to_hourly(detailed_df):
     """Aggregate 10-minute StateCheck data to hourly buckets"""
     hourly_data = detailed_df.copy()
     
-    # Bucket goal times to hours (0940 → 0900, 1023 → 1000, etc.)
+    # Bucket goal times to hours
     hourly_data['GoalTime'] = hourly_data['GoalTime'].apply(lambda x: int(int(x) / 100) * 100)
-    
-    # Convert back to string format
     hourly_data['GoalTime'] = hourly_data['GoalTime'].astype(str).str.zfill(4)
     
-    # Group by trigger conditions and hourly goal time, then aggregate
+    # Group and sum the RAW COUNTS, not percentages
     aggregated = hourly_data.groupby(['TriggerZone', 'TriggerTime', 'GoalLevel', 'GoalTime']).agg({
-        'NumHits': 'sum',
-        'NumTriggers': 'first',  # Should be same for all rows in group
+        'NumHits': 'sum',        # Add up all the hits
+        'NumTriggers': 'first',  # Triggers should be same for all
+        # Remove this line: 'PctCompletion': 'sum'  # DON'T sum percentages!
     }).reset_index()
     
-    # Recalculate percentage
+    # Calculate percentage AFTER aggregation
     aggregated['PctCompletion'] = (aggregated['NumHits'] / aggregated['NumTriggers'] * 100).round(1)
     
     return aggregated
