@@ -499,7 +499,7 @@ if analysis_type == "StateCheck":
             display_columns = available_times
             st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
         available_levels = sorted(filtered['GoalLevel'].unique())
-        ime_order = display_columns.copy()
+        time_order = display_columns.copy()
         
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
         
