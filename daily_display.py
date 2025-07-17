@@ -480,13 +480,14 @@ if analysis_type == "StateCheck":
         }
 
         #DEBUG
-        print("Available zones in data:", sorted(filtered['GoalLevel'].unique()))
+        print("Available zones in data:", sorted(statecheck_filtered['GoalZone'].unique()))
         print("Mapping applied:", goal_zone_to_fib)
 
         
 
         if 'GoalLevel' in adapted_data.columns:
             adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
+            #Debug    
             print("After mapping:", sorted(adapted_data['GoalLevel'].unique()))
         if 'GoalTime' in adapted_data.columns:
             adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
