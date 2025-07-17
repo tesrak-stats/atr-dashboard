@@ -478,10 +478,16 @@ if analysis_type == "StateCheck":
             "-0.5_to_-0.382": -0.5, "-0.618_to_-0.5": -0.618, "-0.786_to_-0.618": -0.786,
             "-1.0_to_-0.786": -1.0, "below_-1.0": -1.05  # CHANGED: -1.1 → -1.0
         }
+
+        #DEBUG
+        print("Available zones in data:", sorted(filtered['GoalLevel'].unique()))
+        print("Mapping applied:", goal_zone_to_fib)
+
         
+
         if 'GoalLevel' in adapted_data.columns:
             adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
-        
+            print("After mapping:", sorted(adapted_data['GoalLevel'].unique()))
         if 'GoalTime' in adapted_data.columns:
             adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
         
