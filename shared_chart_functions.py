@@ -180,6 +180,10 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
         for level in display_fib_levels:
             level_key = f"{level:+.3f}"
             price_val = price_levels_dict.get(level_key, 0)
+
+            # Skip artificial levels (not in standard fib_levels)
+            if level not in fib_levels:
+                continue
             
             fig.add_annotation(
                 text=f"{price_val:.2f}",
