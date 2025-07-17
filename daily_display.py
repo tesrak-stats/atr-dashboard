@@ -431,8 +431,8 @@ if analysis_type == "StateCheck":
         statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"
         statecheck_df = pd.read_csv(statecheck_file)
         #Debug
-        print(f"Original CSV zones: {len(statecheck_df['GoalZone'].unique())}")
-        print(f"Zones: {sorted(statecheck_df['GoalZone'].unique())}")
+        st.write(f"Original CSV zones: {len(statecheck_df['GoalZone'].unique())}")
+        st.write(f"Zones: {sorted(statecheck_df['GoalZone'].unique())}")
         st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
         
         # Zone mapping
@@ -455,8 +455,8 @@ if analysis_type == "StateCheck":
             (statecheck_df["TriggerTime"] == trigger_time_int)
         ].copy()
         #Debug
-        print(f"After trigger filter: {len(statecheck_filtered['GoalZone'].unique())}")
-        print(f"Zones: {sorted(statecheck_filtered['GoalZone'].unique())}")
+        st.write(f"After trigger filter: {len(statecheck_filtered['GoalZone'].unique())}")
+        st.write(f"Zones: {sorted(statecheck_filtered['GoalZone'].unique())}")
         
         if len(statecheck_filtered) == 0:
             st.warning(f"No StateCheck data found for {trigger_zone} at {trigger_time}")
@@ -492,8 +492,8 @@ if analysis_type == "StateCheck":
         # Set data for chart building
         filtered = adapted_data
         #Debug
-        print(f"After zone mapping: {len(filtered['GoalLevel'].unique())}")
-        print(f"Fib levels: {sorted(filtered['GoalLevel'].unique())}")
+        st.write(f"After zone mapping: {len(filtered['GoalLevel'].unique())}")
+        st.write(f"Fib levels: {sorted(filtered['GoalLevel'].unique())}")
         available_levels = sorted(filtered['GoalLevel'].unique())
         display_fib_levels = available_levels
         # Apply hourly bucketing based on expanded view setting
@@ -501,7 +501,7 @@ if analysis_type == "StateCheck":
     # Aggregate to hourly buckets for mobile-friendly view
             filtered = aggregate_statecheck_to_hourly(filtered)
             #DEBUG
-            print(f"After hourly aggregation: {len(filtered['GoalLevel'].unique())}")
+            st.write(f"After hourly aggregation: {len(filtered['GoalLevel'].unique())}")
             display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
             st.info(f"📊 **StateCheck Chart**: {len(display_columns)} hourly periods × {len(display_fib_levels)} levels")
         else:
