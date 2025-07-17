@@ -490,7 +490,7 @@ if analysis_type == "StateCheck":
         
         available_levels = sorted([lvl for lvl in filtered['GoalLevel'].unique() if lvl in fib_levels])
 
-        display_fib_levels = sorted([lvl for lvl in available_levels if lvl in fib_levels])
+        display_fib_levels = sorted(available_levels)  # Keep ALL levels for chart data
         # Apply hourly bucketing based on expanded view setting
         if not show_expanded_view:
     # Aggregate to hourly buckets for mobile-friendly view
