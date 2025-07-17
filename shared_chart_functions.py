@@ -132,7 +132,8 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
     """
     Create StateCheck transition probability matrix with full features
     """
-    
+    fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+                                 
     # Create data lookup from filtered data
     data_lookup = {}
     for _, row in filtered_data.iterrows():
