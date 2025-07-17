@@ -204,7 +204,7 @@ def aggregate_statecheck_to_hourly(detailed_df):
     # Group and sum the RAW COUNTS, not percentages
     aggregated = hourly_data.groupby(['TriggerZone', 'TriggerTime', 'GoalLevel', 'GoalTime']).agg({
         'NumHits': 'sum',        # Add up all the hits
-        'NumTriggers': 'first',  # Triggers should be same for all
+        'NumTriggers': 'sum',  # Triggers should be same for all
         # Remove this line: 'PctCompletion': 'sum'  # DON'T sum percentages!
     }).reset_index()
     
