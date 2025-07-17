@@ -345,8 +345,8 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
             categoryorder="array",
             categoryarray=display_fib_levels,
             tickmode="array",
-            tickvals=display_fib_levels,
-            ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
+            tickvals=[lvl for lvl in display_fib_levels if lvl in fib_levels],  # Filter axis labels
+            ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels if lvl in fib_levels],  # Filter axis labels
             tickfont=dict(color="white", size=12 * font_size_multiplier),
             side="left",
             fixedrange=True,
