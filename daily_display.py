@@ -488,11 +488,10 @@ if analysis_type == "StateCheck":
         
         # Set data for chart building
         filtered = adapted_data
-        #Debug
         
-        
+        available_levels = sorted([lvl for lvl in filtered['GoalLevel'].unique() if lvl in fib_levels])
 
-        display_fib_levels = available_levels
+        display_fib_levels = sorted([lvl for lvl in available_levels if lvl in fib_levels])
         # Apply hourly bucketing based on expanded view setting
         if not show_expanded_view:
     # Aggregate to hourly buckets for mobile-friendly view
@@ -509,7 +508,7 @@ if analysis_type == "StateCheck":
         
             
             time_order = display_columns.copy()
-            available_levels = sorted([lvl for lvl in filtered['GoalLevel'].unique() if lvl in fib_levels])
+            
         
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
         
