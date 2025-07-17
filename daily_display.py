@@ -534,9 +534,9 @@ if analysis_type == "StateCheck":
         )
         
         # Dynamic info message
-        if chart_use_container_width:
+        #if chart_use_container_width:
             #st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels")
-        else:
+        #else:
             #st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
         
         # Display the chart
