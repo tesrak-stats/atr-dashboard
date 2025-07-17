@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -507,7 +506,7 @@ if analysis_type == "StateCheck":
             st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
         
             
-            time_order = display_columns.copy()
+        time_order = display_columns.copy()
             
         
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
