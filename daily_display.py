@@ -479,16 +479,11 @@ if analysis_type == "StateCheck":
             "-1.0_to_-0.786": -1.0, "below_-1.0": -1.15  # CHANGED: -1.1 → -1.0
         }
 
-        #DEBUG
-        st.write("Available zones in data:", sorted(statecheck_filtered['GoalZone'].unique()))
-        st.write("Mapping applied:", goal_zone_to_fib)
-
-        
+           
 
         if 'GoalLevel' in adapted_data.columns:
             adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
-            #Debug    
-            st.write("After mapping:", sorted(adapted_data['GoalLevel'].unique()))
+           
         if 'GoalTime' in adapted_data.columns:
             adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
         
@@ -502,7 +497,7 @@ if analysis_type == "StateCheck":
         if not show_expanded_view:
     # Aggregate to hourly buckets for mobile-friendly view
             filtered = aggregate_statecheck_to_hourly(filtered)
-            #DEBUG
+           
             
             display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
             st.info(f"📊 **StateCheck Chart**: {len(display_columns)} hourly periods × {len(display_fib_levels)} levels")
@@ -522,8 +517,7 @@ if analysis_type == "StateCheck":
         price_direction = f"Zone Transitions from {trigger_zone}"
         font_size_multiplier = 1.2
 
-        #debug
-        st.write("Final display_fib_levels passed to chart:", sorted(display_fib_levels))
+      
         
         # BUILD THE CHART using shared function
         fig, chart_use_container_width = create_statecheck_matrix(
