@@ -509,7 +509,7 @@ if analysis_type == "StateCheck":
         
             
             time_order = display_columns.copy()
-            available_levels = sorted([lvl for lvl in filtered['GoalLevel'].unique() if lvl in fib_levels]
+            available_levels = sorted([lvl for lvl in filtered['GoalLevel'].unique() if lvl in fib_levels])
         
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
         
