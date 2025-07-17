@@ -431,7 +431,6 @@ if analysis_type == "StateCheck":
         statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"
         statecheck_df = pd.read_csv(statecheck_file)
         #Debug
-        statecheck_df = pd.read_csv(statecheck_file)
         print(f"Original CSV zones: {len(statecheck_df['GoalZone'].unique())}")
         print(f"Zones: {sorted(statecheck_df['GoalZone'].unique())}")
         st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
