@@ -96,7 +96,7 @@ if not selected_ticker_display.startswith("---"):
                 instrument_category = group_name.split(" ", 1)[1]
                 break
         
-        st.success(f"✅ Selected: {selected_ticker_display} ({instrument_category})")
+        #st.success(f"✅ Selected: {selected_ticker_display} ({instrument_category})")
     else:
         st.error("❌ This ticker is not yet available")
         st.stop()
@@ -361,7 +361,7 @@ current_et_time, current_market_slot = get_current_market_time()
 
 try:
     df = pd.read_csv(ticker_config[selected_ticker]["summary_file"])
-    st.success(f"✅ Loaded data for {ticker_config[selected_ticker]['display_name']}")
+    #st.success(f"✅ Loaded data for {ticker_config[selected_ticker]['display_name']}")
 except FileNotFoundError:
     st.error(f"❌ Data file not found for {selected_ticker}: {ticker_config[selected_ticker]['summary_file']}")
     st.stop()
@@ -423,7 +423,7 @@ with col2_ui:
 
 if make_default:
     st.session_state.expanded_view_pref = show_expanded_view
-    st.success("✅ Session default updated!")
+    #st.success("✅ Session default updated!")
 
 # --- Analysis-Specific Processing ---
 if analysis_type == "StateCheck":
@@ -431,7 +431,7 @@ if analysis_type == "StateCheck":
         statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"
         statecheck_df = pd.read_csv(statecheck_file)
        
-        st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
+        #st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
         
         # Zone mapping
         zone_mapping = {
@@ -500,18 +500,18 @@ if analysis_type == "StateCheck":
            
             
             display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
-            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} hourly periods × {len(display_fib_levels)} levels")
+            #st.info(f"📊 **StateCheck Chart**: {len(display_columns)} hourly periods × {len(display_fib_levels)} levels")
         else:
     # Use detailed 10-minute data
             available_times = sorted(filtered['GoalTime'].unique())
             display_columns = available_times
-            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
+            #st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
         
             
         time_order = display_columns.copy()
             
         
-        st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
+        #st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
         
         # Create compatibility variables
         price_direction = f"Zone Transitions from {trigger_zone}"
@@ -535,9 +535,9 @@ if analysis_type == "StateCheck":
         
         # Dynamic info message
         if chart_use_container_width:
-            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels")
+            #st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels")
         else:
-            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
+            #st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
         
         # Display the chart
         st.markdown('<div style="width: 3200px; overflow-x: auto;">', unsafe_allow_html=True)
