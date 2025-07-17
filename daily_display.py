@@ -521,6 +521,9 @@ if analysis_type == "StateCheck":
         # Create compatibility variables
         price_direction = f"Zone Transitions from {trigger_zone}"
         font_size_multiplier = 1.2
+
+        #debug
+        st.write("Final display_fib_levels passed to chart:", sorted(display_fib_levels))
         
         # BUILD THE CHART using shared function
         fig, chart_use_container_width = create_statecheck_matrix(
