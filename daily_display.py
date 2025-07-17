@@ -490,7 +490,7 @@ if analysis_type == "StateCheck":
         filtered = adapted_data
         #Debug
         
-        available_levels = sorted([lvl for lvl in filtered['GoalLevel'].unique() if lvl in fib_levels])
+        
 
         display_fib_levels = available_levels
         # Apply hourly bucketing based on expanded view setting
