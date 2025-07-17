@@ -430,9 +430,6 @@ if analysis_type == "StateCheck":
     try:
         statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"
         statecheck_df = pd.read_csv(statecheck_file)
-        #Debug
-        st.write(f"Original CSV zones: {len(statecheck_df['GoalZone'].unique())}")
-        st.write(f"Zones: {sorted(statecheck_df['GoalZone'].unique())}")
         st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
         
         # Zone mapping
@@ -454,9 +451,6 @@ if analysis_type == "StateCheck":
             (statecheck_df["TriggerZone"] == trigger_zone_key) &
             (statecheck_df["TriggerTime"] == trigger_time_int)
         ].copy()
-        #Debug
-        st.write(f"After trigger filter: {len(statecheck_filtered['GoalZone'].unique())}")
-        st.write(f"Zones: {sorted(statecheck_filtered['GoalZone'].unique())}")
         
         if len(statecheck_filtered) == 0:
             st.warning(f"No StateCheck data found for {trigger_zone} at {trigger_time}")
@@ -475,12 +469,13 @@ if analysis_type == "StateCheck":
                 adapted_data = adapted_data.rename(columns={old_col: new_col})
         
         # Convert goal zone strings to fibonacci levels
+        # CHANGED: Use 1.0 and -1.0 instead of 1.1 and -1.1
         goal_zone_to_fib = {
-            "above_1.0": 1.1, "0.786_to_1.0": 0.786, "0.618_to_0.786": 0.618,
+            "above_1.0": 1.0, "0.786_to_1.0": 0.786, "0.618_to_0.786": 0.618,
             "0.5_to_0.618": 0.5, "0.382_to_0.5": 0.382, "0.236_to_0.382": 0.236,
             "0.0_to_0.236": 0.0, "-0.236_to_0.0": -0.236, "-0.382_to_-0.236": -0.382,
             "-0.5_to_-0.382": -0.5, "-0.618_to_-0.5": -0.618, "-0.786_to_-0.618": -0.786,
-            "-1.0_to_-0.786": -1.0, "below_-1.0": -1.1
+            "-1.0_to_-0.786": -1.0, "below_-1.0": -1.0  # CHANGED: Both map to -1.0
         }
         
         if 'GoalLevel' in adapted_data.columns:
@@ -491,25 +486,23 @@ if analysis_type == "StateCheck":
         
         # Set data for chart building
         filtered = adapted_data
-        #Debug
-        st.write(f"After zone mapping: {len(filtered['GoalLevel'].unique())}")
-        st.write(f"Fib levels: {sorted(filtered['GoalLevel'].unique())}")
-        available_levels = sorted(filtered['GoalLevel'].unique())
+        
+        # CHANGED: Filter out any artificial levels and get unique levels for display
+        available_levels = sorted([lvl for lvl in filtered['GoalLevel'].unique() if lvl in fib_levels])
         display_fib_levels = available_levels
+        
         # Apply hourly bucketing based on expanded view setting
         if not show_expanded_view:
-    # Aggregate to hourly buckets for mobile-friendly view
+            # Aggregate to hourly buckets for mobile-friendly view
             filtered = aggregate_statecheck_to_hourly(filtered)
-            #DEBUG
-            st.write(f"After hourly aggregation: {len(filtered['GoalLevel'].unique())}")
             display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
             st.info(f"📊 **StateCheck Chart**: {len(display_columns)} hourly periods × {len(display_fib_levels)} levels")
         else:
-    # Use detailed 10-minute data
+            # Use detailed 10-minute data
             available_times = sorted(filtered['GoalTime'].unique())
             display_columns = available_times
             st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
-        available_levels = sorted(filtered['GoalLevel'].unique())
+        
         time_order = display_columns.copy()
         
         st.success(f"✅ StateCheck data adapted: {len(filtered)} records")
@@ -532,30 +525,7 @@ if analysis_type == "StateCheck":
             price_levels_dict=price_levels_dict
         )
         
-        # Dynamic info message
-        if chart_use_container_width:
-            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels")
-        else:
-            st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
-        
-        # Display the chart
-        st.markdown('<div style="width: 3200px; overflow-x: auto;">', unsafe_allow_html=True)
-        st.plotly_chart(fig, use_container_width=False)
-        st.markdown('</div>', unsafe_allow_html=True)       
-        
-        # Add color legend
-        st.markdown("""
-        **🎨 StateCheck Color Legend:**
-        - 🟢 **Bright Green** (≥50%): Very High Probability
-        - 🌟 **Light Green** (30-49%): High Probability  
-        - 🟡 **Yellow** (20-29%): Medium-High Probability
-        - 🟠 **Orange** (10-19%): Medium Probability
-        - 🔶 **Light Red** (5-9%): Low Probability
-        - ⚫ **Gray** (<5%): Very Low Probability
-        """)
-        
-        # Skip remaining chart building
-        st.stop()
+        # Display chart and continue with existing code...
         
     except Exception as e:
         st.error(f"Error loading StateCheck data: {str(e)}")
