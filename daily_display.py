@@ -213,24 +213,7 @@ def aggregate_statecheck_to_hourly(detailed_df):
     
     return aggregated
 
-def aggregate_zonebaseline_to_hourly(detailed_df):
-    """Aggregate 10-minute ZoneBaseline data to hourly buckets"""
-    hourly_data = detailed_df.copy()
-    
-    # Bucket time periods to hours
-    hourly_data['GoalTime'] = hourly_data['GoalTime'].apply(lambda x: int(int(x) / 100) * 100)
-    hourly_data['GoalTime'] = hourly_data['GoalTime'].astype(str).str.zfill(4)
-    
-    # Group and sum the RAW COUNTS
-    aggregated = hourly_data.groupby(['GoalLevel', 'GoalTime']).agg({
-        'NumHits': 'sum',        # Add up all the hits
-        'NumTriggers': 'first',  # Triggers should be same for all
-    }).reset_index()
-    
-    # Calculate percentage AFTER aggregation
-    aggregated['PctCompletion'] = (aggregated['NumHits'] / aggregated['NumTriggers'] * 100).round(1)
-    
-    return aggregated
+
     
 def get_current_market_time():
     """Get current Eastern Time and determine market time slot"""
@@ -636,13 +619,23 @@ elif analysis_type == "ZoneBaseline":
         
         # Display configuration based on expanded view
         if show_expanded_view:
-            # Use detailed 10-minute data
+    # Use detailed 10-minute data
+            zonebaseline_file = f"zonebaseline_detailed_{selected_ticker}_20250710_063924.csv"
+            zonebaseline_df = pd.read_csv(zonebaseline_file)
+    # ... existing detailed data processing ...
             available_times = sorted(filtered['GoalTime'].unique())
             display_columns = available_times
         else:
-            # Use hourly buckets
-            filtered = aggregate_zonebaseline_to_hourly(filtered)
-            display_columns = ["0930", "1000", "1100", "1200", "1300", "1400", "1500", "1600"]
+    # Use pre-aggregated hourly data
+            zonebaseline_file = f"zonebaseline_hourly_{selected_ticker}_20250718_061442.csv"
+            zonebaseline_df = pd.read_csv(zonebaseline_file)
+    # Process hourly data with updated column mapping
+            column_mapping = {
+                "Zone": "GoalLevel", "TimeHourly": "GoalTime", "Percentage": "PctCompletion"
+            }
+    # ... process the hourly data ...
+            display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+
         
         display_fib_levels = available_levels
         time_order = display_columns.copy()
