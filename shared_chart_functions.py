@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import pandas as pd
 
 
-ef create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_columns, time_order, 
+def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_columns, time_order, 
                                ticker_name, text_offset=0.03, font_size_multiplier=1.0, price_levels_dict=None):
     """
     Create static zone probability heatmap for ZoneBaseline analysis
