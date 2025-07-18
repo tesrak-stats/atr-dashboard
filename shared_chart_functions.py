@@ -45,19 +45,19 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         heatmap_data.append(row_data)
         hover_data.append(row_hover)
     
-    # Create custom colorscale that matches our legend
+    # Create custom colorscale that matches our legend - adjusted for zone occupancy
     custom_colorscale = [
-        [0.0, '#2D2D2D'],      # Gray for 0-5%
-        [0.05, '#2D2D2D'],     # Gray
-        [0.05, '#FF6B6B'],     # Light Red for 5-9%
-        [0.09, '#FF6B6B'],     # Light Red
-        [0.10, '#FFA500'],     # Orange for 10-14%
-        [0.14, '#FFA500'],     # Orange
-        [0.15, '#FFD700'],     # Yellow for 15-19%
-        [0.19, '#FFD700'],     # Yellow
-        [0.20, '#90EE90'],     # Light Green for 20-29%
-        [0.29, '#90EE90'],     # Light Green
-        [0.30, '#00FF00'],     # Bright Green for 30%+
+        [0.0, '#2D2D2D'],      # Gray for 0-2%
+        [0.02, '#2D2D2D'],     # Gray
+        [0.02, '#FF6B6B'],     # Light Red for 2-5%
+        [0.05, '#FF6B6B'],     # Light Red
+        [0.05, '#FFA500'],     # Orange for 5-10%
+        [0.10, '#FFA500'],     # Orange
+        [0.10, '#FFD700'],     # Yellow for 10-20%
+        [0.20, '#FFD700'],     # Yellow
+        [0.20, '#90EE90'],     # Light Green for 20-50%
+        [0.50, '#90EE90'],     # Light Green
+        [0.50, '#00FF00'],     # Bright Green for 50%+
         [1.0, '#00FF00']       # Bright Green
     ]
     
@@ -65,7 +65,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     fig = go.Figure(data=go.Heatmap(
         z=heatmap_data,
         x=display_columns,
-        y=[f"{lvl:+.3f}" for lvl in sorted_levels],
+        y=sorted_levels,  # Use actual fib levels, not formatted strings
         colorscale=custom_colorscale,
         showscale=True,
         colorbar=dict(title="Occupancy %"),
@@ -116,6 +116,8 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     )
     
     return fig, True
+
+
 def get_zone_probability(detailed_data, zone, time_period):
     """
     Extract probability for specific zone/time combination from detailed CSV
