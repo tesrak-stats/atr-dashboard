@@ -608,8 +608,7 @@ elif analysis_type == "ZoneBaseline":
         
         # Map column names based on actual CSV structure
         column_mapping = {
-            "Zone": "GoalLevel", "Time": "GoalTime", "Frequency": "NumHits",
-            "TotalObservations": "NumTriggers", "Percentage": "PctCompletion"
+             "Zone": "GoalLevel", "Time": "GoalTime", "Percentage": "PctCompletion"
         }
         
         for old_col, new_col in column_mapping.items():
