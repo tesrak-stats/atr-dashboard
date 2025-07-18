@@ -627,6 +627,11 @@ elif analysis_type == "ZoneBaseline":
         
         if 'GoalLevel' in adapted_data.columns:
             adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
+
+        # Add these debug lines:
+        st.write("Original zones in CSV:", sorted(zonebaseline_df['Zone'].unique()))
+        st.write("After fibonacci mapping:", sorted(adapted_data['GoalLevel'].unique()))
+        st.write("Available times:", sorted(adapted_data['GoalTime'].unique()))
         
         if 'GoalTime' in adapted_data.columns:
             adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
