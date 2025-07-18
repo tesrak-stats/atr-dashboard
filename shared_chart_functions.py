@@ -24,7 +24,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     # Filter out artificial levels for proper display
     fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
     display_levels = [lvl for lvl in display_fib_levels if lvl in fib_levels]
-    sorted_levels = sorted(display_levels, reverse=True)  # High to low
+    sorted_levels = sorted(display_levels, reverse=False)  # Changed: Low to high for proper display
     
     # Build matrix data for heatmap
     heatmap_data = []
@@ -116,7 +116,6 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     )
     
     return fig, True
-
 def get_zone_probability(detailed_data, zone, time_period):
     """
     Extract probability for specific zone/time combination from detailed CSV
