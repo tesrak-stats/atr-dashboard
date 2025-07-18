@@ -5,90 +5,136 @@ import plotly.graph_objects as go
 import pandas as pd
 
 
-def create_zonebaseline_heatmap(detailed_data, level_totals_data, ticker_name, font_size_multiplier=1.0):
+def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_columns, time_order, 
+                               ticker_name, text_offset=0.03, font_size_multiplier=1.0, price_levels_dict=None):
     """
     Create static zone probability heatmap for ZoneBaseline analysis
-    
-    Args:
-        detailed_data: DataFrame with detailed zone baseline data
-        level_totals_data: DataFrame with aggregated totals
-        ticker_name: Name of ticker for chart title
-        font_size_multiplier: Font scaling factor
-    
-    Returns:
-        Plotly figure object
     """
-    # Zone definitions (12 zones between fib levels)
-    zones = [
-        "Zone 1 (>+1.0)",
-        "Zone 2 (+0.786 to +1.0)",
-        "Zone 3 (+0.618 to +0.786)", 
-        "Zone 4 (+0.382 to +0.618)",
-        "Zone 5 (+0.236 to +0.382)",
-        "Zone 6 (0.0 to +0.236)",
-        "Zone 7 (-0.236 to 0.0)",
-        "Zone 8 (-0.382 to -0.236)",
-        "Zone 9 (-0.5 to -0.382)",
-        "Zone 10 (-0.618 to -0.5)",
-        "Zone 11 (-0.786 to -0.618)",
-        "Zone 12 (<-1.0)"
+    # Create data lookup
+    data_lookup = {}
+    for _, row in filtered_data.iterrows():
+        goal_time = str(row["GoalTime"])
+        key = (float(row["GoalLevel"]), goal_time)
+        data_lookup[key] = {
+            "pct": row["PctCompletion"],
+            "hits": row["NumHits"],
+            "triggers": row["NumTriggers"]
+        }
+    
+    # Filter out artificial levels for proper display
+    fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+    display_levels = [lvl for lvl in display_fib_levels if lvl in fib_levels]
+    sorted_levels = sorted(display_levels, reverse=False)  # Changed: Low to high for proper display
+    
+    # Build matrix data for heatmap
+    heatmap_data = []
+    hover_data = []
+    
+    for level in sorted_levels:
+        row_data = []
+        row_hover = []
+        for time_col in display_columns:
+            key = (float(level), time_col)
+            if key in data_lookup:
+                data = data_lookup[key]
+                row_data.append(data["pct"])
+                row_hover.append(f"Zone {level:+.3f}<br>Time: {time_col}<br>Occupancy: {data['pct']:.1f}%<br>({data['hits']}/{data['triggers']})")
+            else:
+                row_data.append(0)
+                row_hover.append(f"Zone {level:+.3f}<br>Time: {time_col}<br>No data")
+        heatmap_data.append(row_data)
+        hover_data.append(row_hover)
+    
+    # Create custom colorscale that matches our legend - adjusted for zone occupancy
+    custom_colorscale = [
+        [0.0, '#2D2D2D'],      # Gray for 0-2%
+        [0.02, '#2D2D2D'],     # Gray
+        [0.02, '#FF6B6B'],     # Light Red for 2-5%
+        [0.05, '#FF6B6B'],     # Light Red
+        [0.05, '#FFA500'],     # Orange for 5-10%
+        [0.10, '#FFA500'],     # Orange
+        [0.10, '#FFD700'],     # Yellow for 10-20%
+        [0.20, '#FFD700'],     # Yellow
+        [0.20, '#90EE90'],     # Light Green for 20-50%
+        [0.50, '#90EE90'],     # Light Green
+        [0.50, '#00FF00'],     # Bright Green for 50%+
+        [1.0, '#00FF00']       # Bright Green
     ]
     
-    # Time periods (granular 10-minute intervals)
-    time_periods = ["0930", "0940", "0950", "1000", "1010", "1020", "1030", "1040", "1050", 
-                   "1100", "1110", "1120", "1130", "1140", "1150", "1200", "1210", "1220", 
-                   "1230", "1240", "1250", "1300", "1310", "1320", "1330", "1340", "1350",
-                   "1400", "1410", "1420", "1430", "1440", "1450", "1500", "1510", "1520",
-                   "1530", "1540", "1550", "1600"]
-    
-    # Create data matrix for heatmap
-    heatmap_data = []
-    
-    # Process filtered data into heatmap format
-    for zone in zones:
-        zone_row = []
-        for time_period in time_periods:
-            # Look up probability for this zone/time combination
-            prob = get_zone_probability(filtered_data, zone, time_period)
-            zone_row.append(prob)
-        heatmap_data.append(zone_row)
-    
-    # Create heatmap
+    # Create heatmap with proper y-axis mapping (more transparent)
     fig = go.Figure(data=go.Heatmap(
         z=heatmap_data,
-        x=time_periods,
-        y=zones,
-        colorscale='RdYlBu_r',  # Red-Yellow-Blue reversed (red=high, blue=low)
+        x=display_columns,
+        y=list(range(len(sorted_levels))),  # Use indices 0, 1, 2, 3...
+        colorscale=custom_colorscale,
         showscale=True,
-        colorbar=dict(title="Probability %"),
-        hovertemplate='<b>%{y}</b><br>' +
-                      'Time: %{x}<br>' +
-                      'Probability: %{z:.1f}%' +
-                      '<extra></extra>'
+        colorbar=dict(title="Occupancy %"),
+        hovertemplate='%{customdata}<extra></extra>',
+        customdata=hover_data,
+        zmin=0,
+        zmax=100,
+        opacity=0.7  # Make heatmap more transparent
     ))
     
-    # Update layout
+    # Add text overlays to debug what data is actually being displayed
+    for level_idx, level in enumerate(sorted_levels):
+        for time_idx, time_col in enumerate(display_columns):
+            key = (float(level), time_col)
+            if key in data_lookup:
+                data = data_lookup[key]
+                pct = data["pct"]
+                
+                # Add text overlay
+                fig.add_trace(go.Scatter(
+                    x=[time_idx], y=[level_idx],
+                    mode="text", 
+                    text=[f"{pct:.1f}%"],
+                    textfont=dict(color="white", size=12, family="Arial Black"),
+                    showlegend=False,
+                    hoverinfo="skip"
+                ))
+    
+    # Add price level annotations on the right side
+    if price_levels_dict:
+        for i, level in enumerate(sorted_levels):
+            level_key = f"{level:+.3f}"
+            price_val = price_levels_dict.get(level_key, 0)
+            
+            fig.add_annotation(
+                text=f"${price_val:.2f}",
+                x=1.02,
+                y=i,
+                xref="paper",
+                yref="y",
+                showarrow=False,
+                font=dict(color="white", size=12),
+                xanchor="left",
+                yanchor="middle"
+            )
+    
     fig.update_layout(
-        title=f"{ticker_name} - Zone Occupancy Probability Heatmap",
+        title=f"{ticker_name} | Zone Occupancy Heatmap",
         xaxis=dict(
             title="Time (Eastern)",
-            tickmode="array",
-            tickvals=list(range(0, len(time_periods), 6)),  # Show every 6th time label
-            ticktext=[time_periods[i] for i in range(0, len(time_periods), 6)],
-            tickfont=dict(size=10 * font_size_multiplier)
+            tickfont=dict(color="white", size=10),
+            tickangle=45 if len(display_columns) > 15 else 0
         ),
         yaxis=dict(
-            title="Zones",
-            tickfont=dict(size=10 * font_size_multiplier)
+            title="Fibonacci Levels",
+            tickfont=dict(color="white", size=10),
+            tickmode='array',
+            tickvals=list(range(len(sorted_levels))),  # Position at 0, 1, 2, 3...
+            ticktext=[f"{lvl:+.3f}" if lvl in fib_levels else "" for lvl in sorted_levels]  # Show labels for standard fib levels only
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
-        font=dict(color="white", size=12 * font_size_multiplier),
+        font=dict(color="white", size=12),
         height=600,
-        width=1200
+        width=max(1000, len(display_columns) * 25),
+        margin=dict(l=80, r=120, t=60, b=100)
     )
     
-    return fig
+    return fig, True
 
 
 
