@@ -231,7 +231,7 @@ def aggregate_zonebaseline_to_hourly(detailed_df):
     aggregated['PctCompletion'] = (aggregated['NumHits'] / aggregated['NumTriggers'] * 100).round(1)
     
     return aggregated
-
+    
 def get_current_market_time():
     """Get current Eastern Time and determine market time slot"""
     if USE_ZONEINFO:
@@ -593,7 +593,7 @@ elif analysis_type == "ZoneBaseline":
         st.success(f"✅ Loaded ZoneBaseline data: {len(zonebaseline_df)} records")
         
         # Zone mapping (same as StateCheck)
-        zone_mapping = {
+       zone_mapping = {
             "Zone 1: Above +1.0": "above_1.0", "Zone 2: +0.786 to +1.0": "0.786_to_1.0", 
             "Zone 3: +0.618 to +0.786": "0.618_to_0.786", "Zone 4: +0.5 to +0.618": "0.5_to_0.618",
             "Zone 5: +0.382 to +0.5": "0.382_to_0.5", "Zone 6: +0.236 to +0.382": "0.236_to_0.382",
@@ -627,14 +627,9 @@ elif analysis_type == "ZoneBaseline":
         
         if 'GoalLevel' in adapted_data.columns:
             adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
-
-        # Add these debug lines:
-        st.write("Original zones in CSV:", sorted(zonebaseline_df['Zone'].unique()))
-        st.write("After fibonacci mapping:", sorted(adapted_data['GoalLevel'].unique()))
-        st.write("Available times:", sorted(adapted_data['GoalTime'].unique()))
         
         if 'GoalTime' in adapted_data.columns:
-            adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
+            adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(int).astype(str).str.zfill(4)
         
         # Set data for chart building
         filtered = adapted_data
