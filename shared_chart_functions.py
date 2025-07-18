@@ -10,14 +10,10 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     """
     Create static zone probability heatmap for ZoneBaseline analysis
     """
-    # Create data matrix for heatmap
-    heatmap_data = []
-    hover_data = []
-    
     # Create data lookup
     data_lookup = {}
     for _, row in filtered_data.iterrows():
-        goal_time = str(int(row["GoalTime"])).zfill(4)  # Convert 930 -> 0930
+        goal_time = str(row["GoalTime"])  # Should already be formatted as "0930"
         key = (float(row["GoalLevel"]), goal_time)
         data_lookup[key] = {
             "pct": row["PctCompletion"],
@@ -25,8 +21,13 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             "triggers": row["NumTriggers"]
         }
     
-    # Build matrix data for heatmap
-    for level in reversed(display_fib_levels):  # Reverse for proper display order
+    # Build matrix data for heatmap - organize by fib levels (high to low)
+    sorted_levels = sorted(display_fib_levels, reverse=True)  # High to low for proper display
+    
+    heatmap_data = []
+    hover_data = []
+    
+    for level in sorted_levels:
         row_data = []
         row_hover = []
         for time_col in display_columns:
@@ -45,18 +46,20 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     fig = go.Figure(data=go.Heatmap(
         z=heatmap_data,
         x=display_columns,
-        y=[f"{lvl:+.3f}" for lvl in reversed(display_fib_levels)],
-        colorscale='Viridis',  # Nice color scale: purple (low) to yellow (high)
+        y=[f"{lvl:+.3f}" for lvl in sorted_levels],
+        colorscale='Viridis',
         showscale=True,
         colorbar=dict(title="Occupancy %"),
         hovertemplate='%{customdata}<extra></extra>',
-        customdata=hover_data
+        customdata=hover_data,
+        zmin=0,
+        zmax=max([max(row) for row in heatmap_data]) if heatmap_data else 100
     ))
     
     # Add price level annotations on the right side
     if price_levels_dict:
         fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
-        for i, level in enumerate(reversed(display_fib_levels)):
+        for i, level in enumerate(sorted_levels):
             if level not in fib_levels:
                 continue
                 
@@ -80,7 +83,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         xaxis=dict(
             title="Time (Eastern)",
             tickfont=dict(color="white", size=10),
-            tickangle=45 if len(display_columns) > 10 else 0
+            tickangle=45 if len(display_columns) > 15 else 0
         ),
         yaxis=dict(
             title="Fibonacci Levels",
@@ -90,12 +93,11 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         paper_bgcolor="black",
         font=dict(color="white", size=12),
         height=600,
-        width=max(800, len(display_columns) * 50),  # Dynamic width based on time periods
+        width=max(1000, len(display_columns) * 25),  # Adjusted width for better fit
         margin=dict(l=80, r=120, t=60, b=100)
     )
     
-    return fig, True  # Use container width for heatmaps
-
+    return fig, True
 
 def get_zone_probability(detailed_data, zone, time_period):
     """
