@@ -13,7 +13,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     # Create data lookup
     data_lookup = {}
     for _, row in filtered_data.iterrows():
-        goal_time = str(row["GoalTime"])  # Should already be formatted as "0930"
+        goal_time = str(row["GoalTime"])
         key = (float(row["GoalLevel"]), goal_time)
         data_lookup[key] = {
             "pct": row["PctCompletion"],
@@ -21,9 +21,12 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             "triggers": row["NumTriggers"]
         }
     
-    # Build matrix data for heatmap - organize by fib levels (high to low)
-    sorted_levels = sorted(display_fib_levels, reverse=True)  # High to low for proper display
+    # Filter out artificial levels for proper display
+    fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+    display_levels = [lvl for lvl in display_fib_levels if lvl in fib_levels]
+    sorted_levels = sorted(display_levels, reverse=True)  # High to low
     
+    # Build matrix data for heatmap
     heatmap_data = []
     hover_data = []
     
@@ -42,27 +45,39 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         heatmap_data.append(row_data)
         hover_data.append(row_hover)
     
+    # Create custom colorscale that matches our legend
+    custom_colorscale = [
+        [0.0, '#2D2D2D'],      # Gray for 0-5%
+        [0.05, '#2D2D2D'],     # Gray
+        [0.05, '#FF6B6B'],     # Light Red for 5-9%
+        [0.09, '#FF6B6B'],     # Light Red
+        [0.10, '#FFA500'],     # Orange for 10-14%
+        [0.14, '#FFA500'],     # Orange
+        [0.15, '#FFD700'],     # Yellow for 15-19%
+        [0.19, '#FFD700'],     # Yellow
+        [0.20, '#90EE90'],     # Light Green for 20-29%
+        [0.29, '#90EE90'],     # Light Green
+        [0.30, '#00FF00'],     # Bright Green for 30%+
+        [1.0, '#00FF00']       # Bright Green
+    ]
+    
     # Create heatmap
     fig = go.Figure(data=go.Heatmap(
         z=heatmap_data,
         x=display_columns,
         y=[f"{lvl:+.3f}" for lvl in sorted_levels],
-        colorscale='Viridis',
+        colorscale=custom_colorscale,
         showscale=True,
         colorbar=dict(title="Occupancy %"),
         hovertemplate='%{customdata}<extra></extra>',
         customdata=hover_data,
         zmin=0,
-        zmax=max([max(row) for row in heatmap_data]) if heatmap_data else 100
+        zmax=100  # Set max to 100% for proper color scaling
     ))
     
     # Add price level annotations on the right side
     if price_levels_dict:
-        fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
         for i, level in enumerate(sorted_levels):
-            if level not in fib_levels:
-                continue
-                
             level_key = f"{level:+.3f}"
             price_val = price_levels_dict.get(level_key, 0)
             
@@ -93,7 +108,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         paper_bgcolor="black",
         font=dict(color="white", size=12),
         height=600,
-        width=max(1000, len(display_columns) * 25),  # Adjusted width for better fit
+        width=max(1000, len(display_columns) * 25),
         margin=dict(l=80, r=120, t=60, b=100)
     )
     
