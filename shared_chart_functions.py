@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import pandas as pd
 
 
-def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_columns, time_order, 
+ef create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_columns, time_order, 
                                ticker_name, text_offset=0.03, font_size_multiplier=1.0, price_levels_dict=None):
     """
     Create static zone probability heatmap for ZoneBaseline analysis
@@ -102,7 +102,10 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         ),
         yaxis=dict(
             title="Fibonacci Levels",
-            tickfont=dict(color="white", size=10)
+            tickfont=dict(color="white", size=10),
+            tickmode='array',
+            tickvals=list(range(len(sorted_levels))),
+            ticktext=[f"{lvl:+.3f}" for lvl in sorted_levels]
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
