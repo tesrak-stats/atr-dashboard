@@ -213,6 +213,25 @@ def aggregate_statecheck_to_hourly(detailed_df):
     
     return aggregated
 
+def aggregate_zonebaseline_to_hourly(detailed_df):
+    """Aggregate 10-minute ZoneBaseline data to hourly buckets"""
+    hourly_data = detailed_df.copy()
+    
+    # Bucket time periods to hours
+    hourly_data['GoalTime'] = hourly_data['GoalTime'].apply(lambda x: int(int(x) / 100) * 100)
+    hourly_data['GoalTime'] = hourly_data['GoalTime'].astype(str).str.zfill(4)
+    
+    # Group and sum the RAW COUNTS
+    aggregated = hourly_data.groupby(['GoalLevel', 'GoalTime']).agg({
+        'NumHits': 'sum',        # Add up all the hits
+        'NumTriggers': 'first',  # Triggers should be same for all
+    }).reset_index()
+    
+    # Calculate percentage AFTER aggregation
+    aggregated['PctCompletion'] = (aggregated['NumHits'] / aggregated['NumTriggers'] * 100).round(1)
+    
+    return aggregated
+
 def get_current_market_time():
     """Get current Eastern Time and determine market time slot"""
     if USE_ZONEINFO:
@@ -567,8 +586,107 @@ elif analysis_type == "Rolling":
     st.stop()
     
 elif analysis_type == "ZoneBaseline":
-    st.info("📊 ZoneBaseline analysis - Coming soon")
-    st.stop()
+    try:
+        # Load ZoneBaseline data file
+        zonebaseline_file = f"zonebaseline_detailed_{selected_ticker}_20250710_063924.csv"   
+        zonebaseline_df = pd.read_csv(zonebaseline_file)
+        st.success(f"✅ Loaded ZoneBaseline data: {len(zonebaseline_df)} records")
+        
+        # Zone mapping (same as StateCheck)
+        zone_mapping = {
+            "Zone 1: Above +1.0": "above_1.0", "Zone 2: +0.786 to +1.0": "0.786_to_1.0", 
+            "Zone 3: +0.618 to +0.786": "0.618_to_0.786", "Zone 4: +0.5 to +0.618": "0.5_to_0.618",
+            "Zone 5: +0.382 to +0.5": "0.382_to_0.5", "Zone 6: +0.236 to +0.382": "0.236_to_0.382",
+            "Zone 7: 0.0 to +0.236": "0.0_to_0.236", "Zone 8: -0.236 to 0.0": "-0.236_to_0.0",
+            "Zone 9: -0.382 to -0.236": "-0.382_to_-0.236", "Zone 10: -0.5 to -0.382": "-0.5_to_-0.382",
+            "Zone 11: -0.618 to -0.5": "-0.618_to_-0.5", "Zone 12: -0.786 to -0.618": "-0.786_to_-0.618",
+            "Zone 13: -1.0 to -0.786": "-1.0_to_-0.786", "Zone 14: Below -1.0": "below_-1.0"
+        }
+        
+        # Adapt ZoneBaseline data to chart format
+        adapted_data = zonebaseline_df.copy()
+        
+        # Map column names based on actual CSV structure
+        column_mapping = {
+            "Zone": "GoalLevel", "Time": "GoalTime", "Frequency": "NumHits",
+            "TotalObservations": "NumTriggers", "Percentage": "PctCompletion"
+        }
+        
+        for old_col, new_col in column_mapping.items():
+            if old_col in adapted_data.columns:
+                adapted_data = adapted_data.rename(columns={old_col: new_col})
+        
+        # Convert zone strings to fibonacci levels (same as StateCheck)
+        goal_zone_to_fib = {
+            "above_1.0": 1.0, "0.786_to_1.0": 0.786, "0.618_to_0.786": 0.618,
+            "0.5_to_0.618": 0.5, "0.382_to_0.5": 0.382, "0.236_to_0.382": 0.236,
+            "0.0_to_0.236": 0.0, "-0.236_to_0.0": -0.236, "-0.382_to_-0.236": -0.382,
+            "-0.5_to_-0.382": -0.5, "-0.618_to_-0.5": -0.618, "-0.786_to_-0.618": -0.786,
+            "-1.0_to_-0.786": -1.0, "below_-1.0": -1.1  # Use offset for below -1.0
+        }
+        
+        if 'GoalLevel' in adapted_data.columns:
+            adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
+        
+        if 'GoalTime' in adapted_data.columns:
+            adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
+        
+        # Set data for chart building
+        filtered = adapted_data
+        available_levels = sorted(filtered['GoalLevel'].unique())
+        
+        # Display configuration based on expanded view
+        if show_expanded_view:
+            # Use detailed 10-minute data
+            available_times = sorted(filtered['GoalTime'].unique())
+            display_columns = available_times
+        else:
+            # Use hourly buckets
+            filtered = aggregate_zonebaseline_to_hourly(filtered)
+            display_columns = ["0930", "1000", "1100", "1200", "1300", "1400", "1500", "1600"]
+        
+        display_fib_levels = available_levels
+        time_order = display_columns.copy()
+        
+        # Create compatibility variables
+        price_direction = "Zone Occupancy Heatmap"
+        trigger_zone = "All Zones"
+        font_size_multiplier = 1.0
+        
+        # BUILD THE CHART using shared function
+        fig, chart_use_container_width = create_zonebaseline_heatmap(
+            filtered_data=filtered,
+            display_fib_levels=display_fib_levels,
+            display_columns=display_columns,
+            time_order=time_order,
+            ticker_name=ticker_config[selected_ticker]['display_name'],
+            text_offset=0.03,
+            font_size_multiplier=font_size_multiplier,
+            price_levels_dict=price_levels_dict
+        )
+        
+        # Display the chart
+        st.markdown('<div style="width: 3200px; overflow-x: auto;">', unsafe_allow_html=True)
+        st.plotly_chart(fig, use_container_width=False)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Add color legend
+        st.markdown("""
+        **🎨 Zone Occupancy Color Legend:**
+        - 🟢 **Bright Green** (≥30%): Very High Occupancy
+        - 🌟 **Light Green** (20-29%): High Occupancy  
+        - 🟡 **Yellow** (15-19%): Medium-High Occupancy
+        - 🟠 **Orange** (10-14%): Medium Occupancy
+        - 🔶 **Light Red** (5-9%): Low Occupancy
+        - ⚫ **Gray** (<5%): Very Low Occupancy
+        """)
+        
+        # Skip remaining chart building
+        st.stop()
+        
+    except Exception as e:
+        st.error(f"Error loading ZoneBaseline data: {str(e)}")
+        st.stop()
 
 else:  # Session
     # Session data filtering
