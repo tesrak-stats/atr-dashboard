@@ -115,34 +115,6 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     
     return fig, True
 
-def get_zone_probability(detailed_data, zone, time_period):
-    """
-    Extract probability for specific zone/time combination from detailed CSV
-    
-    Args:
-        detailed_data: DataFrame with detailed zone baseline data
-        zone: Zone identifier (e.g., "Zone6")
-        time_period: Time period identifier (e.g., "0930", "1000")
-    
-    Returns:
-        Probability percentage (float)
-    """
-    try:
-        # Look up in detailed CSV
-        zone_data = detailed_data[
-            (detailed_data['AnalysisType'] == 'ZoneBaseline') & 
-            (detailed_data['Zone'] == zone) &
-            (detailed_data['TimePeriod'] == time_period)
-        ]
-        
-        if not zone_data.empty:
-            return zone_data['Probability'].iloc[0]
-        else:
-            return 0.0
-            
-    except Exception:
-        # Fallback to zero if data not found
-        return 0.0
 
 
 """
