@@ -588,7 +588,7 @@ elif analysis_type == "Rolling":
 elif analysis_type == "ZoneBaseline":
     try:
         # Load ZoneBaseline data file
-        zonebaseline_file = f"zonebaseline_detailed_{selected_ticker}_20250710_063924.csv"   
+        zonebaseline_file = f"zonebaseline_detailed_{selected_ticker}_20250718_061442.csv"
         zonebaseline_df = pd.read_csv(zonebaseline_file)
         st.success(f"✅ Loaded ZoneBaseline data: {len(zonebaseline_df)} records")
         
