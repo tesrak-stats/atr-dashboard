@@ -17,6 +17,9 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         key = (float(row["GoalLevel"]), goal_time)
         data_lookup[key] = {
             "pct": row["PctCompletion"],
+        st.write("Sample data_lookup entries:")
+           for i, (key, value) in enumerate(list(data_lookup.items())[:10]):
+        st.write(f"  {key}: {value}")  
             
         }
     
