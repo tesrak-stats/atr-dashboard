@@ -17,8 +17,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         key = (float(row["GoalLevel"]), goal_time)
         data_lookup[key] = {
             "pct": row["PctCompletion"],
-            "hits": row["NumHits"],
-            "triggers": row["NumTriggers"]
+            
         }
     
     # Filter out artificial levels for proper display
@@ -38,7 +37,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             if key in data_lookup:
                 data = data_lookup[key]
                 row_data.append(data["pct"])
-                row_hover.append(f"Zone {level:+.3f}<br>Time: {time_col}<br>Occupancy: {data['pct']:.1f}%<br>({data['hits']}/{data['triggers']})")
+                row_hover.append(f"Zone {level:+.3f}<br>Time: {time_col}<br>Occupancy: {data['pct']:.1f}%")
             else:
                 row_data.append(0)
                 row_hover.append(f"Zone {level:+.3f}<br>Time: {time_col}<br>No data")
