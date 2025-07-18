@@ -601,7 +601,7 @@ elif analysis_type == "ZoneBaseline":
             if old_col in adapted_data.columns:
                 adapted_data = adapted_data.rename(columns={old_col: new_col})
 
-         if 'GoalTime' in adapted_data.columns:
+        if 'GoalTime' in adapted_data.columns:
             adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
              
         # Convert zone strings to fibonacci levels (same as StateCheck)
