@@ -600,9 +600,9 @@ elif analysis_type == "ZoneBaseline":
             "-1.0_to_-0.786": -1.0, "below_-1.0": -1.1  # Use offset for below -1.0
         }
 
-          for old_col, new_col in column_mapping.items():
-            if old_col in adapted_data.columns:
-                adapted_data = adapted_data.rename(columns={old_col: new_col})
+        for old_col, new_col in column_mapping.items():
+          if old_col in adapted_data.columns:
+              adapted_data = adapted_data.rename(columns={old_col: new_col})
                 
         if 'GoalLevel' in adapted_data.columns:
             adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
