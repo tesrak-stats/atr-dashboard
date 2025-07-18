@@ -504,7 +504,8 @@ if analysis_type == "StateCheck":
             display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
             #st.info(f"📊 **StateCheck Chart**: {len(display_columns)} hourly periods × {len(display_fib_levels)} levels")
         else:
-    # Use detailed 10-minute data
+
+            # Use detailed 10-minute data
             available_times = sorted(filtered['GoalTime'].unique())
             display_columns = available_times
             #st.info(f"📊 **StateCheck Chart**: {len(display_columns)} time periods × {len(display_fib_levels)} levels | Scroll horizontally to see all data")
@@ -594,13 +595,15 @@ elif analysis_type == "ZoneBaseline":
              "Zone": "GoalLevel", "Time": "GoalTime", "Percentage": "PctCompletion"
         }
 
-        if 'GoalTime' in adapted_data.columns:
-            adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
+       
         
         for old_col, new_col in column_mapping.items():
             if old_col in adapted_data.columns:
                 adapted_data = adapted_data.rename(columns={old_col: new_col})
-        
+
+         if 'GoalTime' in adapted_data.columns:
+            adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
+             
         # Convert zone strings to fibonacci levels (same as StateCheck)
         goal_zone_to_fib = {
             "above_1.0": 1.0, "0.786_to_1.0": 0.786, "0.618_to_0.786": 0.618,
