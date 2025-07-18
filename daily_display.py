@@ -610,6 +610,9 @@ elif analysis_type == "ZoneBaseline":
             }
             zonebaseline_file = f"zonebaseline_detailed_{selected_ticker}_20250710_063924.csv"
             zonebaseline_df = pd.read_csv(zonebaseline_file)
+
+            adapted_data = zonebaseline_df.copy()
+            
     # ... existing detailed data processing ...
             available_times = sorted(filtered['GoalTime'].unique())
             display_columns = available_times
