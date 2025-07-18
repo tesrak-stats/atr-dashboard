@@ -491,6 +491,9 @@ if analysis_type == "StateCheck":
         
         # Set data for chart building
         filtered = adapted_data
+
+        st.write("Sample of processed data:")
+        st.write(filtered[['GoalLevel', 'GoalTime', 'PctCompletion']].head(10))
         
         available_levels = sorted(filtered['GoalLevel'].unique())
 
