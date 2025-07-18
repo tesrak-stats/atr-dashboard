@@ -104,8 +104,8 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             title="Fibonacci Levels",
             tickfont=dict(color="white", size=10),
             tickmode='array',
-            tickvals=list(range(len(sorted_levels))),
-            ticktext=[f"{lvl:+.3f}" for lvl in sorted_levels]
+            tickvals=[lvl for lvl in sorted_levels if lvl in fib_levels],  # Only show standard fib levels
+            ticktext=[f"{lvl:+.3f}" for lvl in sorted_levels if lvl in fib_levels]  # Only show standard fib levels
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
@@ -116,7 +116,6 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     )
     
     return fig, True
-
 
 def get_zone_probability(detailed_data, zone, time_period):
     """
