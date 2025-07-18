@@ -603,7 +603,8 @@ elif analysis_type == "ZoneBaseline":
         if 'GoalLevel' in adapted_data.columns:
             adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
         
-        
+        if 'GoalTime' in adapted_data.columns:
+            adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
         # Set data for chart building
         filtered = adapted_data
         available_levels = sorted(filtered['GoalLevel'].unique())
