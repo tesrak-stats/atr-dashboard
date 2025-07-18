@@ -61,18 +61,18 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         [1.0, '#00FF00']       # Bright Green
     ]
     
-    # Create heatmap
+    # Create heatmap with proper y-axis mapping
     fig = go.Figure(data=go.Heatmap(
         z=heatmap_data,
         x=display_columns,
-        y=sorted_levels,  # Use actual fib levels, not formatted strings
+        y=list(range(len(sorted_levels))),  # Use indices 0, 1, 2, 3...
         colorscale=custom_colorscale,
         showscale=True,
         colorbar=dict(title="Occupancy %"),
         hovertemplate='%{customdata}<extra></extra>',
         customdata=hover_data,
         zmin=0,
-        zmax=100  # Set max to 100% for proper color scaling
+        zmax=100
     ))
     
     # Add price level annotations on the right side
@@ -104,8 +104,8 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             title="Fibonacci Levels",
             tickfont=dict(color="white", size=10),
             tickmode='array',
-            tickvals=[lvl for lvl in sorted_levels if lvl in fib_levels],  # Only show standard fib levels
-            ticktext=[f"{lvl:+.3f}" for lvl in sorted_levels if lvl in fib_levels]  # Only show standard fib levels
+            tickvals=list(range(len(sorted_levels))),  # Position at 0, 1, 2, 3...
+            ticktext=[f"{lvl:+.3f}" if lvl in fib_levels else "" for lvl in sorted_levels]  # Show labels for standard fib levels only
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
