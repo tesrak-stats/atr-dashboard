@@ -5,90 +5,96 @@ import plotly.graph_objects as go
 import pandas as pd
 
 
-def create_zonebaseline_heatmap(detailed_data, level_totals_data, ticker_name, font_size_multiplier=1.0):
+def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_columns, time_order, 
+                               ticker_name, text_offset=0.03, font_size_multiplier=1.0, price_levels_dict=None):
     """
     Create static zone probability heatmap for ZoneBaseline analysis
-    
-    Args:
-        detailed_data: DataFrame with detailed zone baseline data
-        level_totals_data: DataFrame with aggregated totals
-        ticker_name: Name of ticker for chart title
-        font_size_multiplier: Font scaling factor
-    
-    Returns:
-        Plotly figure object
     """
-    # Zone definitions (12 zones between fib levels)
-    zones = [
-        "Zone 1 (>+1.0)",
-        "Zone 2 (+0.786 to +1.0)",
-        "Zone 3 (+0.618 to +0.786)", 
-        "Zone 4 (+0.382 to +0.618)",
-        "Zone 5 (+0.236 to +0.382)",
-        "Zone 6 (0.0 to +0.236)",
-        "Zone 7 (-0.236 to 0.0)",
-        "Zone 8 (-0.382 to -0.236)",
-        "Zone 9 (-0.5 to -0.382)",
-        "Zone 10 (-0.618 to -0.5)",
-        "Zone 11 (-0.786 to -0.618)",
-        "Zone 12 (<-1.0)"
-    ]
-    
-    # Time periods (granular 10-minute intervals)
-    time_periods = ["0930", "0940", "0950", "1000", "1010", "1020", "1030", "1040", "1050", 
-                   "1100", "1110", "1120", "1130", "1140", "1150", "1200", "1210", "1220", 
-                   "1230", "1240", "1250", "1300", "1310", "1320", "1330", "1340", "1350",
-                   "1400", "1410", "1420", "1430", "1440", "1450", "1500", "1510", "1520",
-                   "1530", "1540", "1550", "1600"]
-    
     # Create data matrix for heatmap
     heatmap_data = []
+    hover_data = []
     
-    # Process filtered data into heatmap format
-    for zone in zones:
-        zone_row = []
-        for time_period in time_periods:
-            # Look up probability for this zone/time combination
-            prob = get_zone_probability(filtered_data, zone, time_period)
-            zone_row.append(prob)
-        heatmap_data.append(zone_row)
+    # Create data lookup
+    data_lookup = {}
+    for _, row in filtered_data.iterrows():
+        goal_time = str(int(row["GoalTime"])).zfill(4)  # Convert 930 -> 0930
+        key = (float(row["GoalLevel"]), goal_time)
+        data_lookup[key] = {
+            "pct": row["PctCompletion"],
+            "hits": row["NumHits"],
+            "triggers": row["NumTriggers"]
+        }
+    
+    # Build matrix data for heatmap
+    for level in reversed(display_fib_levels):  # Reverse for proper display order
+        row_data = []
+        row_hover = []
+        for time_col in display_columns:
+            key = (float(level), time_col)
+            if key in data_lookup:
+                data = data_lookup[key]
+                row_data.append(data["pct"])
+                row_hover.append(f"Zone {level:+.3f}<br>Time: {time_col}<br>Occupancy: {data['pct']:.1f}%<br>({data['hits']}/{data['triggers']})")
+            else:
+                row_data.append(0)
+                row_hover.append(f"Zone {level:+.3f}<br>Time: {time_col}<br>No data")
+        heatmap_data.append(row_data)
+        hover_data.append(row_hover)
     
     # Create heatmap
     fig = go.Figure(data=go.Heatmap(
         z=heatmap_data,
-        x=time_periods,
-        y=zones,
-        colorscale='RdYlBu_r',  # Red-Yellow-Blue reversed (red=high, blue=low)
+        x=display_columns,
+        y=[f"{lvl:+.3f}" for lvl in reversed(display_fib_levels)],
+        colorscale='Viridis',  # Nice color scale: purple (low) to yellow (high)
         showscale=True,
-        colorbar=dict(title="Probability %"),
-        hovertemplate='<b>%{y}</b><br>' +
-                      'Time: %{x}<br>' +
-                      'Probability: %{z:.1f}%' +
-                      '<extra></extra>'
+        colorbar=dict(title="Occupancy %"),
+        hovertemplate='%{customdata}<extra></extra>',
+        customdata=hover_data
     ))
     
-    # Update layout
+    # Add price level annotations on the right side
+    if price_levels_dict:
+        fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+        for i, level in enumerate(reversed(display_fib_levels)):
+            if level not in fib_levels:
+                continue
+                
+            level_key = f"{level:+.3f}"
+            price_val = price_levels_dict.get(level_key, 0)
+            
+            fig.add_annotation(
+                text=f"${price_val:.2f}",
+                x=1.02,
+                y=i,
+                xref="paper",
+                yref="y",
+                showarrow=False,
+                font=dict(color="white", size=12),
+                xanchor="left",
+                yanchor="middle"
+            )
+    
     fig.update_layout(
-        title=f"{ticker_name} - Zone Occupancy Probability Heatmap",
+        title=f"{ticker_name} | Zone Occupancy Heatmap",
         xaxis=dict(
             title="Time (Eastern)",
-            tickmode="array",
-            tickvals=list(range(0, len(time_periods), 6)),  # Show every 6th time label
-            ticktext=[time_periods[i] for i in range(0, len(time_periods), 6)],
-            tickfont=dict(size=10 * font_size_multiplier)
+            tickfont=dict(color="white", size=10),
+            tickangle=45 if len(display_columns) > 10 else 0
         ),
         yaxis=dict(
-            title="Zones",
-            tickfont=dict(size=10 * font_size_multiplier)
+            title="Fibonacci Levels",
+            tickfont=dict(color="white", size=10)
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
-        font=dict(color="white", size=12 * font_size_multiplier),
+        font=dict(color="white", size=12),
         height=600,
-        width=1200
+        width=max(800, len(display_columns) * 50),  # Dynamic width based on time periods
+        margin=dict(l=80, r=120, t=60, b=100)
     )
     
-    return fig
+    return fig, True  # Use container width for heatmaps
 
 
 def get_zone_probability(detailed_data, zone, time_period):
