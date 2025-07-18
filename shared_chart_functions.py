@@ -62,8 +62,8 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     # Create heatmap with proper y-axis mapping (more transparent)
     fig = go.Figure(data=go.Heatmap(
         z=heatmap_data,
-        x=display_columns,
-        y=list(range(len(sorted_levels))),  # Use indices 0, 1, 2, 3...
+        x=list(range(len(display_columns))),  # Use indices to match text positioning
+        y=list(range(len(sorted_levels))),
         colorscale=custom_colorscale,
         showscale=True,
         colorbar=dict(title="Occupancy %"),
@@ -71,7 +71,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         customdata=hover_data,
         zmin=0,
         zmax=100,
-        opacity=0.7  # Make heatmap more transparent
+        opacity=0.7
     ))
     
     # Add text overlays to debug what data is actually being displayed
@@ -136,7 +136,6 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     )
     
     return fig, True
-
 
 
 
