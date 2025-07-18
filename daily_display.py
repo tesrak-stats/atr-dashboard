@@ -589,20 +589,7 @@ elif analysis_type == "ZoneBaseline":
         
         # Adapt ZoneBaseline data to chart format
         adapted_data = zonebaseline_df.copy()
-        
-        # Map column names based on actual CSV structure
-        column_mapping = {
-             "Zone": "GoalLevel", "Time": "GoalTime", "Percentage": "PctCompletion"
-        }
-
-       
-        
-        for old_col, new_col in column_mapping.items():
-            if old_col in adapted_data.columns:
-                adapted_data = adapted_data.rename(columns={old_col: new_col})
-
-        if 'GoalTime' in adapted_data.columns:
-            adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
+                             
              
         # Convert zone strings to fibonacci levels (same as StateCheck)
         goal_zone_to_fib = {
@@ -626,6 +613,9 @@ elif analysis_type == "ZoneBaseline":
         # Display configuration based on expanded view
         if show_expanded_view:
     # Use detailed 10-minute data
+            column_mapping = {
+                "Zone": "GoalLevel", "Time": "GoalTime", "Percentage": "PctCompletion"
+            }
             zonebaseline_file = f"zonebaseline_detailed_{selected_ticker}_20250710_063924.csv"
             zonebaseline_df = pd.read_csv(zonebaseline_file)
     # ... existing detailed data processing ...
@@ -633,16 +623,21 @@ elif analysis_type == "ZoneBaseline":
             display_columns = available_times
         else:
     # Use pre-aggregated hourly data
-            zonebaseline_file = f"zonebaseline_hourly_{selected_ticker}_20250718_061442.csv"
-            zonebaseline_df = pd.read_csv(zonebaseline_file)
-    # Process hourly data with updated column mapping
             column_mapping = {
                 "Zone": "GoalLevel", "TimeHourly": "GoalTime", "Percentage": "PctCompletion"
             }
+            zonebaseline_file = f"zonebaseline_hourly_{selected_ticker}_20250718_061442.csv"
+            zonebaseline_df = pd.read_csv(zonebaseline_file)
+ 
+            if 'GoalTime' in adapted_data.columns:
+                adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
     # ... process the hourly data ...
             display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
 
-        
+        for old_col, new_col in column_mapping.items():
+            if old_col in adapted_data.columns:
+                adapted_data = adapted_data.rename(columns={old_col: new_col})
+
         display_fib_levels = available_levels
         time_order = display_columns.copy()
         
