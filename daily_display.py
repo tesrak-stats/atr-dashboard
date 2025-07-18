@@ -491,10 +491,7 @@ if analysis_type == "StateCheck":
         
         # Set data for chart building
         filtered = adapted_data
-
-        st.write("Sample of processed data:")
-        st.write(filtered[['GoalLevel', 'GoalTime', 'PctCompletion']].head(10))
-        
+             
         available_levels = sorted(filtered['GoalLevel'].unique())
 
         display_fib_levels = sorted(available_levels)  # Keep ALL levels for chart data
@@ -596,6 +593,9 @@ elif analysis_type == "ZoneBaseline":
         column_mapping = {
              "Zone": "GoalLevel", "Time": "GoalTime", "Percentage": "PctCompletion"
         }
+
+        if 'GoalTime' in adapted_data.columns:
+            adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
         
         for old_col, new_col in column_mapping.items():
             if old_col in adapted_data.columns:
