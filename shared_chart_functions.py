@@ -19,7 +19,9 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             "pct": row["PctCompletion"],
             
         }
-    
+    st.write("Sample data_lookup entries:")
+      for i, (key, value) in enumerate(list(data_lookup.items())[:10]):
+    st.write(f"  {key}: {value}")
     # Filter out artificial levels for proper display
     fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
     display_levels = [lvl for lvl in display_fib_levels if lvl in fib_levels]
