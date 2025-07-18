@@ -599,7 +599,11 @@ elif analysis_type == "ZoneBaseline":
             "-0.5_to_-0.382": -0.5, "-0.618_to_-0.5": -0.618, "-0.786_to_-0.618": -0.786,
             "-1.0_to_-0.786": -1.0, "below_-1.0": -1.1  # Use offset for below -1.0
         }
-        
+
+          for old_col, new_col in column_mapping.items():
+            if old_col in adapted_data.columns:
+                adapted_data = adapted_data.rename(columns={old_col: new_col})
+                
         if 'GoalLevel' in adapted_data.columns:
             adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
         
@@ -633,9 +637,7 @@ elif analysis_type == "ZoneBaseline":
     # ... process the hourly data ...
             display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
 
-        for old_col, new_col in column_mapping.items():
-            if old_col in adapted_data.columns:
-                adapted_data = adapted_data.rename(columns={old_col: new_col})
+      
 
         display_fib_levels = available_levels
         time_order = display_columns.copy()
