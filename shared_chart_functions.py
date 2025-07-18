@@ -29,8 +29,8 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     hover_data = []
     
     for level in sorted_levels:
-    row_data = []
-    row_hover = []
+        row_data = []
+        row_hover = []
     for time_col in display_columns:
         key = (float(level), time_col)
         if key in data_lookup:
