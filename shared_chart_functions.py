@@ -3,6 +3,7 @@ Shared chart building functions for ATR analysis
 """
 import plotly.graph_objects as go
 import pandas as pd
+import streamlit as st
 
 
 def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_columns, time_order, 
