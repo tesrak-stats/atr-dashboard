@@ -6,18 +6,7 @@ import pandas as pd
 import streamlit as st
 
 
-# Add "Fib Level Boundary" title above the Fibonacci labels
-    fig.add_annotation(
-        text="Fib Level Boundary",
-        x=-0.05,
-        y=max(zone_midpoints) + 0.15,
-        xref="paper",
-        yref="y",
-        showarrow=False,
-        font=dict(color="gray", size=11),
-        xanchor="center",
-        yanchor="bottom"
-    )def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_columns, time_order, 
+def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_columns, time_order, 
                                ticker_name, text_offset=0.03, font_size_multiplier=1.0, price_levels_dict=None):
     """
     Create static zone probability heatmap for ZoneBaseline analysis
