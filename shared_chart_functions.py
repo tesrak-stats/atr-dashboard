@@ -139,11 +139,11 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         opacity=0.8
     ))
     
-    # Add horizontal lines at Fibonacci levels (zone boundaries)
+    # Add subtle horizontal lines at Fibonacci levels (zone boundaries)
     for fib_level in available_levels:
         fig.add_hline(
             y=fib_level,
-            line=dict(color="white", width=1),
+            line=dict(color="rgba(255, 255, 255, 0.3)", width=0.5),
             layer="above"  # Draw lines above the heatmap
         )
     
@@ -181,14 +181,15 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             title="Fibonacci Levels (Zone Boundaries)",
             tickfont=dict(color="white", size=10),
             showticklabels=False,  # Hide default y-axis labels (we add custom ones)
-            range=[min(zone_midpoints) - 0.1, max(zone_midpoints) + 0.1]
+            range=[min(zone_midpoints) - 0.1, max(zone_midpoints) + 0.1],
+            showgrid=False  # Remove grid lines
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
         font=dict(color="white", size=12),
         height=600,
         width=chart_width,
-        margin=dict(l=80, r=60, t=60, b=100)  # Reduced right margin since no price levels
+        margin=dict(l=120, r=60, t=60, b=100)  # Increased left margin for Fibonacci labels
     )
     
     return fig, True
