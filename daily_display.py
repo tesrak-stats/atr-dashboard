@@ -605,7 +605,7 @@ elif analysis_type == "ZoneBaseline":
         # Display configuration based on expanded view
         # Display configuration based on expanded view - REPLACE ENTIRE SECTION
         if show_expanded_view:
-            zonebaseline_file = f"zonebaseline_detailed_{selected_ticker}_20250718_061442.csv
+            zonebaseline_file = f"zonebaseline_detailed_{selected_ticker}_20250718_061442.csv"
             zonebaseline_df = pd.read_csv(zonebaseline_file)
             column_mapping = {
                 "Zone": "GoalLevel", "Time": "GoalTime", "Percentage": "PctCompletion"
