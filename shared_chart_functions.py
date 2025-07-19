@@ -64,35 +64,34 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     sorted_levels = sorted(display_levels, reverse=False)  # Low to high for proper display
     
     # Create zone boundary positions for label offset trick
-    # Calculate midpoints between fibonacci levels for Plotly centering
+    # Calculate constrained midpoints to avoid oversized extreme zones
     zone_midpoints = []
-    zone_boundary_labels = []
-    zone_boundary_positions = []
     
     for i, level in enumerate(sorted_levels):
-        if i == 0:
-            # Bottom zone - extend down
+        if level == 1.15:  # Above 1.0 zone
+            # Position just above the 1.0 level, small zone
+            midpoint = 1.073  # Between 1.0 and 1.146
+        elif level == -1.15:  # Below -1.0 zone  
+            # Position just below the -1.0 level, small zone
+            midpoint = -1.073  # Between -1.146 and -1.0
+        elif i == 0:
+            # First normal zone
             next_level = sorted_levels[i + 1] if i + 1 < len(sorted_levels) else level + 0.146
-            midpoint = level - 0.073  # Offset down from level
+            midpoint = (level + next_level) / 2
         elif i == len(sorted_levels) - 1:
-            # Top zone - extend up  
+            # Last normal zone
             prev_level = sorted_levels[i - 1]
             midpoint = (prev_level + level) / 2
         else:
             # Middle zones - between current and next level
-            next_level = sorted_levels[i + 1] if i + 1 < len(sorted_levels) else level + 0.146
-            prev_level = sorted_levels[i - 1]
-            midpoint = (level + next_level) / 2
+            if i + 1 < len(sorted_levels):
+                next_level = sorted_levels[i + 1]
+                midpoint = (level + next_level) / 2
+            else:
+                prev_level = sorted_levels[i - 1]
+                midpoint = (prev_level + level) / 2
         
         zone_midpoints.append(midpoint)
-        
-        # Create boundary labels at the actual fibonacci levels
-        if level not in [1.15, -1.15]:  # Hide artificial levels
-            zone_boundary_labels.append(f"{level:+.3f}")
-            zone_boundary_positions.append(i)  # Position at the fibonacci level line
-        else:
-            zone_boundary_labels.append("")  # Empty label for artificial levels
-            zone_boundary_positions.append(i)
     
     # Build matrix data for heatmap with improved hover tooltips
     heatmap_data = []
@@ -173,9 +172,10 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             title="Fibonacci Levels",
             tickfont=dict(color="white", size=10),
             tickmode='array',
-            # Position labels at fibonacci level boundaries, not at data points
+            # Position labels at actual fibonacci levels (not artificial ones)
             tickvals=[level for level in sorted_levels if level not in [1.15, -1.15]],
             ticktext=[f"{level:+.3f}" for level in sorted_levels if level not in [1.15, -1.15]]
+            # Keep default grid lines - they align with zone boundaries nicely
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
