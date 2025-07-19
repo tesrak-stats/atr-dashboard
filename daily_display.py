@@ -567,8 +567,16 @@ if analysis_type == "StateCheck":
         st.stop()
 
 elif analysis_type == "Rolling":
-    st.info("⏰ Rolling analysis - Coming soon")
-    st.stop()
+    st.info("⏰ **Rolling**: 8-hour rolling window analysis from trigger time")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        price_direction = st.selectbox("Price Location", ["Above", "Below"], index=0)
+    with col2:
+        fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+        trigger_level = st.selectbox("Trigger Level", fib_levels, index=6)
+    with col3:
+        trigger_time = st.sel
     
 elif analysis_type == "ZoneBaseline":
     # Find and load the appropriate file
@@ -647,7 +655,6 @@ elif analysis_type == "ZoneBaseline":
     trigger_zone = "All Zones"
     font_size_multiplier = 1.0
 
-    st.write("Available levels being passed to chart:", display_fib_levels)
     # BUILD THE CHART using shared function
     fig, chart_use_container_width = create_zonebaseline_heatmap(
         filtered_data=filtered,
