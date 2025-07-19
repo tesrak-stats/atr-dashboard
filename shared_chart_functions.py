@@ -179,7 +179,6 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         ),
         yaxis=dict(
             title="Fibonacci Levels (Zone Boundaries)",
-            titlefont=dict(color="white", size=12),
             tickfont=dict(color="white", size=10),
             showticklabels=False,  # Hide default y-axis labels (we add custom ones)
             range=[min(zone_midpoints) - 0.1, max(zone_midpoints) + 0.1],
