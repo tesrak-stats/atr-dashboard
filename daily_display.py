@@ -576,103 +576,386 @@ elif analysis_type == "Rolling":
         fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
         trigger_level = st.selectbox("Trigger Level", fib_levels, index=6)
     with col3:
-        trigger_time = st.sel
+        trigger_time = st.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
     
-elif analysis_type == "ZoneBaseline":
-    # Find and load the appropriate file
-    if show_expanded_view:
-        detailed_files = glob.glob(f"zonebaseline_detailed_{selected_ticker}_*.csv")
-        if detailed_files:
-            zonebaseline_file = max(detailed_files)
+    # Generate 8-hour rolling window using shared function
+    rolling_hours = get_rolling_8_hours(trigger_time)
+    st.caption(f"🔄 Rolling window: {' → '.join(rolling_hours[:4])} → {' → '.join(rolling_hours[4:])}")
+    
+    # Load rolling data - find most recent file
+    try:
+        rolling_files = glob.glob(f"atr_summary_{selected_ticker}_ROLLING_*.csv")
+        if rolling_files:
+            rolling_file = max(rolling_files)  # Most recent by filename
+            df_rolling = pd.read_csv(rolling_file)
+            #st.success(f"✅ Loaded rolling data: {len(df_rolling)} records from {rolling_file}")
         else:
-            st.error(f"No detailed ZoneBaseline files found for {selected_ticker}")
+            st.error(f"❌ No rolling data files found for {selected_ticker}")
             st.stop()
-        column_mapping = {
-            "Time": "GoalTime", "Percentage": "PctCompletion"
-            # Removed "Zone": "GoalLevel" to preserve Zone column
-        }
-    else:
-        hourly_files = glob.glob(f"zonebaseline_hourly_{selected_ticker}_*.csv")
-        if hourly_files:
-            zonebaseline_file = max(hourly_files)
-        else:
-            st.error(f"No hourly ZoneBaseline files found for {selected_ticker}")
-            st.stop()
-        column_mapping = {
-            "TimeHourly": "GoalTime", "Percentage": "PctCompletion"
-            # Removed "Zone": "GoalLevel" to preserve Zone column
-        }
+    except Exception as e:
+        st.error(f"❌ Error loading rolling data: {str(e)}")
+        st.stop()
     
-    # Load and process the data
-    zonebaseline_df = pd.read_csv(zonebaseline_file)
-    adapted_data = zonebaseline_df.copy()
+    # Filter rolling data (same as session)
+    filtered_rolling = df_rolling[
+        (df_rolling["Direction"] == price_direction) &
+        (df_rolling["TriggerLevel"] == trigger_level) &
+        (df_rolling["TriggerTime"] == trigger_time)
+    ].copy()
     
-    # Define zone to fibonacci level mapping
-    goal_zone_to_fib = {
-        "above_1.0": 1.0, 
-        "0.786_to_1.0": 0.786, 
-        "0.618_to_0.786": 0.618,
-        "0.5_to_0.618": 0.5, 
-        "0.382_to_0.5": 0.382, 
-        "0.236_to_0.382": 0.236,
-        "0.0_to_0.236": 0.0, 
-        "-0.236_to_0.0": -0.236, 
-        "-0.382_to_-0.236": -0.382,
-        "-0.5_to_-0.382": -0.5, 
-        "-0.618_to_-0.5": -0.618, 
-        "-0.786_to_-0.618": -0.786,
-        "-1.0_to_-0.786": -1.0, 
-        "below_-1.0": -1.15
-    }
+    if len(filtered_rolling) == 0:
+        st.warning(f"No rolling data found for {price_direction} {trigger_level} at {trigger_time}")
+        st.stop()
     
-    # Apply column mapping (preserves Zone column)
-    adapted_data = adapted_data.rename(columns=column_mapping)
-    
-    # Create GoalLevel column from Zone column
-    adapted_data['GoalLevel'] = adapted_data['Zone'].map(goal_zone_to_fib)
-    
-    # Format GoalTime column
-    if 'GoalTime' in adapted_data.columns:
-        adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
-    
-    # Set filtered data
-    filtered = adapted_data
-    
-    # Set display columns based on view
+    # Display configuration (similar to session)
     if show_expanded_view:
-        available_times = sorted(filtered['GoalTime'].unique())
-        display_columns = available_times
-    else:
-        display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+        display_columns = rolling_hours + ["TOTAL", "REMAINING"]
+        display_fib_levels = fib_levels
+        chart_height = 700
+        chart_width = 1800
+        font_size_multiplier = 1.0
+        use_container_width = False
+    else:    
+        # For rolling, show first 4 hours + TOTAL/REMAINING for mobile
+        display_columns = rolling_hours[:4] + ["TOTAL", "REMAINING"]
+        
+        trigger_index = fib_levels.index(trigger_level)
+        start_fib = max(0, trigger_index - 3)
+        end_fib = min(len(fib_levels), trigger_index + 4)
+        display_fib_levels = fib_levels[start_fib:end_fib]
+        
+        chart_height = 400
+        chart_width = 700
+        font_size_multiplier = 1.0
+        use_container_width = False
     
-    # Prepare chart variables
-    available_levels = sorted(filtered['GoalLevel'].unique())
-    display_fib_levels = available_levels
     time_order = display_columns.copy()
     
-    # Create compatibility variables
-    price_direction = "Zone Occupancy Heatmap"
-    trigger_zone = "All Zones"
-    font_size_multiplier = 1.0
-
-    # BUILD THE CHART using shared function
-    fig, chart_use_container_width = create_zonebaseline_heatmap(
-        filtered_data=filtered,
-        display_fib_levels=display_fib_levels,
-        display_columns=display_columns,
-        time_order=time_order,
-        ticker_name=ticker_config[selected_ticker]['display_name'],
-        text_offset=0.03,
-        font_size_multiplier=font_size_multiplier,
-        price_levels_dict=price_levels_dict
+    # --- Create lookup dictionary from pre-calculated rolling data ---
+    data_lookup = {}
+    for _, row in filtered_rolling.iterrows():
+        goal_time = row["GoalTime"]
+        if pd.notna(goal_time):
+            if isinstance(goal_time, (int, float)):
+                time_int = int(goal_time)
+                if time_int == 900:
+                    goal_time_str = "0900"
+                elif time_int < 1000:
+                    goal_time_str = f"0{time_int}"
+                else:
+                    goal_time_str = str(time_int)
+            else:
+                goal_time_str = str(goal_time)
+        else:
+            goal_time_str = "Unknown"
+        
+        key = (float(row["GoalLevel"]), goal_time_str)
+        data_lookup[key] = {
+            "hits": row["NumHits"],
+            "triggers": row["NumTriggers"], 
+            "pct": row["PctCompletion"]
+        }
+    
+    # --- Calculate total completion rate for each goal level ---
+    goal_totals = {}
+    goal_remaining = {}
+    if len(filtered_rolling) > 0:
+        goal_summary = filtered_rolling.groupby('GoalLevel').agg({
+            'NumHits': 'sum',
+            'NumTriggers': 'first'
+        }).reset_index()
+        
+        for _, row in goal_summary.iterrows():
+            goal_level = row['GoalLevel']
+            total_hits = row['NumHits']
+            total_triggers = row['NumTriggers']
+            total_pct = (total_hits / total_triggers * 100) if total_triggers > 0 else 0
+            goal_totals[goal_level] = {
+                "hits": total_hits,
+                "triggers": total_triggers,
+                "pct": total_pct
+            }
+            
+            # Calculate remaining probability for rolling (simplified - just use total for now)
+            goal_remaining[goal_level] = {
+                "pct": total_pct,
+                "current_slot": "Rolling",
+                "total_pct": total_pct
+            }
+    
+    # --- Get OPEN trigger data for tooltip (if applicable) ---
+    open_trigger_data = {}
+    if trigger_time == "OPEN" and len(filtered_rolling) > 0:
+        open_triggers = filtered_rolling['NumTriggers'].iloc[0]
+        
+        for _, row in filtered_rolling.iterrows():
+            goal_level = row['GoalLevel']
+            # Rolling data might not have OpenCompletions column
+            open_completions = "N/A"
+            
+            open_trigger_data[goal_level] = {
+                "triggers": open_triggers,
+                "completions": open_completions
+            }
+    
+    # --- Build Rolling chart (same as session) ---
+    fig = go.Figure()
+    text_offset = 0.03
+    
+    # Add "Fib Level" title above left axis
+    fig.add_annotation(
+        text="Fib Level",
+        x=-0.05,
+        y=max(display_fib_levels) + 0.15,
+        xref="paper",
+        yref="y",
+        showarrow=False,
+        font=dict(color="gray", size=12 * font_size_multiplier),
+        xanchor="center",
+        yanchor="bottom"
+    )
+    
+    # --- Price labels as annotations (if available) ---
+    if price_levels_dict:
+        for level in display_fib_levels:
+            level_key = f"{level:+.3f}"
+            price_val = price_levels_dict.get(level_key, 0)
+            
+            fig.add_annotation(
+                text=f"{price_val:.2f}",
+                x=1.08,
+                y=level + text_offset,
+                xref="paper",
+                yref="y",
+                showarrow=False,
+                font=dict(color="white", size=14 * font_size_multiplier),
+                xanchor="left",
+                yanchor="middle"
+            )
+    
+    # --- Matrix cells ---
+    for level in display_fib_levels:
+        for t in time_order:
+            if t not in display_columns:
+                continue
+                
+            if t == "OPEN":
+                if trigger_time == "OPEN" and level in open_trigger_data:
+                    triggers = open_trigger_data[level]["triggers"]
+                    completions = open_trigger_data[level]["completions"]
+                    hover = f"OPEN Triggers: {triggers}, Goal {level} Completed at OPEN: {completions}"
+                    
+                    fig.add_trace(go.Scatter(
+                        x=[t], y=[level + text_offset],
+                        mode="text", text=[""],
+                        hovertext=[hover], hoverinfo="text",
+                        textfont=dict(color="white", size=13),
+                        showlegend=False
+                    ))
+                else:
+                    fig.add_trace(go.Scatter(
+                        x=[t], y=[level + text_offset],
+                        mode="text", text=[""],
+                        hoverinfo="skip",
+                        textfont=dict(color="white", size=13),
+                        showlegend=False
+                    ))
+                continue
+            
+            if t == "TOTAL":
+                if level in goal_totals:
+                    total_data = goal_totals[level]
+                    pct = total_data["pct"]
+                    hits = total_data["hits"]
+                    triggers = total_data["triggers"]
+                    
+                    line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
+                    font_size = 12 * font_size_multiplier
+                    
+                    warn = " ⚠️" if triggers < 30 else ""
+                    display_text = f"{pct:.1f}%"
+                    hover = f"Total: {pct:.1f}% ({hits}/{triggers}){warn}"
+                    
+                    fig.add_trace(go.Scatter(
+                        x=[t], y=[level + text_offset],
+                        mode="text", text=[display_text],
+                        hovertext=[hover], hoverinfo="text",
+                        textfont=dict(color=line_color, size=font_size),
+                        showlegend=False
+                    ))
+                else:
+                    fig.add_trace(go.Scatter(
+                        x=[t], y=[level + text_offset],
+                        mode="text", text=[""],
+                        hoverinfo="skip",
+                        textfont=dict(color="white", size=12),
+                        showlegend=False
+                    ))
+                continue
+            
+            if t == "REMAINING":
+                if level in goal_remaining:
+                    remaining_data = goal_remaining[level]
+                    remaining_pct = remaining_data["pct"]
+                    
+                    line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
+                    font_size = 12 * font_size_multiplier
+                    
+                    display_text = f"{remaining_pct:.1f}%"
+                    hover = f"Rolling Total: {remaining_pct:.1f}%"
+                    
+                    # Color code based on probability
+                    if remaining_pct > 15:
+                        text_color = "lime"
+                    elif remaining_pct > 5:
+                        text_color = "orange"
+                    else:
+                        text_color = "red"
+                    
+                    fig.add_trace(go.Scatter(
+                        x=[t], y=[level + text_offset],
+                        mode="text", text=[display_text],
+                        hovertext=[hover], hoverinfo="text",
+                        textfont=dict(color=text_color, size=font_size),
+                        showlegend=False
+                    ))
+                else:
+                    fig.add_trace(go.Scatter(
+                        x=[t], y=[level + text_offset],
+                        mode="text", text=[""],
+                        hoverinfo="skip",
+                        textfont=dict(color="white", size=12),
+                        showlegend=False
+                    ))
+                continue
+            
+            # Regular time columns
+            key = (float(level), t)
+            if key in data_lookup:
+                data = data_lookup[key]
+                pct = data["pct"]
+                hits = data["hits"]
+                total = data["triggers"]
+                
+                # For rolling, no "before trigger time" concept - all hours are valid
+                warn = " ⚠️" if total < 30 else ""
+                display_text = f"{pct:.1f}%"
+                hover = f"{pct:.1f}% ({hits}/{total}){warn}"
+                
+                # Color coding based on fibonacci level
+                line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
+                text_color = line_color
+                font_size = 12 * font_size_multiplier
+                
+                fig.add_trace(go.Scatter(
+                    x=[t], y=[level + text_offset],
+                    mode="text", text=[display_text],
+                    hovertext=[hover], hoverinfo="text",
+                    textfont=dict(color=text_color, size=font_size),
+                    showlegend=False
+                ))
+            else:
+                # No data for this combination
+                fig.add_trace(go.Scatter(
+                    x=[t], y=[level + text_offset],
+                    mode="text", text=[""],
+                    hoverinfo="skip",
+                    textfont=dict(color="white", size=12),
+                    showlegend=False
+                ))
+    
+    # --- Anchor invisible point for OPEN ---
+    if "OPEN" in display_columns:
+        fig.add_trace(go.Scatter(
+            x=["OPEN"], y=[0.0],
+            mode="markers",
+            marker=dict(opacity=0),
+            showlegend=False,
+            hoverinfo="skip"
+        ))
+    
+    # --- Horizontal lines for Fibonacci levels ---
+    for level in display_fib_levels:
+        if level in fibo_styles:
+            color, width, font_size = fibo_styles[level]
+            fig.add_shape(
+                type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
+                line=dict(color=color, width=width), layer="below"
+            )
+    
+    # --- Rolling trigger level highlighting ---
+    if trigger_level in display_fib_levels:
+        trigger_index = display_fib_levels.index(trigger_level)
+        
+        # Green shading above trigger level
+        if trigger_index > 0:
+            next_level_up = display_fib_levels[trigger_index - 1]
+            fig.add_shape(
+                type="rect",
+                x0=0, x1=1, xref="paper",
+                y0=trigger_level, y1=next_level_up, yref="y",
+                fillcolor="rgba(0, 255, 0, 0.1)",
+                line=dict(width=0),
+                layer="below"
+            )
+        
+        # Yellow shading below trigger level
+        if trigger_index < len(display_fib_levels) - 1:
+            next_level_down = display_fib_levels[trigger_index + 1]
+            fig.add_shape(
+                type="rect",
+                x0=0, x1=1, xref="paper",
+                y0=next_level_down, y1=trigger_level, yref="y",
+                fillcolor="rgba(255, 255, 0, 0.1)",
+                line=dict(width=0),
+                layer="below"
+            )
+    
+    # --- Rolling chart layout ---
+    fig.update_layout(
+        title=f"{ticker_config[selected_ticker]['display_name']} | Rolling {price_direction} {trigger_level}",
+        xaxis=dict(
+            title="Rolling Time Window (Eastern Time)",
+            categoryorder="array",
+            categoryarray=display_columns,
+            tickmode="array",
+            tickvals=display_columns,
+            ticktext=display_columns,
+            tickfont=dict(color="white", size=12),
+            fixedrange=False if not show_expanded_view else True
+        ),
+        yaxis=dict(
+            title="",
+            categoryorder="array",
+            categoryarray=display_fib_levels,
+            tickmode="array",
+            tickvals=display_fib_levels,
+            ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
+            tickfont=dict(color="white", size=12 * font_size_multiplier),
+            side="left",
+            fixedrange=False if not show_expanded_view else True
+        ),
+        plot_bgcolor="black",
+        paper_bgcolor="black",
+        font=dict(color="white", size=12 * font_size_multiplier),
+        height=chart_height,
+        width=chart_width,
+        margin=dict(l=80, r=150, t=60, b=60)
     )
     
     # Display the chart
-    st.markdown('<div style="width: 3200px; overflow-x: auto;">', unsafe_allow_html=True)
-    st.plotly_chart(fig, use_container_width=False)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.plotly_chart(fig, use_container_width=use_container_width)
     
-    # Skip remaining chart building
+    # --- Chart Information Footer ---
+    if atr_data.get("status") == "success":
+        data_age = atr_data.get('data_age_days', 0)
+        age_warning = f" (⚠️ {data_age} days old)" if data_age > 0 else ""
+        st.caption(f"📊 ATR levels from {atr_data.get('reference_date', 'unknown')} | Close: {atr_data.get('reference_close', 'N/A')} | ATR: {atr_data.get('reference_atr', 'N/A')}{age_warning}")
+    
+    # Legend
+    st.caption("📋 **Rolling Analysis Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | 8-hour window shows probability progression from trigger time")
+    
+    # Skip remaining chart building for other analysis types
     st.stop()
         
 
