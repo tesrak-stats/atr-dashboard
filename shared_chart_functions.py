@@ -10,12 +10,14 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
                                ticker_name, text_offset=0.03, font_size_multiplier=1.0, price_levels_dict=None):
     """
     Create static zone probability heatmap for ZoneBaseline analysis
+    Fixed to properly align zones between Fibonacci levels
     """
     import streamlit as st
+    import plotly.graph_objects as go
     
-    # Create data lookup and zone range mapping
+    # Create data lookup
     data_lookup = {}
-    zone_ranges = {}  # Map fib levels to their actual zone ranges
+    zone_ranges = {}
     
     for _, row in filtered_data.iterrows():
         goal_time = str(row["GoalTime"])
@@ -25,125 +27,108 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             "pct": row["PctCompletion"]
         }
         
-        # Store the actual zone range for hover tooltips
+        # Store zone information for hover
         if "Zone" in row:
             zone_ranges[fib_level] = row["Zone"]
-        else:
-            # Fallback: infer zone range from fib level - FIXED MAPPING
-            if fib_level == 1.15:
-                zone_ranges[fib_level] = "above_1.0"
-            elif fib_level == 1.0:
-                zone_ranges[fib_level] = "0.786_to_1.0"
-            elif fib_level == 0.786:
-                zone_ranges[fib_level] = "0.618_to_0.786"
-            elif fib_level == 0.618:
-                zone_ranges[fib_level] = "0.5_to_0.618"
-            elif fib_level == 0.5:
-                zone_ranges[fib_level] = "0.382_to_0.5"
-            elif fib_level == 0.382:
-                zone_ranges[fib_level] = "0.236_to_0.382"
-            elif fib_level == 0.236:
-                zone_ranges[fib_level] = "0.236_to_0.382"  # FIXED: was "0.0_to_0.236"
-            elif fib_level == 0.0:
-                zone_ranges[fib_level] = "0.0_to_0.236"
-            elif fib_level == -0.236:
-                zone_ranges[fib_level] = "-0.236_to_0.0"
-            elif fib_level == -0.382:
-                zone_ranges[fib_level] = "-0.382_to_-0.236"
-            elif fib_level == -0.5:
-                zone_ranges[fib_level] = "-0.5_to_-0.382"
-            elif fib_level == -0.618:
-                zone_ranges[fib_level] = "-0.618_to_-0.5"
-            elif fib_level == -0.786:
-                zone_ranges[fib_level] = "-0.786_to_-0.618"
-            elif fib_level == -1.0:
-                zone_ranges[fib_level] = "-1.0_to_-0.786"
-            elif fib_level == -1.15:
-                zone_ranges[fib_level] = "below_-1.0"
     
-    # Filter out artificial levels for proper display - INCLUDE extreme zones
-    fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0, -1.15]
-    display_levels = [lvl for lvl in display_fib_levels if lvl in fib_levels]
-    sorted_levels = sorted(display_levels, reverse=False)  # Low to high for proper display
+    # Standard Fibonacci levels in descending order (top to bottom on chart)
+    standard_fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
     
-    # Create zone boundary positions for label offset trick
-    # Calculate proper midpoints - each zone gets unique position
+    # Filter to only include levels we have data for
+    available_levels = [lvl for lvl in standard_fib_levels if lvl in display_fib_levels]
+    available_levels.sort(reverse=True)  # Top to bottom for proper display
+    
+    # Create zone boundaries - zones exist BETWEEN Fibonacci levels
+    # Each zone occupies the space between two consecutive Fibonacci levels
+    zone_boundaries = []
+    zone_labels = []
     zone_midpoints = []
+    zone_data_levels = []  # Track which fib level represents each zone's data
     
-    for i, level in enumerate(sorted_levels):
-        if i == 0:
-            # First zone - position below current level
-            if len(sorted_levels) > 1:
-                next_level = sorted_levels[i + 1]
-                midpoint = level - (next_level - level) / 2
-            else:
-                midpoint = level - 0.1
-        elif i == len(sorted_levels) - 1:
-            # Last zone - position above current level
-            prev_level = sorted_levels[i - 1]
-            midpoint = level + (level - prev_level) / 2
-        else:
-            # Middle zones - position between current and next level
-            next_level = sorted_levels[i + 1]
-            midpoint = (level + next_level) / 2
+    # Add zone above highest level
+    if available_levels:
+        top_level = available_levels[0]
+        zone_top = top_level + 0.2  # Extend above
+        zone_bottom = top_level
+        zone_mid = (zone_top + zone_bottom) / 2
         
-        zone_midpoints.append(midpoint)
+        zone_boundaries.append((zone_bottom, zone_top))
+        zone_midpoints.append(zone_mid)
+        zone_labels.append(f"Above +{top_level:.3f}")
+        zone_data_levels.append(1.15 if 1.15 in display_fib_levels else top_level)
     
-    # Build matrix data for heatmap with improved hover tooltips
+    # Add zones between consecutive levels
+    for i in range(len(available_levels) - 1):
+        upper_level = available_levels[i]
+        lower_level = available_levels[i + 1]
+        
+        zone_top = upper_level
+        zone_bottom = lower_level
+        zone_mid = (zone_top + zone_bottom) / 2
+        
+        zone_boundaries.append((zone_bottom, zone_top))
+        zone_midpoints.append(zone_mid)
+        zone_labels.append(f"{lower_level:+.3f} to {upper_level:+.3f}")
+        
+        # Use the upper level as the data key for this zone
+        zone_data_levels.append(upper_level)
+    
+    # Add zone below lowest level
+    if available_levels:
+        bottom_level = available_levels[-1]
+        zone_top = bottom_level
+        zone_bottom = bottom_level - 0.2  # Extend below
+        zone_mid = (zone_top + zone_bottom) / 2
+        
+        zone_boundaries.append((zone_bottom, zone_top))
+        zone_midpoints.append(zone_mid)
+        zone_labels.append(f"Below {bottom_level:+.3f}")
+        zone_data_levels.append(-1.15 if -1.15 in display_fib_levels else bottom_level)
+    
+    # Build matrix data for heatmap
     heatmap_data = []
     hover_data = []
     
-    for level in sorted_levels:
+    for i, data_level in enumerate(zone_data_levels):
         row_data = []
         row_hover = []
+        zone_label = zone_labels[i]
+        
         for time_col in display_columns:
-            key = (float(level), time_col)
+            key = (float(data_level), time_col)
             if key in data_lookup:
                 data = data_lookup[key]
-                zone_range = zone_ranges.get(level, f"Zone {level:+.3f}")
-                # Format zone range for display
-                zone_display = zone_range.replace("_to_", " to ").replace("_", " ")
-                row_data.append(data["pct"])
-                row_hover.append(f"Zone: {zone_display}<br>Time: {time_col}<br>Occupancy: {data['pct']:.1f}%")
+                pct_val = data["pct"]
+                row_data.append(pct_val)
+                row_hover.append(f"Zone: {zone_label}<br>Time: {time_col}<br>Occupancy: {pct_val:.1f}%")
             else:
-                zone_range = zone_ranges.get(level, f"Zone {level:+.3f}")
-                zone_display = zone_range.replace("_to_", " to ").replace("_", " ")
                 row_data.append(0)
-                row_hover.append(f"Zone: {zone_display}<br>Time: {time_col}<br>No data")
+                row_hover.append(f"Zone: {zone_label}<br>Time: {time_col}<br>No data")
+        
         heatmap_data.append(row_data)
         hover_data.append(row_hover)
     
-    # Create custom colorscale with more granularity in the 0-50% range
+    # Create custom colorscale optimized for occupancy percentages
     custom_colorscale = [
         [0.0, '#1A1A1A'],      # Dark Gray for 0-1%
-        [0.01, '#1A1A1A'],     # Dark Gray
         [0.01, '#2D2D2D'],     # Gray for 1-2%
-        [0.02, '#2D2D2D'],     # Gray
         [0.02, '#FF4444'],     # Light Red for 2-4%
-        [0.04, '#FF4444'],     # Light Red
         [0.04, '#FF6B6B'],     # Red for 4-7%
-        [0.07, '#FF6B6B'],     # Red
         [0.07, '#FFA500'],     # Orange for 7-12%
-        [0.12, '#FFA500'],     # Orange
         [0.12, '#FFD700'],     # Yellow for 12-18%
-        [0.18, '#FFD700'],     # Yellow
         [0.18, '#ADFF2F'],     # Yellow-Green for 18-25%
-        [0.25, '#ADFF2F'],     # Yellow-Green
         [0.25, '#90EE90'],     # Light Green for 25-35%
-        [0.35, '#90EE90'],     # Light Green
         [0.35, '#32CD32'],     # Green for 35-45%
-        [0.45, '#32CD32'],     # Green
         [0.45, '#00FF00'],     # Bright Green for 45-55%
-        [0.55, '#00FF00'],     # Bright Green
         [0.55, '#00FF7F'],     # Spring Green for 55%+
-        [1.0, '#00FF7F']       # Spring Green
+        [1.0, '#00FF7F']
     ]
     
-    # Create heatmap using zone midpoints (Plotly centers on these)
+    # Create heatmap
     fig = go.Figure(data=go.Heatmap(
         z=heatmap_data,
         x=list(range(len(display_columns))),
-        y=zone_midpoints,  # Use calculated midpoints for proper visual alignment
+        y=zone_midpoints,  # Position heatmap cells at zone midpoints
         colorscale=custom_colorscale,
         showscale=True,
         colorbar=dict(title="Occupancy %"),
@@ -151,34 +136,75 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         customdata=hover_data,
         zmin=0,
         zmax=100,
-        opacity=0.7
+        opacity=0.8
     ))
+    
+    # Add horizontal lines at Fibonacci levels (zone boundaries)
+    for fib_level in available_levels:
+        fig.add_hline(
+            y=fib_level,
+            line=dict(color="white", width=1),
+            layer="above"  # Draw lines above the heatmap
+        )
+    
+    # Add Fibonacci level labels on the left
+    for fib_level in available_levels:
+        fig.add_annotation(
+            text=f"{fib_level:+.3f}",
+            x=-0.02,
+            y=fib_level,
+            xref="paper",
+            yref="y",
+            showarrow=False,
+            font=dict(color="white", size=12),
+            xanchor="right",
+            yanchor="middle"
+        )
+    
+    # Add price level labels on the right if available
+    if price_levels_dict:
+        for fib_level in available_levels:
+            level_key = f"{fib_level:+.3f}"
+            if level_key in price_levels_dict:
+                price_val = price_levels_dict[level_key]
+                fig.add_annotation(
+                    text=f"${price_val:.2f}",
+                    x=1.02,
+                    y=fib_level,
+                    xref="paper",
+                    yref="y",
+                    showarrow=False,
+                    font=dict(color="white", size=12),
+                    xanchor="left",
+                    yanchor="middle"
+                )
+    
+    # Calculate chart dimensions
+    chart_width = max(1000, len(display_columns) * 40)
     
     fig.update_layout(
         title=f"{ticker_name} | Zone Occupancy Heatmap",
         xaxis=dict(
             title="Time (Eastern)",
             tickfont=dict(color="white", size=10),
-            tickangle=45 if len(display_columns) > 15 else 0,
+            tickangle=45 if len(display_columns) > 10 else 0,
             tickmode='array',
             tickvals=list(range(len(display_columns))),
-            ticktext=display_columns
+            ticktext=display_columns,
+            side="bottom"
         ),
         yaxis=dict(
-            title="Fibonacci Levels",
+            title="Fibonacci Levels (Zone Boundaries)",
             tickfont=dict(color="white", size=10),
-            tickmode='array',
-            # Position grid lines at actual zone midpoints, but label with fibonacci levels
-            # Make sure both arrays have same length by filtering both consistently
-            tickvals=[midpoint for i, midpoint in enumerate(zone_midpoints) if sorted_levels[i] != -1.15],
-            ticktext=[f"{lvl:+.3f}" for lvl in sorted_levels if lvl != -1.15]
+            showticklabels=False,  # Hide default y-axis labels (we add custom ones)
+            range=[min(zone_midpoints) - 0.1, max(zone_midpoints) + 0.1]
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
         font=dict(color="white", size=12),
         height=600,
-        width=max(1000, len(display_columns) * 25),
-        margin=dict(l=80, r=60, t=60, b=100)
+        width=chart_width,
+        margin=dict(l=80, r=100, t=60, b=100)
     )
     
     return fig, True
