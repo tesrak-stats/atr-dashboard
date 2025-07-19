@@ -572,8 +572,7 @@ elif analysis_type == "Rolling":
     
 elif analysis_type == "ZoneBaseline":
           
-        # Adapt ZoneBaseline data to chart format
-        adapted_data = zonebaseline_df.copy()
+       
                              
              
         # Convert zone strings to fibonacci levels (same as StateCheck)
