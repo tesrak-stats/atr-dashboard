@@ -654,17 +654,6 @@ elif analysis_type == "ZoneBaseline":
     st.plotly_chart(fig, use_container_width=False)
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Add color legend
-    st.markdown("""
-    **🎨 Zone Occupancy Color Legend:**
-    - 🟢 **Bright Green** (≥50%): Very High Occupancy
-    - 🌟 **Light Green** (20-49%): High Occupancy  
-    - 🟡 **Yellow** (10-19%): Medium Occupancy
-    - 🟠 **Orange** (5-9%): Low Occupancy
-    - 🔶 **Light Red** (2-4%): Very Low Occupancy
-    - ⚫ **Gray** (<2%): Minimal Occupancy
-    """)
-    
     # Skip remaining chart building
     st.stop()
         
