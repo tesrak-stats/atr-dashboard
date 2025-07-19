@@ -58,34 +58,35 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
                 zone_ranges[fib_level] = "-1.0_to_-0.786"
             elif fib_level == -1.15:
                 zone_ranges[fib_level] = "below_-1.0"
-
-    st.write("Data lookup keys containing level 1.0:", [(k, v) for k, v in data_lookup.items() if k[0] == 1.0])                             
+    
     # Filter out artificial levels for proper display - INCLUDE extreme zones
-    fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0, -1.15]
+    fib_levels = [1.15, 1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0, -1.15]
     display_levels = [lvl for lvl in display_fib_levels if lvl in fib_levels]
     sorted_levels = sorted(display_levels, reverse=False)  # Low to high for proper display
-    st.write("Sorted levels being used for chart:", sorted_levels)  # Add this debug line
+    
     # Create zone boundary positions for label offset trick
-    # Calculate constrained midpoints to avoid oversized extreme zones
+    # Calculate proper midpoints - each zone gets unique position
     zone_midpoints = []
     
     for i, level in enumerate(sorted_levels):
         if i == 0:
-            # First zone
-            next_level = sorted_levels[i + 1] if i + 1 < len(sorted_levels) else level + 0.146
-            midpoint = (level + next_level) / 2
+            # First zone - position below current level
+            if len(sorted_levels) > 1:
+                next_level = sorted_levels[i + 1]
+                midpoint = level - (next_level - level) / 2
+            else:
+                midpoint = level - 0.1
         elif i == len(sorted_levels) - 1:
-            # Last zone
+            # Last zone - position above current level
             prev_level = sorted_levels[i - 1]
-            midpoint = (prev_level + level) / 2
+            midpoint = level + (level - prev_level) / 2
         else:
-            # Middle zones - between current and next level
+            # Middle zones - position between current and next level
             next_level = sorted_levels[i + 1]
             midpoint = (level + next_level) / 2
         
         zone_midpoints.append(midpoint)
-        if level == 1.0:
-          st.write(f"Level 1.0 gets midpoint: {midpoint}, index: {i}")
+    
     # Build matrix data for heatmap with improved hover tooltips
     heatmap_data = []
     hover_data = []
@@ -109,13 +110,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
                 row_hover.append(f"Zone: {zone_display}<br>Time: {time_col}<br>No data")
         heatmap_data.append(row_data)
         hover_data.append(row_hover)
-
-    st.write("Number of zone_midpoints:", len(zone_midpoints))
-    st.write("Number of heatmap_data rows:", len(heatmap_data))
-    st.write("Zone midpoints:", zone_midpoints)                        
-    st.write("Heatmap data matrix shape:", len(heatmap_data), "x", len(heatmap_data[0]) if heatmap_data else 0)
-    st.write("Last row of heatmap_data (should be level 1.0):", heatmap_data[-1] if heatmap_data else "No data")
-
+    
     # Create custom colorscale with more granularity in the 0-50% range
     custom_colorscale = [
         [0.0, '#1A1A1A'],      # Dark Gray for 0-1%
@@ -184,7 +179,6 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     )
     
     return fig, True
-
 """
 ADD this function to shared_chart_functions.py (replace the existing create_statecheck_matrix)
 Make sure plotly.graph_objects as go and pandas as pd are imported at the top
