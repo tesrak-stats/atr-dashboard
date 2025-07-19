@@ -26,7 +26,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         if "Zone" in row:
             zone_ranges[fib_level] = row["Zone"]
         else:
-            # Fallback: infer zone range from fib level
+            # Fallback: infer zone range from fib level - FIXED MAPPING
             if fib_level == 1.15:
                 zone_ranges[fib_level] = "above_1.0"
             elif fib_level == 1.0:
@@ -40,7 +40,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             elif fib_level == 0.382:
                 zone_ranges[fib_level] = "0.236_to_0.382"
             elif fib_level == 0.236:
-                zone_ranges[fib_level] = "0.0_to_0.236"
+                zone_ranges[fib_level] = "0.236_to_0.382"  # FIXED: was "0.0_to_0.236"
             elif fib_level == 0.0:
                 zone_ranges[fib_level] = "0.0_to_0.236"
             elif fib_level == -0.236:
@@ -59,7 +59,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
                 zone_ranges[fib_level] = "below_-1.0"
     
     # Filter out artificial levels for proper display - INCLUDE extreme zones
-    fib_levels = [1.15, 1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0, -1.15]
+    fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
     display_levels = [lvl for lvl in display_fib_levels if lvl in fib_levels]
     sorted_levels = sorted(display_levels, reverse=False)  # Low to high for proper display
     
@@ -68,28 +68,18 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     zone_midpoints = []
     
     for i, level in enumerate(sorted_levels):
-        if level == 1.15:  # Above 1.0 zone
-            # Position just above the 1.0 level, small zone
-            midpoint = 1.073  # Between 1.0 and 1.146
-        elif level == -1.15:  # Below -1.0 zone  
-            # Position just below the -1.0 level, small zone
-            midpoint = -1.073  # Between -1.146 and -1.0
-        elif i == 0:
-            # First normal zone
+        if i == 0:
+            # First zone
             next_level = sorted_levels[i + 1] if i + 1 < len(sorted_levels) else level + 0.146
             midpoint = (level + next_level) / 2
         elif i == len(sorted_levels) - 1:
-            # Last normal zone
+            # Last zone
             prev_level = sorted_levels[i - 1]
             midpoint = (prev_level + level) / 2
         else:
             # Middle zones - between current and next level
-            if i + 1 < len(sorted_levels):
-                next_level = sorted_levels[i + 1]
-                midpoint = (level + next_level) / 2
-            else:
-                prev_level = sorted_levels[i - 1]
-                midpoint = (prev_level + level) / 2
+            next_level = sorted_levels[i + 1]
+            midpoint = (level + next_level) / 2
         
         zone_midpoints.append(midpoint)
     
@@ -173,10 +163,8 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             tickfont=dict(color="white", size=10),
             tickmode='array',
             # Position labels at actual fibonacci levels (not artificial ones)
-            tickvals=sorted_levels,  # Show ALL levels, don't filter any out
+            tickvals=sorted_levels,
             ticktext=[f"{level:+.3f}" for level in sorted_levels]
-           
-            # Keep default grid lines - they align with zone boundaries nicely
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
@@ -187,7 +175,6 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     )
     
     return fig, True
-
 
 
 """
