@@ -471,7 +471,6 @@ def get_total_probability(level_totals_data, analysis_type, direction=None, trig
     except Exception:
         return {'hits': 0, 'triggers': 0, 'pct': 0.0}
 
-
 def get_rolling_8_hours(trigger_time):
     """
     Generate 8-hour rolling window from trigger time, crossing days if needed
@@ -480,27 +479,23 @@ def get_rolling_8_hours(trigger_time):
         trigger_time: Starting time for rolling window
     
     Returns:
-        List of 8 consecutive trading hours
+        List of 8 consecutive trading hours (clean labels, no day marking)
     """
-    trading_hours = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+    # OPEN is special case, regular trading hours don't include OPEN
+    regular_hours = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
     
     if trigger_time == "OPEN":
-        return trading_hours[:8]
+        return ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
     
-    if trigger_time not in trading_hours:
-        return trading_hours[:8]  # Fallback
+    if trigger_time not in regular_hours:
+        return ["0900", "1000", "1100", "1200", "1300", "1400", "1500", "0900"]  # Fallback
     
-    trigger_index = trading_hours.index(trigger_time)
+    trigger_index = regular_hours.index(trigger_time)
     rolling_hours = []
     
     for i in range(8):
-        hour_index = (trigger_index + i) % len(trading_hours)
-        hour = trading_hours[hour_index]
-        
-        # Mark next-day hours
-        if trigger_index + i >= len(trading_hours):
-            rolling_hours.append(f"{hour}+1")
-        else:
-            rolling_hours.append(hour)
+        hour_index = (trigger_index + i) % len(regular_hours)
+        hour = regular_hours[hour_index]
+        rolling_hours.append(hour)
     
     return rolling_hours
