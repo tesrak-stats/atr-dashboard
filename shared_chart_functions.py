@@ -11,6 +11,8 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     """
     Create static zone probability heatmap for ZoneBaseline analysis
     """
+    import streamlit as st
+    
     # Create data lookup and zone range mapping
     data_lookup = {}
     zone_ranges = {}  # Map fib levels to their actual zone ranges
@@ -60,7 +62,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
                 zone_ranges[fib_level] = "below_-1.0"
     
     # Filter out artificial levels for proper display - INCLUDE extreme zones
-    fib_levels = [1.15, 1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0, -1.15]
+    fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0, -1.15]
     display_levels = [lvl for lvl in display_fib_levels if lvl in fib_levels]
     sorted_levels = sorted(display_levels, reverse=False)  # Low to high for proper display
     
@@ -85,17 +87,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             next_level = sorted_levels[i + 1]
             midpoint = (level + next_level) / 2
         
-        # Calculate precise zone boundaries for grid line placement
-    zone_boundaries = []
-    
-    for i in range(len(zone_midpoints) - 1):
-        # Boundary between zone i and zone i+1 is halfway between their midpoints
-        boundary = (zone_midpoints[i] + zone_midpoints[i + 1]) / 2
-        zone_boundaries.append(boundary)
-    
-    # Add the original fibonacci levels as labels, but position grid lines at actual boundaries
-    fib_level_labels = [lvl for lvl in sorted_levels if lvl not in [-1.15]]  # Remove -1.15 label
-    boundary_positions = zone_boundaries[:len(fib_level_labels)]  # Match length
+        zone_midpoints.append(midpoint)
     
     # Build matrix data for heatmap with improved hover tooltips
     heatmap_data = []
@@ -176,9 +168,10 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             title="Fibonacci Levels",
             tickfont=dict(color="white", size=10),
             tickmode='array',
-            # Position labels at actual fibonacci levels (not artificial ones)
-            tickvals=sorted_levels,
-            ticktext=[f"{level:+.3f}" for level in sorted_levels]
+            # Position grid lines at actual zone midpoints, but label with fibonacci levels
+            # Make sure both arrays have same length by filtering both consistently
+            tickvals=[midpoint for i, midpoint in enumerate(zone_midpoints) if sorted_levels[i] != -1.15],
+            ticktext=[f"{lvl:+.3f}" for lvl in sorted_levels if lvl != -1.15]
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
