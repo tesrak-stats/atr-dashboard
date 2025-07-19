@@ -62,7 +62,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0, -1.15]
     display_levels = [lvl for lvl in display_fib_levels if lvl in fib_levels]
     sorted_levels = sorted(display_levels, reverse=False)  # Low to high for proper display
-    
+    st.write("Sorted levels being used for chart:", sorted_levels)  # Add this debug line
     # Create zone boundary positions for label offset trick
     # Calculate constrained midpoints to avoid oversized extreme zones
     zone_midpoints = []
