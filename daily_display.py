@@ -646,7 +646,8 @@ elif analysis_type == "ZoneBaseline":
     price_direction = "Zone Occupancy Heatmap"
     trigger_zone = "All Zones"
     font_size_multiplier = 1.0
-    
+
+    st.write("Available levels being passed to chart:", display_fib_levels)
     # BUILD THE CHART using shared function
     fig, chart_use_container_width = create_zonebaseline_heatmap(
         filtered_data=filtered,
