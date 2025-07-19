@@ -38,41 +38,49 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     available_levels = [lvl for lvl in standard_fib_levels if lvl in display_fib_levels]
     available_levels.sort(reverse=True)  # Top to bottom for proper display
     
-    # Let Plotly make equal-height zones and position labels where colors actually change
-    zone_y_coords = []
-    zone_labels = []  
+    # Back to simple approach: zones between Fibonacci levels
+    zone_boundaries = []
+    zone_labels = []
+    zone_midpoints = []
     zone_data_levels = []
     
-    # Create equal-spaced coordinates for zones
-    num_zones = len(display_fib_levels)
-    
-    # Build zone data - one zone for each fib level in our data
-    for i, level in enumerate(display_fib_levels):
-        zone_y_coords.append(level)  # Use original fib level as coordinate
-        zone_data_levels.append(level)
+    # Add zone above highest level
+    if available_levels:
+        top_level = available_levels[0]
+        zone_top = top_level + 0.2
+        zone_bottom = top_level
+        zone_mid = (zone_top + zone_bottom) / 2
         
-        # Create zone labels (we'll adjust the boundary labels separately)
-        if level == 1.15 or level > 1.0:
-            zone_labels.append(f"Above +1.000")
-        elif level == -1.15 or level < -1.0:  
-            zone_labels.append(f"Below -1.000")
-        else:
-            zone_labels.append(f"Zone {level:+.3f}")
+        zone_boundaries.append((zone_bottom, zone_top))
+        zone_midpoints.append(zone_mid)
+        zone_labels.append(f"Above +{top_level:.3f}")
+        zone_data_levels.append(1.15 if 1.15 in display_fib_levels else top_level)
     
-    # Calculate where Plotly will actually put the boundaries (between equal-height zones)
-    if len(zone_y_coords) > 1:
-        min_coord = min(zone_y_coords)
-        max_coord = max(zone_y_coords)
-        coord_range = max_coord - min_coord
+    # Add zones between consecutive levels
+    for i in range(len(available_levels) - 1):
+        upper_level = available_levels[i]
+        lower_level = available_levels[i + 1]
         
-        # Plotly will create equal-height zones, so calculate where boundaries will be
-        visual_boundaries = []
-        for i in range(len(zone_y_coords) - 1):
-            # Boundary position in equal-height system
-            boundary_pos = min_coord + (coord_range * (i + 1) / len(zone_y_coords))
-            visual_boundaries.append(boundary_pos)
-    else:
-        visual_boundaries = []
+        zone_top = upper_level
+        zone_bottom = lower_level
+        zone_mid = (zone_top + zone_bottom) / 2
+        
+        zone_boundaries.append((zone_bottom, zone_top))
+        zone_midpoints.append(zone_mid)
+        zone_labels.append(f"{lower_level:+.3f} to {upper_level:+.3f}")
+        zone_data_levels.append(upper_level)
+    
+    # Add zone below lowest level
+    if available_levels:
+        bottom_level = available_levels[-1]
+        zone_top = bottom_level
+        zone_bottom = bottom_level - 0.2
+        zone_mid = (zone_top + zone_bottom) / 2
+        
+        zone_boundaries.append((zone_bottom, zone_top))
+        zone_midpoints.append(zone_mid)
+        zone_labels.append(f"Below {bottom_level:+.3f}")
+        zone_data_levels.append(-1.15 if -1.15 in display_fib_levels else bottom_level)
     
     # Build matrix data for heatmap
     heatmap_data = []
@@ -128,43 +136,34 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         opacity=0.8
     ))
     
-    # Add horizontal lines at the VISUAL boundaries (where colors actually change)
-    for boundary_pos in visual_boundaries:
-        fig.add_hline(
-            y=boundary_pos,
-            line=dict(color="rgba(255, 255, 255, 0.3)", width=0.5),
-            layer="above"
-        )
+    # NO horizontal lines - let zone boundaries show naturally
     
-    # Add Fibonacci level labels at the VISUAL boundary positions
-    for i, boundary_pos in enumerate(visual_boundaries):
-        if i < len(available_levels) - 1:  # Don't exceed available levels
-            fib_level = available_levels[i + 1]  # The level below this boundary
-            fig.add_annotation(
-                text=f"{fib_level:+.3f}",
-                x=-0.01,
-                y=boundary_pos,
-                xref="paper",
-                yref="y",
-                showarrow=False,
-                font=dict(color="white", size=11),
-                xanchor="right",
-                yanchor="middle"
-            )
-    
-    # Add "Zone" title above the boundary labels  
-    if visual_boundaries:
+    # Add Fibonacci level labels at actual levels
+    for fib_level in available_levels:
         fig.add_annotation(
-            text="Zone",
-            x=-0.05,
-            y=max(visual_boundaries) + 0.15,
+            text=f"{fib_level:+.3f}",
+            x=-0.01,
+            y=fib_level,
             xref="paper",
             yref="y",
             showarrow=False,
-            font=dict(color="gray", size=11),
-            xanchor="center",
-            yanchor="bottom"
+            font=dict(color="white", size=11),
+            xanchor="right",
+            yanchor="middle"
         )
+    
+    # Add "Zone" title above the Fibonacci labels
+    fig.add_annotation(
+        text="Zone",
+        x=-0.05,
+        y=max(available_levels) + 0.15,
+        xref="paper",
+        yref="y",
+        showarrow=False,
+        font=dict(color="gray", size=11),
+        xanchor="center",
+        yanchor="bottom"
+    )
     
     # Price levels removed for cleaner display in zone occupancy analysis
     
@@ -186,7 +185,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             title="",  # Remove axis title since we're using annotation
             tickfont=dict(color="white", size=10),
             showticklabels=False,  # Hide default y-axis labels (we add custom ones)
-            range=[min(zone_y_coords) - 0.1, max(zone_y_coords) + 0.1],
+            range=[min(zone_midpoints) - 0.1, max(zone_midpoints) + 0.1],
             showgrid=False  # Remove grid lines
         ),
         plot_bgcolor="black",
