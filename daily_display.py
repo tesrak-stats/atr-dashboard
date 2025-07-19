@@ -659,15 +659,15 @@ elif analysis_type == "ZoneBaseline":
     
         # BUILD THE CHART using shared function
             fig, chart_use_container_width = create_zonebaseline_heatmap(
-            filtered_data=filtered,
-            display_fib_levels=display_fib_levels,
-            display_columns=display_columns,
-            time_order=time_order,
-            ticker_name=ticker_config[selected_ticker]['display_name'],
-            text_offset=0.03,
-            font_size_multiplier=font_size_multiplier,
-            price_levels_dict=price_levels_dict
-        )
+                filtered_data=filtered,
+                display_fib_levels=display_fib_levels,
+                display_columns=display_columns,
+                time_order=time_order,
+                ticker_name=ticker_config[selected_ticker]['display_name'],
+                text_offset=0.03,
+                font_size_multiplier=font_size_multiplier,
+                price_levels_dict=price_levels_dict
+            )
         
         # Display the chart
         st.markdown('<div style="width: 3200px; overflow-x: auto;">', unsafe_allow_html=True)
