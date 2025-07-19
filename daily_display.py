@@ -647,7 +647,7 @@ elif analysis_type == "ZoneBaseline":
             display_columns = available_times
         else:
             display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]   
-                available_levels = sorted(filtered['GoalLevel'].unique())  
+            available_levels = sorted(filtered['GoalLevel'].unique())  
 
             display_fib_levels = available_levels
             time_order = display_columns.copy()
