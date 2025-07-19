@@ -43,20 +43,30 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         heatmap_data.append(row_data)
         hover_data.append(row_hover)
     
-    # Create custom colorscale that matches our legend - adjusted for zone occupancy
+    # Create custom colorscale with more granularity in the 0-50% range
     custom_colorscale = [
-        [0.0, '#2D2D2D'],      # Gray for 0-2%
+        [0.0, '#1A1A1A'],      # Dark Gray for 0-1%
+        [0.01, '#1A1A1A'],     # Dark Gray
+        [0.01, '#2D2D2D'],     # Gray for 1-2%
         [0.02, '#2D2D2D'],     # Gray
-        [0.02, '#FF6B6B'],     # Light Red for 2-5%
-        [0.05, '#FF6B6B'],     # Light Red
-        [0.05, '#FFA500'],     # Orange for 5-10%
-        [0.10, '#FFA500'],     # Orange
-        [0.10, '#FFD700'],     # Yellow for 10-20%
-        [0.20, '#FFD700'],     # Yellow
-        [0.20, '#90EE90'],     # Light Green for 20-50%
-        [0.50, '#90EE90'],     # Light Green
-        [0.50, '#00FF00'],     # Bright Green for 50%+
-        [1.0, '#00FF00']       # Bright Green
+        [0.02, '#FF4444'],     # Light Red for 2-4%
+        [0.04, '#FF4444'],     # Light Red
+        [0.04, '#FF6B6B'],     # Red for 4-7%
+        [0.07, '#FF6B6B'],     # Red
+        [0.07, '#FFA500'],     # Orange for 7-12%
+        [0.12, '#FFA500'],     # Orange
+        [0.12, '#FFD700'],     # Yellow for 12-18%
+        [0.18, '#FFD700'],     # Yellow
+        [0.18, '#ADFF2F'],     # Yellow-Green for 18-25%
+        [0.25, '#ADFF2F'],     # Yellow-Green
+        [0.25, '#90EE90'],     # Light Green for 25-35%
+        [0.35, '#90EE90'],     # Light Green
+        [0.35, '#32CD32'],     # Green for 35-45%
+        [0.45, '#32CD32'],     # Green
+        [0.45, '#00FF00'],     # Bright Green for 45-55%
+        [0.55, '#00FF00'],     # Bright Green
+        [0.55, '#00FF7F'],     # Spring Green for 55%+
+        [1.0, '#00FF7F']       # Spring Green
     ]
     
     # Create heatmap with proper y-axis mapping (more transparent)
@@ -73,42 +83,6 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         zmax=100,
         opacity=0.7
     ))
-    
-    # Add text overlays to debug what data is actually being displayed
-    for level_idx, level in enumerate(sorted_levels):
-        for time_idx, time_col in enumerate(display_columns):
-            key = (float(level), time_col)
-            if key in data_lookup:
-                data = data_lookup[key]
-                pct = data["pct"]
-                
-                # Add text overlay
-                fig.add_trace(go.Scatter(
-                    x=[time_idx], y=[level_idx],
-                    mode="text", 
-                    text=[f"{pct:.1f}%"],
-                    textfont=dict(color="white", size=12, family="Arial Black"),
-                    showlegend=False,
-                    hoverinfo="skip"
-                ))
-    
-    # Add price level annotations on the right side
-    if price_levels_dict:
-        for i, level in enumerate(sorted_levels):
-            level_key = f"{level:+.3f}"
-            price_val = price_levels_dict.get(level_key, 0)
-            
-            fig.add_annotation(
-                text=f"${price_val:.2f}",
-                x=1.02,
-                y=i,
-                xref="paper",
-                yref="y",
-                showarrow=False,
-                font=dict(color="white", size=12),
-                xanchor="left",
-                yanchor="middle"
-            )
     
     fig.update_layout(
         title=f"{ticker_name} | Zone Occupancy Heatmap",
@@ -132,7 +106,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         font=dict(color="white", size=12),
         height=600,
         width=max(1000, len(display_columns) * 25),
-        margin=dict(l=80, r=120, t=60, b=100)
+        margin=dict(l=80, r=60, t=60, b=100)
     )
     
     return fig, True
