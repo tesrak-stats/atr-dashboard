@@ -10,21 +10,70 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     """
     Create static zone probability heatmap for ZoneBaseline analysis
     """
-    # Create data lookup
+    # Create data lookup and zone range mapping
     data_lookup = {}
+    zone_ranges = {}  # Map fib levels to their actual zone ranges
+    
     for _, row in filtered_data.iterrows():
         goal_time = str(row["GoalTime"])
-        key = (float(row["GoalLevel"]), goal_time)
+        fib_level = float(row["GoalLevel"])
+        key = (fib_level, goal_time)
         data_lookup[key] = {
             "pct": row["PctCompletion"]
         }
+        
+        # Store the actual zone range for hover tooltips
+        if "Zone" in row:
+            zone_ranges[fib_level] = row["Zone"]
+        else:
+            # Fallback: infer zone range from fib level
+            if fib_level == 1.15:
+                zone_ranges[fib_level] = "above_1.0"
+            elif fib_level == 1.0:
+                zone_ranges[fib_level] = "0.786_to_1.0"
+            elif fib_level == 0.786:
+                zone_ranges[fib_level] = "0.618_to_0.786"
+            elif fib_level == 0.618:
+                zone_ranges[fib_level] = "0.5_to_0.618"
+            elif fib_level == 0.5:
+                zone_ranges[fib_level] = "0.382_to_0.5"
+            elif fib_level == 0.382:
+                zone_ranges[fib_level] = "0.236_to_0.382"
+            elif fib_level == 0.236:
+                zone_ranges[fib_level] = "0.0_to_0.236"
+            elif fib_level == 0.0:
+                zone_ranges[fib_level] = "0.0_to_0.236"
+            elif fib_level == -0.236:
+                zone_ranges[fib_level] = "-0.236_to_0.0"
+            elif fib_level == -0.382:
+                zone_ranges[fib_level] = "-0.382_to_-0.236"
+            elif fib_level == -0.5:
+                zone_ranges[fib_level] = "-0.5_to_-0.382"
+            elif fib_level == -0.618:
+                zone_ranges[fib_level] = "-0.618_to_-0.5"
+            elif fib_level == -0.786:
+                zone_ranges[fib_level] = "-0.786_to_-0.618"
+            elif fib_level == -1.0:
+                zone_ranges[fib_level] = "-1.0_to_-0.786"
+            elif fib_level == -1.15:
+                zone_ranges[fib_level] = "below_-1.0"
     
-    # Filter out artificial levels for proper display
-    fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+    # Filter out artificial levels for proper display - INCLUDE extreme zones
+    fib_levels = [1.15, 1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0, -1.15]
     display_levels = [lvl for lvl in display_fib_levels if lvl in fib_levels]
-    sorted_levels = sorted(display_levels, reverse=False)  # Changed: Low to high for proper display
+    sorted_levels = sorted(display_levels, reverse=False)  # Low to high for proper display
     
-    # Build matrix data for heatmap
+    # Create zone boundary positions for proper band alignment
+    zone_boundaries = {}
+    for i, level in enumerate(sorted_levels):
+        if i == 0:  # Bottom level
+            zone_boundaries[level] = {"bottom": i - 0.5, "top": i + 0.5}
+        elif i == len(sorted_levels) - 1:  # Top level  
+            zone_boundaries[level] = {"bottom": i - 0.5, "top": i + 0.5}
+        else:  # Middle levels
+            zone_boundaries[level] = {"bottom": i - 0.5, "top": i + 0.5}
+    
+    # Build matrix data for heatmap with improved hover tooltips
     heatmap_data = []
     hover_data = []
     
@@ -35,11 +84,16 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             key = (float(level), time_col)
             if key in data_lookup:
                 data = data_lookup[key]
+                zone_range = zone_ranges.get(level, f"Zone {level:+.3f}")
+                # Format zone range for display
+                zone_display = zone_range.replace("_to_", " to ").replace("_", " ")
                 row_data.append(data["pct"])
-                row_hover.append(f"Zone {level:+.3f}<br>Time: {time_col}<br>Occupancy: {data['pct']:.1f}%")
+                row_hover.append(f"Zone: {zone_display}<br>Time: {time_col}<br>Occupancy: {data['pct']:.1f}%")
             else:
+                zone_range = zone_ranges.get(level, f"Zone {level:+.3f}")
+                zone_display = zone_range.replace("_to_", " to ").replace("_", " ")
                 row_data.append(0)
-                row_hover.append(f"Zone {level:+.3f}<br>Time: {time_col}<br>No data")
+                row_hover.append(f"Zone: {zone_display}<br>Time: {time_col}<br>No data")
         heatmap_data.append(row_data)
         hover_data.append(row_hover)
     
@@ -69,11 +123,11 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         [1.0, '#00FF7F']       # Spring Green
     ]
     
-    # Create heatmap with proper y-axis mapping (more transparent)
+    # Create heatmap with proper zone alignment
     fig = go.Figure(data=go.Heatmap(
         z=heatmap_data,
-        x=list(range(len(display_columns))),  # Use indices to match text positioning
-        y=list(range(len(sorted_levels))),
+        x=list(range(len(display_columns))),
+        y=[zone_boundaries[level]["bottom"] + 0.5 for level in sorted_levels],  # Center each band in its zone range
         colorscale=custom_colorscale,
         showscale=True,
         colorbar=dict(title="Occupancy %"),
@@ -81,7 +135,10 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         customdata=hover_data,
         zmin=0,
         zmax=100,
-        opacity=0.7
+        opacity=0.7,
+        # Make cells span the full zone width
+        xgap=1,  # Small gap between time columns
+        ygap=0   # No gap between zone bands
     ))
     
     fig.update_layout(
@@ -98,8 +155,9 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             title="Fibonacci Levels",
             tickfont=dict(color="white", size=10),
             tickmode='array',
-            tickvals=list(range(len(sorted_levels))),  # Position at 0, 1, 2, 3...
-            ticktext=[f"{lvl:+.3f}" if lvl in fib_levels else "" for lvl in sorted_levels]  # Show labels for standard fib levels only
+            tickvals=list(range(len(sorted_levels))),
+            # Hide artificial levels (1.15, -1.15) from y-axis labels
+            ticktext=[f"{lvl:+.3f}" if lvl not in [1.15, -1.15] else "" for lvl in sorted_levels]
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
