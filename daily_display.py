@@ -598,6 +598,14 @@ elif analysis_type == "ZoneBaseline":
     zonebaseline_df = pd.read_csv(zonebaseline_file)
     adapted_data = zonebaseline_df.copy()
 
+    goal_zone_to_fib = {
+            "above_1.0": 1.0, "0.786_to_1.0": 0.786, "0.618_to_0.786": 0.618,
+            "0.5_to_0.618": 0.5, "0.382_to_0.5": 0.382, "0.236_to_0.382": 0.236,
+            "0.0_to_0.236": 0.0, "-0.236_to_0.0": -0.236, "-0.382_to_-0.236": -0.382,
+            "-0.5_to_-0.382": -0.5, "-0.618_to_-0.5": -0.618, "-0.786_to_-0.618": -0.786,
+            "-1.0_to_-0.786": -1.0, "below_-1.0": -1.15
+        }
+    
     adapted_data = adapted_data.rename(columns=column_mapping)
     adapted_data['Zone'] = adapted_data['GoalLevel']  # Copy it back before the fib conversion
     adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
@@ -607,13 +615,7 @@ elif analysis_type == "ZoneBaseline":
         if old_col in adapted_data.columns:
             adapted_data = adapted_data.rename(columns={old_col: new_col})
     
-        goal_zone_to_fib = {
-            "above_1.0": 1.0, "0.786_to_1.0": 0.786, "0.618_to_0.786": 0.618,
-            "0.5_to_0.618": 0.5, "0.382_to_0.5": 0.382, "0.236_to_0.382": 0.236,
-            "0.0_to_0.236": 0.0, "-0.236_to_0.0": -0.236, "-0.382_to_-0.236": -0.382,
-            "-0.5_to_-0.382": -0.5, "-0.618_to_-0.5": -0.618, "-0.786_to_-0.618": -0.786,
-            "-1.0_to_-0.786": -1.0, "below_-1.0": -1.15
-        }
+       
     
     if 'GoalLevel' in adapted_data.columns:
         adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
