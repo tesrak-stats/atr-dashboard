@@ -161,23 +161,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             yanchor="middle"
         )
     
-    # Add price level labels on the right if available
-    if price_levels_dict:
-        for fib_level in available_levels:
-            level_key = f"{fib_level:+.3f}"
-            if level_key in price_levels_dict:
-                price_val = price_levels_dict[level_key]
-                fig.add_annotation(
-                    text=f"${price_val:.2f}",
-                    x=1.02,
-                    y=fib_level,
-                    xref="paper",
-                    yref="y",
-                    showarrow=False,
-                    font=dict(color="white", size=12),
-                    xanchor="left",
-                    yanchor="middle"
-                )
+    # Price levels removed for cleaner display in zone occupancy analysis
     
     # Calculate chart dimensions
     chart_width = max(1000, len(display_columns) * 40)
@@ -204,7 +188,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         font=dict(color="white", size=12),
         height=600,
         width=chart_width,
-        margin=dict(l=80, r=100, t=60, b=100)
+        margin=dict(l=80, r=60, t=60, b=100)  # Reduced right margin since no price levels
     )
     
     return fig, True
