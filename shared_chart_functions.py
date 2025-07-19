@@ -84,7 +84,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             midpoint = (level + next_level) / 2
         
         zone_midpoints.append(midpoint)
-    
+        st.write(f"Level 1.0 gets midpoint: {midpoint}, index: {i}")
     # Build matrix data for heatmap with improved hover tooltips
     heatmap_data = []
     hover_data = []
