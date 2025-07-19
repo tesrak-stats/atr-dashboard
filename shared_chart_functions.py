@@ -147,11 +147,11 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             layer="above"  # Draw lines above the heatmap
         )
     
-    # Add Fibonacci level labels on the left with better spacing
+    # Add Fibonacci level labels close to the chart
     for fib_level in available_levels:
         fig.add_annotation(
             text=f"{fib_level:+.3f}",
-            x=-0.05,
+            x=-0.01,
             y=fib_level,
             xref="paper",
             yref="y",
@@ -179,10 +179,12 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         ),
         yaxis=dict(
             title="Fibonacci Levels (Zone Boundaries)",
+            titlefont=dict(color="white", size=12),
             tickfont=dict(color="white", size=10),
             showticklabels=False,  # Hide default y-axis labels (we add custom ones)
             range=[min(zone_midpoints) - 0.1, max(zone_midpoints) + 0.1],
-            showgrid=False  # Remove grid lines
+            showgrid=False,  # Remove grid lines
+            title_standoff=40  # Push the axis title further left
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
