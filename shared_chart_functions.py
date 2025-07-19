@@ -147,16 +147,16 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             layer="above"  # Draw lines above the heatmap
         )
     
-    # Add Fibonacci level labels on the left
+    # Add Fibonacci level labels on the left with better spacing
     for fib_level in available_levels:
         fig.add_annotation(
             text=f"{fib_level:+.3f}",
-            x=-0.02,
+            x=-0.05,
             y=fib_level,
             xref="paper",
             yref="y",
             showarrow=False,
-            font=dict(color="white", size=12),
+            font=dict(color="white", size=11),
             xanchor="right",
             yanchor="middle"
         )
@@ -189,7 +189,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         font=dict(color="white", size=12),
         height=600,
         width=chart_width,
-        margin=dict(l=120, r=60, t=60, b=100)  # Increased left margin for Fibonacci labels
+        margin=dict(l=100, r=60, t=60, b=100)  # Balanced left margin for Fibonacci labels
     )
     
     return fig, True
