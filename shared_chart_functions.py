@@ -195,6 +195,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     )
     
     return fig, True
+    
 """
 ADD this function to shared_chart_functions.py (replace the existing create_statecheck_matrix)
 Make sure plotly.graph_objects as go and pandas as pd are imported at the top
