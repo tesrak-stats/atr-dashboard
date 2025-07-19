@@ -10,7 +10,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
                                ticker_name, text_offset=0.03, font_size_multiplier=1.0, price_levels_dict=None):
     """
     Create static zone probability heatmap for ZoneBaseline analysis
-    Fixed to properly align zones between Fibonacci levels
+    Fixed to properly align zones between Fibonacci levels - simple approach
     """
     import streamlit as st
     import plotly.graph_objects as go
@@ -81,7 +81,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         zone_midpoints.append(zone_mid)
         zone_labels.append(f"Below {bottom_level:+.3f}")
         zone_data_levels.append(-1.15 if -1.15 in display_fib_levels else bottom_level)
-    
+
     # Build matrix data for heatmap
     heatmap_data = []
     hover_data = []
@@ -121,11 +121,11 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         [1.0, '#00FF7F']
     ]
     
-    # Create heatmap using Fibonacci levels as y-coordinates
+    # Create heatmap using simple midpoints
     fig = go.Figure(data=go.Heatmap(
         z=heatmap_data,
         x=list(range(len(display_columns))),
-        y=zone_y_coords,  # Use Fibonacci-based coordinates
+        y=zone_midpoints,
         colorscale=custom_colorscale,
         showscale=True,
         colorbar=dict(title="Occupancy %"),
@@ -165,8 +165,6 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         yanchor="bottom"
     )
     
-    # Price levels removed for cleaner display in zone occupancy analysis
-    
     # Calculate chart dimensions
     chart_width = max(1000, len(display_columns) * 40)
     
@@ -193,7 +191,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         font=dict(color="white", size=12),
         height=600,
         width=chart_width,
-        margin=dict(l=100, r=60, t=60, b=100)  # Balanced left margin for Fibonacci labels
+        margin=dict(l=100, r=60, t=60, b=100)
     )
     
     return fig, True
