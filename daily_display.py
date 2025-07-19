@@ -603,55 +603,62 @@ elif analysis_type == "ZoneBaseline":
         
         
         # Display configuration based on expanded view
+        # Display configuration based on expanded view - REPLACE ENTIRE SECTION
         if show_expanded_view:
-    # Use detailed 10-minute data
+            zonebaseline_file = f"zonebaseline_detailed_{selected_ticker}_20250710_063704.csv"
+            zonebaseline_df = pd.read_csv(zonebaseline_file)
             column_mapping = {
                 "Zone": "GoalLevel", "Time": "GoalTime", "Percentage": "PctCompletion"
             }
-            zonebaseline_file = f"zonebaseline_detailed_{selected_ticker}_20250710_063924.csv"
-            zonebaseline_df = pd.read_csv(zonebaseline_file)
-
-            adapted_data = zonebaseline_df.copy()
-            
-    # ... existing detailed data processing ...
-            available_times = sorted(filtered['GoalTime'].unique())
-            display_columns = available_times
         else:
-    # Use pre-aggregated hourly data
+            zonebaseline_file = f"zonebaseline_hourly_{selected_ticker}_20250718_061442.csv"
+            zonebaseline_df = pd.read_csv(zonebaseline_file)
             column_mapping = {
                 "Zone": "GoalLevel", "TimeHourly": "GoalTime", "Percentage": "PctCompletion"
             }
-            zonebaseline_file = f"zonebaseline_hourly_{selected_ticker}_20250718_061442.csv"
-            zonebaseline_df = pd.read_csv(zonebaseline_file)
- 
-            if 'GoalTime' in adapted_data.columns:
-                adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
-    # ... process the hourly data ...
-            display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+
+# Common processing for both data types
+        adapted_data = zonebaseline_df.copy()
 
         for old_col, new_col in column_mapping.items():
-          if old_col in adapted_data.columns:
-              adapted_data = adapted_data.rename(columns={old_col: new_col})
-                
+            if old_col in adapted_data.columns:
+                adapted_data = adapted_data.rename(columns={old_col: new_col})
+
+# Convert zone strings to fibonacci levels
+        goal_zone_to_fib = {
+            "above_1.0": 1.0, "0.786_to_1.0": 0.786, "0.618_to_0.786": 0.618,
+            "0.5_to_0.618": 0.5, "0.382_to_0.5": 0.382, "0.236_to_0.382": 0.236,
+            "0.0_to_0.236": 0.0, "-0.236_to_0.0": -0.236, "-0.382_to_-0.236": -0.382,
+            "-0.5_to_-0.382": -0.5, "-0.618_to_-0.5": -0.618, "-0.786_to_-0.618": -0.786,
+            "-1.0_to_-0.786": -1.0, "below_-1.0": -1.1
+        }
+
         if 'GoalLevel' in adapted_data.columns:
             adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
-        
+
         if 'GoalTime' in adapted_data.columns:
             adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
-        # Set data for chart building
-        filtered = adapted_data
-        available_levels = sorted(filtered['GoalLevel'].unique())  
 
-        display_fib_levels = available_levels
-        time_order = display_columns.copy()
+        filtered = adapted_data
+
+# Set display columns based on view
+        if show_expanded_view:
+            available_times = sorted(filtered['GoalTime'].unique())
+            display_columns = available_times
+        else:
+            display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]   
+                available_levels = sorted(filtered['GoalLevel'].unique())  
+
+            display_fib_levels = available_levels
+            time_order = display_columns.copy()
         
         # Create compatibility variables
-        price_direction = "Zone Occupancy Heatmap"
-        trigger_zone = "All Zones"
-        font_size_multiplier = 1.0
-        
+            price_direction = "Zone Occupancy Heatmap"
+            trigger_zone = "All Zones"
+            font_size_multiplier = 1.0
+    
         # BUILD THE CHART using shared function
-        fig, chart_use_container_width = create_zonebaseline_heatmap(
+            fig, chart_use_container_width = create_zonebaseline_heatmap(
             filtered_data=filtered,
             display_fib_levels=display_fib_levels,
             display_columns=display_columns,
