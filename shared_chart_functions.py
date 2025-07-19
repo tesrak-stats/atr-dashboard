@@ -38,52 +38,38 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     available_levels = [lvl for lvl in standard_fib_levels if lvl in display_fib_levels]
     available_levels.sort(reverse=True)  # Top to bottom for proper display
     
-    # Create zone boundaries - zones exist BETWEEN Fibonacci levels
-    # Each zone occupies the space between two consecutive Fibonacci levels
-    zone_boundaries = []
+    # Instead of calculating midpoints, use the Fibonacci levels directly
+    # and let Plotly handle the cell positioning
+    zone_y_coords = []
     zone_labels = []
-    zone_midpoints = []
-    zone_data_levels = []  # Track which fib level represents each zone's data
+    zone_data_levels = []
     
-    # Add zone above highest level
+    # Use Fibonacci levels as y-coordinates, Plotly will center cells between them
+    extended_levels = available_levels.copy()
+    
+    # Add extension levels for edge zones
     if available_levels:
-        top_level = available_levels[0]
-        zone_top = top_level + 0.2  # Extend above
-        zone_bottom = top_level
-        zone_mid = (zone_top + zone_bottom) / 2
+        top_extension = available_levels[0] + (available_levels[0] - available_levels[1]) if len(available_levels) > 1 else available_levels[0] + 0.2
+        bottom_extension = available_levels[-1] - (available_levels[-2] - available_levels[-1]) if len(available_levels) > 1 else available_levels[-1] - 0.2
         
-        zone_boundaries.append((zone_bottom, zone_top))
-        zone_midpoints.append(zone_mid)
-        zone_labels.append(f"Above +{top_level:.3f}")
-        zone_data_levels.append(1.15 if 1.15 in display_fib_levels else top_level)
+        extended_levels.insert(0, top_extension)
+        extended_levels.append(bottom_extension)
     
-    # Add zones between consecutive levels
-    for i in range(len(available_levels) - 1):
-        upper_level = available_levels[i]
-        lower_level = available_levels[i + 1]
+    # Build zone data using the extended levels
+    for i, level in enumerate(extended_levels[:-1]):  # Skip the last one since we pair them
+        zone_y_coords.append(level)
         
-        zone_top = upper_level
-        zone_bottom = lower_level
-        zone_mid = (zone_top + zone_bottom) / 2
-        
-        zone_boundaries.append((zone_bottom, zone_top))
-        zone_midpoints.append(zone_mid)
-        zone_labels.append(f"{lower_level:+.3f} to {upper_level:+.3f}")
-        
-        # Use the upper level as the data key for this zone
-        zone_data_levels.append(upper_level)
-    
-    # Add zone below lowest level
-    if available_levels:
-        bottom_level = available_levels[-1]
-        zone_top = bottom_level
-        zone_bottom = bottom_level - 0.2  # Extend below
-        zone_mid = (zone_top + zone_bottom) / 2
-        
-        zone_boundaries.append((zone_bottom, zone_top))
-        zone_midpoints.append(zone_mid)
-        zone_labels.append(f"Below {bottom_level:+.3f}")
-        zone_data_levels.append(-1.15 if -1.15 in display_fib_levels else bottom_level)
+        if i == 0:  # Top zone
+            zone_labels.append(f"Above +{available_levels[0]:.3f}")
+            zone_data_levels.append(1.15 if 1.15 in display_fib_levels else available_levels[0])
+        elif i == len(extended_levels) - 2:  # Bottom zone
+            zone_labels.append(f"Below {available_levels[-1]:+.3f}")
+            zone_data_levels.append(-1.15 if -1.15 in display_fib_levels else available_levels[-1])
+        else:  # Middle zones
+            upper = available_levels[i-1]
+            lower = available_levels[i]
+            zone_labels.append(f"{lower:+.3f} to {upper:+.3f}")
+            zone_data_levels.append(upper)
     
     # Build matrix data for heatmap
     heatmap_data = []
@@ -124,11 +110,11 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         [1.0, '#00FF7F']
     ]
     
-    # Create heatmap
+    # Create heatmap using Fibonacci levels as y-coordinates
     fig = go.Figure(data=go.Heatmap(
         z=heatmap_data,
         x=list(range(len(display_columns))),
-        y=zone_midpoints,  # Position heatmap cells at zone midpoints
+        y=zone_y_coords,  # Use Fibonacci-based coordinates
         colorscale=custom_colorscale,
         showscale=True,
         colorbar=dict(title="Occupancy %"),
@@ -194,7 +180,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             title="",  # Remove axis title since we're using annotation
             tickfont=dict(color="white", size=10),
             showticklabels=False,  # Hide default y-axis labels (we add custom ones)
-            range=[min(zone_midpoints) - 0.1, max(zone_midpoints) + 0.1],
+            range=[min(zone_y_coords) - 0.1, max(zone_y_coords) + 0.1],
             showgrid=False  # Remove grid lines
         ),
         plot_bgcolor="black",
