@@ -592,6 +592,9 @@ elif analysis_type == "ZoneBaseline":
         column_mapping = {
             "Zone": "GoalLevel", "TimeHourly": "GoalTime", "Percentage": "PctCompletion"
         }
+    adapted_data = adapted_data.rename(columns=column_mapping)
+    adapted_data['Zone'] = adapted_data['GoalLevel']  # Copy it back before the fib conversion
+    adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
     
     # Load and process the data
     zonebaseline_df = pd.read_csv(zonebaseline_file)
