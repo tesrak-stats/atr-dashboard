@@ -588,30 +588,30 @@ elif analysis_type == "ZoneBaseline":
         
         # Display configuration based on expanded view
         # Display configuration based on expanded view - REPLACE ENTIRE SECTION
-        if show_expanded_view:
-            detailed_files = glob.glob(f"zonebaseline_detailed_{selected_ticker}_*.csv")
-            if detailed_files:
-                zonebaseline_file = max(detailed_files)  # Gets the most recent by filename
-            else:
-                st.error(f"No detailed ZoneBaseline files found for {selected_ticker}")
-                st.stop()
-    
-            column_mapping = {
-                "Zone": "GoalLevel", "Time": "GoalTime", "Percentage": "PctCompletion"
-            }
-            
+    if show_expanded_view:
+        detailed_files = glob.glob(f"zonebaseline_detailed_{selected_ticker}_*.csv")
+        if detailed_files:
+            zonebaseline_file = max(detailed_files)  # Gets the most recent by filename
         else:
-             # Find the most recent hourly file
-            hourly_files = glob.glob(f"zonebaseline_hourly_{selected_ticker}_*.csv")
-            if hourly_files:
-                zonebaseline_file = max(hourly_files)  # Gets the most recent by filename
-            else:
-                st.error(f"No hourly ZoneBaseline files found for {selected_ticker}")
-                st.stop()
+            st.error(f"No detailed ZoneBaseline files found for {selected_ticker}")
+            st.stop()
     
-            column_mapping = {
-                "Zone": "GoalLevel", "TimeHourly": "GoalTime", "Percentage": "PctCompletion"
-            }
+        column_mapping = {
+            "Zone": "GoalLevel", "Time": "GoalTime", "Percentage": "PctCompletion"
+        }
+            
+    else:
+            # Find the most recent hourly file
+        hourly_files = glob.glob(f"zonebaseline_hourly_{selected_ticker}_*.csv")
+        if hourly_files:
+            zonebaseline_file = max(hourly_files)  # Gets the most recent by filename
+        else:
+            st.error(f"No hourly ZoneBaseline files found for {selected_ticker}")
+            st.stop()
+    
+        column_mapping = {
+            "Zone": "GoalLevel", "TimeHourly": "GoalTime", "Percentage": "PctCompletion"
+        }
     zonebaseline_df = pd.read_csv(zonebaseline_file)
 # Common processing for both data types
     adapted_data = zonebaseline_df.copy()
