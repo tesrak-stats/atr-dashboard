@@ -173,8 +173,9 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             tickfont=dict(color="white", size=10),
             tickmode='array',
             # Position labels at actual fibonacci levels (not artificial ones)
-            tickvals=[level for level in sorted_levels if level not in [1.15, -1.15]],
-            ticktext=[f"{level:+.3f}" for level in sorted_levels if level not in [1.15, -1.15]]
+            tickvals=sorted_levels,  # Show ALL levels, don't filter any out
+            ticktext=[f"{level:+.3f}" for level in sorted_levels]
+           
             # Keep default grid lines - they align with zone boundaries nicely
         ),
         plot_bgcolor="black",
