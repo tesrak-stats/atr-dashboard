@@ -612,13 +612,13 @@ elif analysis_type == "ZoneBaseline":
             column_mapping = {
                 "Zone": "GoalLevel", "TimeHourly": "GoalTime", "Percentage": "PctCompletion"
             }
-        zonebaseline_df = pd.read_csv(zonebaseline_file)
+    zonebaseline_df = pd.read_csv(zonebaseline_file)
 # Common processing for both data types
-        adapted_data = zonebaseline_df.copy()
+    adapted_data = zonebaseline_df.copy()
 
-        for old_col, new_col in column_mapping.items():
-            if old_col in adapted_data.columns:
-                adapted_data = adapted_data.rename(columns={old_col: new_col})
+    for old_col, new_col in column_mapping.items():
+        if old_col in adapted_data.columns:
+            adapted_data = adapted_data.rename(columns={old_col: new_col})
 
 # Convert zone strings to fibonacci levels
         goal_zone_to_fib = {
