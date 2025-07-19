@@ -85,7 +85,17 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             next_level = sorted_levels[i + 1]
             midpoint = (level + next_level) / 2
         
-        zone_midpoints.append(midpoint)
+        # Calculate precise zone boundaries for grid line placement
+    zone_boundaries = []
+    
+    for i in range(len(zone_midpoints) - 1):
+        # Boundary between zone i and zone i+1 is halfway between their midpoints
+        boundary = (zone_midpoints[i] + zone_midpoints[i + 1]) / 2
+        zone_boundaries.append(boundary)
+    
+    # Add the original fibonacci levels as labels, but position grid lines at actual boundaries
+    fib_level_labels = [lvl for lvl in sorted_levels if lvl not in [-1.15]]  # Remove -1.15 label
+    boundary_positions = zone_boundaries[:len(fib_level_labels)]  # Match length
     
     # Build matrix data for heatmap with improved hover tooltips
     heatmap_data = []
