@@ -161,6 +161,19 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             yanchor="middle"
         )
     
+    # Add "Fib Level Boundary" title above the Fibonacci labels
+    fig.add_annotation(
+        text="Fib Level Boundary",
+        x=-0.05,
+        y=max(available_levels) + 0.15,
+        xref="paper",
+        yref="y",
+        showarrow=False,
+        font=dict(color="gray", size=11),
+        xanchor="center",
+        yanchor="bottom"
+    )
+    
     # Price levels removed for cleaner display in zone occupancy analysis
     
     # Calculate chart dimensions
