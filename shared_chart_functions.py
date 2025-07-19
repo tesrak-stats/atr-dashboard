@@ -63,15 +63,36 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     display_levels = [lvl for lvl in display_fib_levels if lvl in fib_levels]
     sorted_levels = sorted(display_levels, reverse=False)  # Low to high for proper display
     
-    # Create zone boundary positions for proper band alignment
-    zone_boundaries = {}
+    # Create zone boundary positions for label offset trick
+    # Calculate midpoints between fibonacci levels for Plotly centering
+    zone_midpoints = []
+    zone_boundary_labels = []
+    zone_boundary_positions = []
+    
     for i, level in enumerate(sorted_levels):
-        if i == 0:  # Bottom level
-            zone_boundaries[level] = {"bottom": i - 0.5, "top": i + 0.5}
-        elif i == len(sorted_levels) - 1:  # Top level  
-            zone_boundaries[level] = {"bottom": i - 0.5, "top": i + 0.5}
-        else:  # Middle levels
-            zone_boundaries[level] = {"bottom": i - 0.5, "top": i + 0.5}
+        if i == 0:
+            # Bottom zone - extend down
+            next_level = sorted_levels[i + 1] if i + 1 < len(sorted_levels) else level + 0.146
+            midpoint = level - 0.073  # Offset down from level
+        elif i == len(sorted_levels) - 1:
+            # Top zone - extend up  
+            prev_level = sorted_levels[i - 1]
+            midpoint = (prev_level + level) / 2
+        else:
+            # Middle zones - between current and next level
+            next_level = sorted_levels[i + 1] if i + 1 < len(sorted_levels) else level + 0.146
+            prev_level = sorted_levels[i - 1]
+            midpoint = (level + next_level) / 2
+        
+        zone_midpoints.append(midpoint)
+        
+        # Create boundary labels at the actual fibonacci levels
+        if level not in [1.15, -1.15]:  # Hide artificial levels
+            zone_boundary_labels.append(f"{level:+.3f}")
+            zone_boundary_positions.append(i)  # Position at the fibonacci level line
+        else:
+            zone_boundary_labels.append("")  # Empty label for artificial levels
+            zone_boundary_positions.append(i)
     
     # Build matrix data for heatmap with improved hover tooltips
     heatmap_data = []
@@ -123,11 +144,11 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         [1.0, '#00FF7F']       # Spring Green
     ]
     
-    # Create heatmap with proper zone alignment
+    # Create heatmap using zone midpoints (Plotly centers on these)
     fig = go.Figure(data=go.Heatmap(
         z=heatmap_data,
         x=list(range(len(display_columns))),
-        y=[zone_boundaries[level]["bottom"] + 0.5 for level in sorted_levels],  # Center each band in its zone range
+        y=zone_midpoints,  # Use calculated midpoints for proper visual alignment
         colorscale=custom_colorscale,
         showscale=True,
         colorbar=dict(title="Occupancy %"),
@@ -135,10 +156,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         customdata=hover_data,
         zmin=0,
         zmax=100,
-        opacity=0.7,
-        # Make cells span the full zone width
-        xgap=1,  # Small gap between time columns
-        ygap=0   # No gap between zone bands
+        opacity=0.7
     ))
     
     fig.update_layout(
@@ -155,9 +173,9 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             title="Fibonacci Levels",
             tickfont=dict(color="white", size=10),
             tickmode='array',
-            tickvals=list(range(len(sorted_levels))),
-            # Hide artificial levels (1.15, -1.15) from y-axis labels
-            ticktext=[f"{lvl:+.3f}" if lvl not in [1.15, -1.15] else "" for lvl in sorted_levels]
+            # Position labels at fibonacci level boundaries, not at data points
+            tickvals=[level for level in sorted_levels if level not in [1.15, -1.15]],
+            ticktext=[f"{level:+.3f}" for level in sorted_levels if level not in [1.15, -1.15]]
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
@@ -261,30 +279,7 @@ def create_statecheck_matrix(filtered_data, display_fib_levels, display_columns,
 
         
 
-    # Add horizontal lines for Fibonacci levels
-    fibo_styles = {
-        1.0: ("lightgray", 3, 16),
-        0.786: ("lightgray", 1, 12),
-        0.618: ("lightgray", 2, 14),
-        0.5: ("lightgray", 1, 12),
-        0.382: ("lightgray", 1, 12),
-        0.236: ("cyan", 2, 14),
-        0.0: ("lightgray", 1, 12),
-        -0.236: ("yellow", 2, 14),
-        -0.382: ("lightgray", 1, 12),
-        -0.5: ("lightgray", 1, 12),
-        -0.618: ("lightgray", 2, 14),
-        -0.786: ("lightgray", 1, 12),
-        -1.0: ("lightgray", 3, 16),
-    }
-    
-    for level in display_fib_levels:
-        if level in fibo_styles:
-            color, width, _ = fibo_styles[level]
-            fig.add_shape(
-                type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
-                line=dict(color=color, width=width), layer="below"
-            )
+    # No horizontal lines needed - zone transitions show boundaries naturally
             
    
     # Add matrix cells with color coding
