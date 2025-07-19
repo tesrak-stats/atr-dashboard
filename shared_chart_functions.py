@@ -161,9 +161,9 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             yanchor="middle"
         )
     
-    # Add "Fib Level Boundary" title above the Fibonacci labels
+    # Add "Zone" title above the Fibonacci labels
     fig.add_annotation(
-        text="Fib Level Boundary",
+        text="Zone",
         x=-0.05,
         y=max(available_levels) + 0.15,
         xref="paper",
