@@ -109,7 +109,11 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
                 row_hover.append(f"Zone: {zone_display}<br>Time: {time_col}<br>No data")
         heatmap_data.append(row_data)
         hover_data.append(row_hover)
-    
+
+                            
+    st.write("Heatmap data matrix shape:", len(heatmap_data), "x", len(heatmap_data[0]) if heatmap_data else 0)
+    st.write("Last row of heatmap_data (should be level 1.0):", heatmap_data[-1] if heatmap_data else "No data")
+
     # Create custom colorscale with more granularity in the 0-50% range
     custom_colorscale = [
         [0.0, '#1A1A1A'],      # Dark Gray for 0-1%
