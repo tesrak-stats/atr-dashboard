@@ -110,7 +110,9 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         heatmap_data.append(row_data)
         hover_data.append(row_hover)
 
-                            
+    st.write("Number of zone_midpoints:", len(zone_midpoints))
+    st.write("Number of heatmap_data rows:", len(heatmap_data))
+    st.write("Zone midpoints:", zone_midpoints)                        
     st.write("Heatmap data matrix shape:", len(heatmap_data), "x", len(heatmap_data[0]) if heatmap_data else 0)
     st.write("Last row of heatmap_data (should be level 1.0):", heatmap_data[-1] if heatmap_data else "No data")
 
