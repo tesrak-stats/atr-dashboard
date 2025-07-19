@@ -38,38 +38,41 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     available_levels = [lvl for lvl in standard_fib_levels if lvl in display_fib_levels]
     available_levels.sort(reverse=True)  # Top to bottom for proper display
     
-    # Instead of calculating midpoints, use the Fibonacci levels directly
-    # and let Plotly handle the cell positioning
+    # Let Plotly make equal-height zones and position labels where colors actually change
     zone_y_coords = []
-    zone_labels = []
+    zone_labels = []  
     zone_data_levels = []
     
-    # Use Fibonacci levels as y-coordinates, Plotly will center cells between them
-    extended_levels = available_levels.copy()
+    # Create equal-spaced coordinates for zones
+    num_zones = len(display_fib_levels)
     
-    # Add extension levels for edge zones
-    if available_levels:
-        top_extension = available_levels[0] + (available_levels[0] - available_levels[1]) if len(available_levels) > 1 else available_levels[0] + 0.2
-        bottom_extension = available_levels[-1] - (available_levels[-2] - available_levels[-1]) if len(available_levels) > 1 else available_levels[-1] - 0.2
+    # Build zone data - one zone for each fib level in our data
+    for i, level in enumerate(display_fib_levels):
+        zone_y_coords.append(level)  # Use original fib level as coordinate
+        zone_data_levels.append(level)
         
-        extended_levels.insert(0, top_extension)
-        extended_levels.append(bottom_extension)
+        # Create zone labels (we'll adjust the boundary labels separately)
+        if level == 1.15 or level > 1.0:
+            zone_labels.append(f"Above +1.000")
+        elif level == -1.15 or level < -1.0:  
+            zone_labels.append(f"Below -1.000")
+        else:
+            zone_labels.append(f"Zone {level:+.3f}")
     
-    # Build zone data using the extended levels
-    for i, level in enumerate(extended_levels[:-1]):  # Skip the last one since we pair them
-        zone_y_coords.append(level)
+    # Calculate where Plotly will actually put the boundaries (between equal-height zones)
+    if len(zone_y_coords) > 1:
+        min_coord = min(zone_y_coords)
+        max_coord = max(zone_y_coords)
+        coord_range = max_coord - min_coord
         
-        if i == 0:  # Top zone
-            zone_labels.append(f"Above +{available_levels[0]:.3f}")
-            zone_data_levels.append(1.15 if 1.15 in display_fib_levels else available_levels[0])
-        elif i == len(extended_levels) - 2:  # Bottom zone
-            zone_labels.append(f"Below {available_levels[-1]:+.3f}")
-            zone_data_levels.append(-1.15 if -1.15 in display_fib_levels else available_levels[-1])
-        else:  # Middle zones
-            upper = available_levels[i-1]
-            lower = available_levels[i]
-            zone_labels.append(f"{lower:+.3f} to {upper:+.3f}")
-            zone_data_levels.append(upper)
+        # Plotly will create equal-height zones, so calculate where boundaries will be
+        visual_boundaries = []
+        for i in range(len(zone_y_coords) - 1):
+            # Boundary position in equal-height system
+            boundary_pos = min_coord + (coord_range * (i + 1) / len(zone_y_coords))
+            visual_boundaries.append(boundary_pos)
+    else:
+        visual_boundaries = []
     
     # Build matrix data for heatmap
     heatmap_data = []
@@ -125,40 +128,43 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
         opacity=0.8
     ))
     
-    # Add subtle horizontal lines at Fibonacci levels (zone boundaries)
-    for fib_level in available_levels:
+    # Add horizontal lines at the VISUAL boundaries (where colors actually change)
+    for boundary_pos in visual_boundaries:
         fig.add_hline(
-            y=fib_level,
+            y=boundary_pos,
             line=dict(color="rgba(255, 255, 255, 0.3)", width=0.5),
-            layer="above"  # Draw lines above the heatmap
+            layer="above"
         )
     
-    # Add Fibonacci level labels close to the chart
-    for fib_level in available_levels:
+    # Add Fibonacci level labels at the VISUAL boundary positions
+    for i, boundary_pos in enumerate(visual_boundaries):
+        if i < len(available_levels) - 1:  # Don't exceed available levels
+            fib_level = available_levels[i + 1]  # The level below this boundary
+            fig.add_annotation(
+                text=f"{fib_level:+.3f}",
+                x=-0.01,
+                y=boundary_pos,
+                xref="paper",
+                yref="y",
+                showarrow=False,
+                font=dict(color="white", size=11),
+                xanchor="right",
+                yanchor="middle"
+            )
+    
+    # Add "Zone" title above the boundary labels  
+    if visual_boundaries:
         fig.add_annotation(
-            text=f"{fib_level:+.3f}",
-            x=-0.01,
-            y=fib_level,
+            text="Zone",
+            x=-0.05,
+            y=max(visual_boundaries) + 0.15,
             xref="paper",
             yref="y",
             showarrow=False,
-            font=dict(color="white", size=11),
-            xanchor="right",
-            yanchor="middle"
+            font=dict(color="gray", size=11),
+            xanchor="center",
+            yanchor="bottom"
         )
-    
-    # Add "Zone" title above the Fibonacci labels
-    fig.add_annotation(
-        text="Zone",
-        x=-0.05,
-        y=max(available_levels) + 0.15,
-        xref="paper",
-        yref="y",
-        showarrow=False,
-        font=dict(color="gray", size=11),
-        xanchor="center",
-        yanchor="bottom"
-    )
     
     # Price levels removed for cleaner display in zone occupancy analysis
     
