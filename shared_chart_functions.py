@@ -58,7 +58,8 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
                 zone_ranges[fib_level] = "-1.0_to_-0.786"
             elif fib_level == -1.15:
                 zone_ranges[fib_level] = "below_-1.0"
-    
+
+    st.write("Data lookup keys containing level 1.0:", [(k, v) for k, v in data_lookup.items() if k[0] == 1.0])                             
     # Filter out artificial levels for proper display - INCLUDE extreme zones
     fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0, -1.15]
     display_levels = [lvl for lvl in display_fib_levels if lvl in fib_levels]
