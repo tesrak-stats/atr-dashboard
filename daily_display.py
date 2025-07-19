@@ -602,14 +602,19 @@ elif analysis_type == "ZoneBaseline":
         if old_col in adapted_data.columns:
             adapted_data = adapted_data.rename(columns={old_col: new_col})
     
-    # Convert zone strings to fibonacci levels
-    goal_zone_to_fib = {
-        "above_1.0": 1.15, "0.786_to_1.0": 1.0, "0.618_to_0.786": 0.618,
-        "0.5_to_0.618": 0.5, "0.382_to_0.5": 0.382, "0.236_to_0.382": 0.236,
-        "0.0_to_0.236": 0.0, "-0.236_to_0.0": -0.236, "-0.382_to_-0.236": -0.382,
-        "-0.5_to_-0.382": -0.5, "-0.618_to_-0.5": -0.618, "-0.786_to_-0.618": -0.786,
-        "-1.0_to_-0.786": -1.0, "below_-1.0": -1.15
-    }
+        goal_zone_to_fib = {
+            "above_1.0": 1.15, 
+            "0.786_to_1.0": 1.0,      # ✅ Already correct
+            "0.618_to_0.786": 0.786,  # Change from 0.618 to 0.786
+            "0.5_to_0.618": 0.618,    # Change from 0.5 to 0.618
+            "0.382_to_0.5": 0.5,      # Change from 0.382 to 0.5
+            "0.236_to_0.382": 0.382,  # Change from 0.236 to 0.382
+            "0.0_to_0.236": 0.236,    # Change from 0.0 to 0.236
+            "-0.236_to_0.0": -0.236,  # ✅ Already correct (maps to lower boundary)
+            "-0.382_to_-0.236": -0.382, # ✅ Already correct
+            "-0.5_to_-0.382": -0.5, "-0.618_to_-0.5": -0.618, "-0.786_to_-0.618": -0.786,
+            "-1.0_to_-0.786": -1.0, "below_-1.0": -1.15
+            }
     
     if 'GoalLevel' in adapted_data.columns:
         adapted_data['GoalLevel'] = adapted_data['GoalLevel'].map(goal_zone_to_fib)
