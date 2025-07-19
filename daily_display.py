@@ -685,9 +685,6 @@ elif analysis_type == "ZoneBaseline":
         # Skip remaining chart building
         st.stop()
         
-except Exception as e:
-    st.error(f"Error loading ZoneBaseline data: {str(e)}")
-    st.stop()
 
 else:  # Session
     # Session data filtering
