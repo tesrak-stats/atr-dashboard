@@ -183,8 +183,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
             tickfont=dict(color="white", size=10),
             showticklabels=False,  # Hide default y-axis labels (we add custom ones)
             range=[min(zone_midpoints) - 0.1, max(zone_midpoints) + 0.1],
-            showgrid=False,  # Remove grid lines
-            title_standoff=40  # Push the axis title further left
+            showgrid=False  # Remove grid lines
         ),
         plot_bgcolor="black",
         paper_bgcolor="black",
