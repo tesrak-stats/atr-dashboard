@@ -3,6 +3,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import json
 import os
+import glob
 from datetime import datetime, time
 try:
     from zoneinfo import ZoneInfo  # Python 3.9+
@@ -570,23 +571,7 @@ elif analysis_type == "Rolling":
     st.stop()
     
 elif analysis_type == "ZoneBaseline":
-    try:
-        # Load ZoneBaseline data file
-        zonebaseline_file = f"zonebaseline_detailed_{selected_ticker}_20250718_061442.csv"  
-        zonebaseline_df = pd.read_csv(zonebaseline_file)
-        st.success(f"✅ Loaded ZoneBaseline data: {len(zonebaseline_df)} records")
-        
-        # Zone mapping (same as StateCheck)
-        zone_mapping = {
-            "Zone 1: Above +1.0": "above_1.0", "Zone 2: +0.786 to +1.0": "0.786_to_1.0", 
-            "Zone 3: +0.618 to +0.786": "0.618_to_0.786", "Zone 4: +0.5 to +0.618": "0.5_to_0.618",
-            "Zone 5: +0.382 to +0.5": "0.382_to_0.5", "Zone 6: +0.236 to +0.382": "0.236_to_0.382",
-            "Zone 7: 0.0 to +0.236": "0.0_to_0.236", "Zone 8: -0.236 to 0.0": "-0.236_to_0.0",
-            "Zone 9: -0.382 to -0.236": "-0.382_to_-0.236", "Zone 10: -0.5 to -0.382": "-0.5_to_-0.382",
-            "Zone 11: -0.618 to -0.5": "-0.618_to_-0.5", "Zone 12: -0.786 to -0.618": "-0.786_to_-0.618",
-            "Zone 13: -1.0 to -0.786": "-1.0_to_-0.786", "Zone 14: Below -1.0": "below_-1.0"
-        }
-        
+          
         # Adapt ZoneBaseline data to chart format
         adapted_data = zonebaseline_df.copy()
                              
@@ -605,18 +590,30 @@ elif analysis_type == "ZoneBaseline":
         # Display configuration based on expanded view
         # Display configuration based on expanded view - REPLACE ENTIRE SECTION
         if show_expanded_view:
-            zonebaseline_file = f"zonebaseline_detailed_{selected_ticker}_20250718_061442.csv"
-            zonebaseline_df = pd.read_csv(zonebaseline_file)
+            detailed_files = glob.glob(f"zonebaseline_detailed_{selected_ticker}_*.csv")
+            if detailed_files:
+                zonebaseline_file = max(detailed_files)  # Gets the most recent by filename
+            else:
+                st.error(f"No detailed ZoneBaseline files found for {selected_ticker}")
+                st.stop()
+    
             column_mapping = {
                 "Zone": "GoalLevel", "Time": "GoalTime", "Percentage": "PctCompletion"
             }
+            
         else:
-            zonebaseline_file = f"zonebaseline_hourly_{selected_ticker}_20250718_061442.csv"
-            zonebaseline_df = pd.read_csv(zonebaseline_file)
+             # Find the most recent hourly file
+            hourly_files = glob.glob(f"zonebaseline_hourly_{selected_ticker}_*.csv")
+            if hourly_files:
+                zonebaseline_file = max(hourly_files)  # Gets the most recent by filename
+            else:
+                st.error(f"No hourly ZoneBaseline files found for {selected_ticker}")
+                st.stop()
+    
             column_mapping = {
                 "Zone": "GoalLevel", "TimeHourly": "GoalTime", "Percentage": "PctCompletion"
             }
-
+        zonebaseline_df = pd.read_csv(zonebaseline_file)
 # Common processing for both data types
         adapted_data = zonebaseline_df.copy()
 
