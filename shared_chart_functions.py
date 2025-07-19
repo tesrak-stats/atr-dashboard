@@ -59,7 +59,7 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
                 zone_ranges[fib_level] = "below_-1.0"
     
     # Filter out artificial levels for proper display - INCLUDE extreme zones
-    fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+    fib_levels = [1.15, 1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0, -1.15]
     display_levels = [lvl for lvl in display_fib_levels if lvl in fib_levels]
     sorted_levels = sorted(display_levels, reverse=False)  # Low to high for proper display
     
@@ -175,7 +175,6 @@ def create_zonebaseline_heatmap(filtered_data, display_fib_levels, display_colum
     )
     
     return fig, True
-
 
 """
 ADD this function to shared_chart_functions.py (replace the existing create_statecheck_matrix)
