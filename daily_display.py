@@ -601,6 +601,9 @@ elif analysis_type == "Rolling":
     # Method 1: Long format - Look for GoalTime column (most likely)
     if 'GoalTime' in filtered_rolling.columns:
         unique_goal_times = sorted(filtered_rolling['GoalTime'].unique())
+
+        all_periods_in_data = sorted(filtered_rolling['GoalTime'].unique())
+        st.info(f"🔧 Debug: ALL periods in filtered data (before hit filtering): {all_periods_in_data}")
         
         for gt in unique_goal_times:
             if pd.notna(gt):
