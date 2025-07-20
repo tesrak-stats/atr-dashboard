@@ -677,20 +677,23 @@ elif analysis_type == "Rolling":
     else:
         trigger_index = 0
     
-    # Generate 8-period rolling sequence
+    # Generate 8-period rolling sequence (wraps to next day)
     rolling_hours = []
-    max_periods = min(8, len(available_times) * 2)  # Allow up to 2 full cycles
     
-    for i in range(max_periods):
+    for i in range(8):  # Always try for 8 periods
         period_index = (trigger_index + i) % len(available_times)
         rolling_hours.append(available_times[period_index])
-        
-        # Stop if we've completed a full cycle and hit start again
-        if len(rolling_hours) > len(available_times) and rolling_hours[-1] == trigger_time_for_rolling:
-            break
     
-    # Ensure we have exactly 8 periods or less
-    rolling_hours = rolling_hours[:8]
+    # Debug: Show what we're creating
+    if len(rolling_hours) >= 8:
+        wrap_point = None
+        for i in range(1, len(rolling_hours)):
+            # Find where we wrap around (when index resets to 0)
+            current_idx = available_times.index(rolling_hours[i])
+            prev_idx = available_times.index(rolling_hours[i-1])
+            if current_idx < prev_idx:  # We wrapped around
+                wrap_point = i
+                break
     
     # Display configuration
     if show_expanded_view:
@@ -738,8 +741,7 @@ elif analysis_type == "Rolling":
     
     # End Rolling analysis
     st.stop()
-        
-
+    
 else:  # Session
     # Session data filtering
     filtered = df[
