@@ -836,3 +836,32 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
     )
     
     return fig, use_container_width
+    
+def get_rolling_8_hours(trigger_time):
+    """
+    Generate 8-hour rolling window from trigger time, crossing days if needed
+    
+    Args:
+        trigger_time: Starting time for rolling window
+    
+    Returns:
+        List of 8 consecutive trading hours (clean labels, no day marking)
+    """
+    # OPEN is special case, regular trading hours don't include OPEN
+    regular_hours = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+    
+    if trigger_time == "OPEN":
+        return ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+    
+    if trigger_time not in regular_hours:
+        return ["0900", "1000", "1100", "1200", "1300", "1400", "1500", "0900"]  # Fallback
+    
+    trigger_index = regular_hours.index(trigger_time)
+    rolling_hours = []
+    
+    for i in range(8):
+        hour_index = (trigger_index + i) % len(regular_hours)
+        hour = regular_hours[hour_index]
+        rolling_hours.append(hour)
+    
+    return rolling_hours
