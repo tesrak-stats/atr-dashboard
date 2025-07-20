@@ -569,8 +569,6 @@ if analysis_type == "StateCheck":
 
 elif analysis_type == "Rolling":
     
-    elif analysis_type == "Rolling":
-    
     # Load rolling data first - find most recent file
     try:
         rolling_files = glob.glob(f"atr_summary_{selected_ticker}_ROLLING_*.csv")
