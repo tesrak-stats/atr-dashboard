@@ -1,4 +1,4 @@
-import streamlit as st
+No import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import json
@@ -162,13 +162,12 @@ elif analysis_type == "Rolling":
     
     col1, col2, col3 = st.columns(3)
     with col1:
-        price_direction = st.selectbox("Price Location", ["Above", "Below"], index=0)
+        price_direction = st.selectbox("Price Location", ["Above", "Below"], index=0, key="rolling_direction")
     with col2:
         fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
-        trigger_level = st.selectbox("Trigger Level", fib_levels, index=6)
+        trigger_level = st.selectbox("Trigger Level", fib_levels, index=6, key="rolling_level")
     with col3:
-        trigger_time = st.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
-    
+        trigger_time = st.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0, key="rolling_time")
     rolling_hours = get_rolling_8_hours(trigger_time)
     st.caption(f"🔄 Rolling window: {' → '.join(rolling_hours[:4])} → {' → '.join(rolling_hours[4:])}")
     
