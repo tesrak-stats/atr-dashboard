@@ -593,56 +593,127 @@ elif analysis_type == "Rolling":
         st.warning(f"No rolling data found for {price_direction} {trigger_level} at {trigger_time}")
         st.stop()
     
-    # SMART PERIOD DETECTION - Keep original format for data lookup, clean format for display
+    # SMART PERIOD DETECTION WITH GAP-FILLING
     available_times_original = []  # For data lookup (exact CSV format)
     available_times_display = []   # For chart display (cleaned up)
     original_to_display = {}       # Mapping between formats
     
-    # Method 1: Long format - Look for GoalTime column (most likely)
+    # Method 1: Long format with smart gap-filling
     if 'GoalTime' in filtered_rolling.columns:
-        unique_goal_times = sorted(filtered_rolling['GoalTime'].unique())
-
-        all_periods_in_data = sorted(filtered_rolling['GoalTime'].unique())
-        st.info(f"🔧 Debug: ALL periods in filtered data (before hit filtering): {all_periods_in_data}")
         
-        for gt in unique_goal_times:
-            if pd.notna(gt):
-                # Check if this time period has any actual hits (filter out 0% periods)
-                period_data = filtered_rolling[filtered_rolling['GoalTime'] == gt]
-                total_hits = period_data['NumHits'].sum()
+        # Debug: Show all periods before filtering
+        all_periods_in_data = sorted(filtered_rolling['GoalTime'].unique())
+        st.info(f"🔧 Debug: ALL periods in filtered data (before gap filtering): {all_periods_in_data}")
+        
+        # Get hit counts for all periods
+        period_hits = {}
+        for period in all_periods_in_data:
+            period_data = filtered_rolling[filtered_rolling['GoalTime'] == period]
+            hits = period_data['NumHits'].sum()
+            period_hits[period] = hits
+        
+        # Handle OPEN trigger - convert to first meaningful period
+        if trigger_time == "OPEN":
+            # Find first period with hits
+            trigger_time_for_rolling = None
+            for period in all_periods_in_data:
+                if period_hits[period] > 0:
+                    trigger_time_for_rolling = str(period)
+                    break
+            if not trigger_time_for_rolling:
+                trigger_time_for_rolling = str(all_periods_in_data[0])
+        else:
+            # Find trigger time in data
+            trigger_candidates = [trigger_time]
+            if trigger_time.isdigit():
+                trigger_candidates.extend([
+                    trigger_time.zfill(4),
+                    str(int(trigger_time)) if trigger_time != str(int(trigger_time)) else None
+                ])
+            
+            trigger_time_for_rolling = None
+            for candidate in trigger_candidates:
+                if candidate and str(candidate) in [str(p) for p in all_periods_in_data]:
+                    trigger_time_for_rolling = str(candidate)
+                    break
+            
+            if not trigger_time_for_rolling:
+                trigger_time_for_rolling = str(all_periods_in_data[0])
+        
+        # Find trigger index
+        trigger_index = 0
+        for i, period in enumerate(all_periods_in_data):
+            if str(period) == trigger_time_for_rolling:
+                trigger_index = i
+                break
+        
+        # Generate rolling sequence with gap-filling logic
+        consecutive_empty_count = 0
+        max_consecutive_empty = 3  # Allow up to 3 consecutive empty periods
+        window_size = 8
+        
+        for i in range(len(all_periods_in_data)):
+            period_index = (trigger_index + i) % len(all_periods_in_data)
+            current_period = all_periods_in_data[period_index]
+            hits = period_hits[current_period]
+            
+            if hits > 0:
+                # This period has activity - include it and reset empty counter
+                original_format = str(current_period)
                 
-                # Only include periods that have some actual activity
-                if total_hits > 0:
-                    if isinstance(gt, (int, float)):
-                        time_int = int(gt)
+                # Clean up for display
+                if "Next Day" in original_format:
+                    display_format = original_format.replace("Next Day", "").strip()
+                else:
+                    # Handle numeric formatting
+                    if original_format.isdigit():
+                        time_int = int(original_format)
                         if time_int == 900:
-                            original_format = str(time_int)
                             display_format = "0900"
                         elif time_int < 1000 and time_int >= 0:
-                            original_format = str(time_int)
                             display_format = f"{time_int:04d}"
-                        elif time_int >= 1000:
-                            original_format = str(time_int)
-                            display_format = str(time_int)
                         else:
-                            # Day/week numbers: 1, 2, 3, etc.
-                            original_format = str(time_int)
-                            display_format = f"P{time_int}"
+                            display_format = original_format
                     else:
-                        # String format - keep original exactly, clean up display
-                        original_format = str(gt)  # Keep exact: "Next Day 0900"
-                        
-                        # Clean up for display: "Next Day 0900" → "0900"
-                        if "Next Day" in str(gt):
-                            display_format = str(gt).replace("Next Day", "").strip()
-                        elif "NEXT DAY" in str(gt):
-                            display_format = str(gt).replace("NEXT DAY", "").strip()
+                        display_format = original_format
+                
+                available_times_original.append(original_format)
+                available_times_display.append(display_format)
+                original_to_display[original_format] = display_format
+                consecutive_empty_count = 0
+                
+            else:
+                # This period has no activity
+                if consecutive_empty_count < max_consecutive_empty:
+                    # We're still within the gap-fill tolerance - include it
+                    original_format = str(current_period)
+                    
+                    # Clean up for display
+                    if "Next Day" in original_format:
+                        display_format = original_format.replace("Next Day", "").strip()
+                    else:
+                        if original_format.isdigit():
+                            time_int = int(original_format)
+                            if time_int == 900:
+                                display_format = "0900"
+                            elif time_int < 1000 and time_int >= 0:
+                                display_format = f"{time_int:04d}"
+                            else:
+                                display_format = original_format
                         else:
-                            display_format = str(gt).strip()
+                            display_format = original_format
                     
                     available_times_original.append(original_format)
                     available_times_display.append(display_format)
                     original_to_display[original_format] = display_format
+                    consecutive_empty_count += 1
+                else:
+                    # We've hit too many consecutive empty periods - stop here
+                    break
+            
+            # Stop when we have enough periods
+            if len(available_times_original) >= window_size:
+                break
     
     # Fallback if no periods found
     if not available_times_original:
@@ -651,46 +722,11 @@ elif analysis_type == "Rolling":
         original_to_display = {k: k for k in available_times_original}
         st.warning("⚠️ Could not detect time periods from data, using standard trading hours")
     
-    # Create rolling window starting from trigger time (using ORIGINAL format for logic)
-    if trigger_time == "OPEN":
-        trigger_time_for_rolling = available_times_original[0] if available_times_original else "0900"
-    else:
-        # Find trigger time in original format
-        trigger_candidates = [trigger_time]
-        if trigger_time.isdigit():
-            trigger_candidates.extend([
-                trigger_time.zfill(4),
-                str(int(trigger_time)) if trigger_time != str(int(trigger_time)) else None
-            ])
-        
-        trigger_time_for_rolling = None
-        for candidate in trigger_candidates:
-            if candidate and candidate in available_times_original:
-                trigger_time_for_rolling = candidate
-                break
-        
-        if not trigger_time_for_rolling:
-            trigger_time_for_rolling = available_times_original[0]
+    # Generate rolling sequences (exactly the number of available periods)
+    rolling_hours_original = available_times_original[:8]  # Use up to 8 periods
+    rolling_hours_display = available_times_display[:8]
     
-    # Find trigger time index and create rolling window (using ORIGINAL format)
-    if trigger_time_for_rolling in available_times_original:
-        trigger_index = available_times_original.index(trigger_time_for_rolling)
-    else:
-        trigger_index = 0
-    
-    # Generate 8-period rolling sequence (ORIGINAL format for data lookup)
-    rolling_hours_original = []
-    rolling_hours_display = []
-    
-    for i in range(8):  # Always try for 8 periods
-        period_index = (trigger_index + i) % len(available_times_original)
-        original_time = available_times_original[period_index]
-        display_time = original_to_display[original_time]
-        
-        rolling_hours_original.append(original_time)
-        rolling_hours_display.append(display_time)
-    
-    # Display configuration (use DISPLAY format for user-facing elements)
+    # Display configuration
     if show_expanded_view:
         display_columns = rolling_hours_display + ["TOTAL"]
         display_fib_levels = fib_levels
@@ -704,19 +740,27 @@ elif analysis_type == "Rolling":
         end_fib = min(len(fib_levels), trigger_index_fib + 4)
         display_fib_levels = fib_levels[start_fib:end_fib]
     
-    # Debug info - show both formats
-    st.info(f"🔧 Debug: Found {len(available_times_original)} periods")
+    # Debug info - show results
+    st.info(f"🔧 Debug: Found {len(available_times_original)} periods with gap-filling")
     st.info(f"🔧 Debug: Original format: {available_times_original}")
     st.info(f"🔧 Debug: Display format: {available_times_display}")
     st.info(f"🔧 Debug: Rolling sequence (display): {' → '.join(rolling_hours_display)}")
     
-    # Build chart using MODIFIED rolling matrix function
+    # Show which periods have hits vs gaps filled
+    hit_info = []
+    for orig in rolling_hours_original:
+        period_data = filtered_rolling[filtered_rolling['GoalTime'] == orig]
+        hits = period_data['NumHits'].sum() if len(period_data) > 0 else 0
+        hit_info.append(f"{orig}({hits} hits)")
+    st.info(f"🔧 Debug: Hit breakdown: {' | '.join(hit_info)}")
+    
+    # Build chart using the fixed rolling matrix function
     fig, use_container_width = create_rolling_matrix_fixed(
         filtered_data=filtered_rolling,
         display_fib_levels=display_fib_levels,
         display_columns=display_columns,
-        rolling_hours_original=rolling_hours_original,  # For data lookup
-        rolling_hours_display=rolling_hours_display,    # For chart display
+        rolling_hours_original=rolling_hours_original,
+        rolling_hours_display=rolling_hours_display,
         price_direction=price_direction,
         trigger_level=trigger_level,
         trigger_time=trigger_time,
@@ -735,7 +779,7 @@ elif analysis_type == "Rolling":
         st.caption(f"📊 ATR levels from {atr_data.get('reference_date', 'unknown')} | Close: {atr_data.get('reference_close', 'N/A')} | ATR: {atr_data.get('reference_atr', 'N/A')}{age_warning}")
     
     # Legend
-    st.caption("📋 **Rolling Analysis Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | 8-period window shows probability progression from trigger time")
+    st.caption("📋 **Rolling Analysis Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | Rolling window shows probability progression from trigger time | 0.0% may indicate gap-filled periods")
     
     # End Rolling analysis
     st.stop()
