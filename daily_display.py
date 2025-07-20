@@ -568,9 +568,7 @@ if analysis_type == "StateCheck":
 
 elif analysis_type == "Rolling":
     
-    # Generate 8-hour rolling window using shared 
-    # Load rolling data - find most recent file
-      # Load rolling data - find most recent file
+    # Load rolling data first - find most recent file
     try:
         rolling_files = glob.glob(f"atr_summary_{selected_ticker}_ROLLING_*.csv")
         if rolling_files:
@@ -584,6 +582,9 @@ elif analysis_type == "Rolling":
         st.error(f"❌ Error loading rolling data: {str(e)}")
         st.stop()
     
+    # Generate 8-hour rolling window using actual data columns
+    rolling_hours = get_rolling_8_hours(trigger_time, df_rolling)
+    
     # Filter rolling data
     filtered_rolling = df_rolling[
         (df_rolling["Direction"] == price_direction) &
@@ -595,14 +596,15 @@ elif analysis_type == "Rolling":
         st.warning(f"No rolling data found for {price_direction} {trigger_level} at {trigger_time}")
         st.stop()
     
-    # Display configuration
+    # Display configuration - USE the rolling_hours from get_rolling_8_hours()
     if show_expanded_view:
-        display_columns = rolling_hours + ["TOTAL"]  # Removed REMAINING
+        display_columns = rolling_hours + ["TOTAL"]  # Use the proper rolling sequence
         display_fib_levels = fib_levels
     else:    
-        # For rolling, show first 4 hours + TOTAL for mobile
-        display_columns = rolling_hours[:4] + ["TOTAL"]  # Removed REMAINING
+        # For mobile, show first 4 hours of rolling window + TOTAL
+        display_columns = rolling_hours[:4] + ["TOTAL"]  # Use rolling sequence, not session sequence
         
+        # Adjust fib levels around trigger level
         trigger_index = fib_levels.index(trigger_level)
         start_fib = max(0, trigger_index - 3)
         end_fib = min(len(fib_levels), trigger_index + 4)
@@ -613,7 +615,7 @@ elif analysis_type == "Rolling":
         filtered_data=filtered_rolling,
         display_fib_levels=display_fib_levels,
         display_columns=display_columns,
-        rolling_hours=rolling_hours,
+        rolling_hours=rolling_hours,  # Pass the correct rolling sequence
         price_direction=price_direction,
         trigger_level=trigger_level,
         trigger_time=trigger_time,
