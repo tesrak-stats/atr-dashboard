@@ -15,7 +15,7 @@ from daily_atr_updater import calculate_atr_levels, TICKER_CONFIG
 from shared_chart_functions import (
     create_zonebaseline_heatmap,
     create_statecheck_matrix,
-    get_rolling_8_hours,
+    get_rolling_8_periods,
     get_total_probability,
     create_rolling_matrix
 )
@@ -583,7 +583,7 @@ elif analysis_type == "Rolling":
         st.stop()
     
     # Generate 8-hour rolling window using actual data columns
-    rolling_hours = get_rolling_8_hours(trigger_time, df_rolling)
+    rolling_hours = get_rolling_8_periods(trigger_time, df_rolling)
     
     # Filter rolling data
     filtered_rolling = df_rolling[
