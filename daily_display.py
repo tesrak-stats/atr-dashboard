@@ -567,22 +567,10 @@ if analysis_type == "StateCheck":
         st.stop()
 
 elif analysis_type == "Rolling":
-    st.info("⏰ **Rolling**: 8-hour rolling window analysis from trigger time")
     
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        price_direction = st.selectbox("Price Location", ["Above", "Below"], index=0)
-    with col2:
-        fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
-        trigger_level = st.selectbox("Trigger Level", fib_levels, index=6)
-    with col3:
-        trigger_time = st.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
-    
-    # Generate 8-hour rolling window using shared function
-    rolling_hours = get_rolling_8_hours(trigger_time)
-    st.caption(f"🔄 Rolling window: {' → '.join(rolling_hours[:4])} → {' → '.join(rolling_hours[4:])}")
-    
+    # Generate 8-hour rolling window using shared 
     # Load rolling data - find most recent file
+      # Load rolling data - find most recent file
     try:
         rolling_files = glob.glob(f"atr_summary_{selected_ticker}_ROLLING_*.csv")
         if rolling_files:
@@ -609,11 +597,11 @@ elif analysis_type == "Rolling":
     
     # Display configuration
     if show_expanded_view:
-        display_columns = rolling_hours + ["TOTAL", "REMAINING"]
+        display_columns = rolling_hours + ["TOTAL"]  # Removed REMAINING
         display_fib_levels = fib_levels
     else:    
-        # For rolling, show first 4 hours + TOTAL/REMAINING for mobile
-        display_columns = rolling_hours[:4] + ["TOTAL", "REMAINING"]
+        # For rolling, show first 4 hours + TOTAL for mobile
+        display_columns = rolling_hours[:4] + ["TOTAL"]  # Removed REMAINING
         
         trigger_index = fib_levels.index(trigger_level)
         start_fib = max(0, trigger_index - 3)
