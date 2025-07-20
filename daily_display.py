@@ -17,7 +17,8 @@ from shared_chart_functions import (
     create_statecheck_matrix,
     get_rolling_8_periods,
     get_total_probability,
-    create_rolling_matrix
+    create_rolling_matrix,
+    create_rolling_matrix_fixed
 )
 st.set_page_config(layout="wide")
 
