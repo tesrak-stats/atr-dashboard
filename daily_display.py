@@ -574,7 +574,6 @@ elif analysis_type == "Rolling":
         if rolling_files:
             rolling_file = max(rolling_files)  # Most recent by filename
             df_rolling = pd.read_csv(rolling_file)
-            #st.success(f"✅ Loaded rolling data: {len(df_rolling)} records from {rolling_file}")
         else:
             st.error(f"❌ No rolling data files found for {selected_ticker}")
             st.stop()
@@ -593,8 +592,10 @@ elif analysis_type == "Rolling":
         st.warning(f"No rolling data found for {price_direction} {trigger_level} at {trigger_time}")
         st.stop()
     
-    # SMART PERIOD DETECTION - Try multiple methods to find periods
-    available_times = []
+    # SMART PERIOD DETECTION - Keep original format for data lookup, clean format for display
+    available_times_original = []  # For data lookup (exact CSV format)
+    available_times_display = []   # For chart display (cleaned up)
+    original_to_display = {}       # Mapping between formats
     
     # Method 1: Long format - Look for GoalTime column (most likely)
     if 'GoalTime' in filtered_rolling.columns:
@@ -611,121 +612,107 @@ elif analysis_type == "Rolling":
                     if isinstance(gt, (int, float)):
                         time_int = int(gt)
                         if time_int == 900:
-                            available_times.append("0900")
+                            original_format = str(time_int)
+                            display_format = "0900"
                         elif time_int < 1000 and time_int >= 0:
-                            available_times.append(f"{time_int:04d}")
+                            original_format = str(time_int)
+                            display_format = f"{time_int:04d}"
                         elif time_int >= 1000:
-                            available_times.append(str(time_int))
+                            original_format = str(time_int)
+                            display_format = str(time_int)
                         else:
-                            # Could be day/week numbers: 1, 2, 3, etc.
-                            available_times.append(f"P{time_int}")
+                            # Day/week numbers: 1, 2, 3, etc.
+                            original_format = str(time_int)
+                            display_format = f"P{time_int}"
                     else:
-                        # String format - use as-is but clean up
-                        time_str = str(gt).strip().upper()
-                        available_times.append(time_str)
+                        # String format - keep original exactly, clean up display
+                        original_format = str(gt)  # Keep exact: "Next Day 0900"
+                        
+                        # Clean up for display: "Next Day 0900" → "0900"
+                        if "Next Day" in str(gt):
+                            display_format = str(gt).replace("Next Day", "").strip()
+                        elif "NEXT DAY" in str(gt):
+                            display_format = str(gt).replace("NEXT DAY", "").strip()
+                        else:
+                            display_format = str(gt).strip()
+                    
+                    available_times_original.append(original_format)
+                    available_times_display.append(display_format)
+                    original_to_display[original_format] = display_format
     
-    # Method 2: Wide format - Look for time/period columns (fallback)
-    if not available_times:
-        all_columns = filtered_rolling.columns.tolist()
-        metadata_columns = {"Direction", "TriggerLevel", "TriggerTime", "GoalLevel", "GoalTime", 
-                          "NumTriggers", "NumHits", "PctCompletion", "TOTAL", "REMAINING", "OPEN"}
-        
-        for col in all_columns:
-            if col in metadata_columns:
-                continue
-                
-            col_str = str(col).strip()
-            
-            # Hour format: "0900", "1000", etc.
-            if col_str.isdigit() and len(col_str) in [3, 4]:
-                available_times.append(col_str.zfill(4))
-            # Day/Period formats: "DAY1", "P1", "WEEK1", "4H1", etc.
-            elif any(pattern in col_str.upper() for pattern in ['DAY', 'WEEK', 'PERIOD', 'H']):
-                available_times.append(col_str.upper())
-            # Pure numbers that might be periods
-            elif col_str.replace('_', '').replace('-', '').isdigit():
-                available_times.append(f"P{col_str}")
-    
-    # Method 3: Ultimate fallback - use standard trading hours
-    if not available_times:
-        available_times = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+    # Fallback if no periods found
+    if not available_times_original:
+        available_times_original = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+        available_times_display = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+        original_to_display = {k: k for k in available_times_original}
         st.warning("⚠️ Could not detect time periods from data, using standard trading hours")
     
-    # Clean up and sort available times
-    available_times = sorted(list(set(available_times)))
-    
-    # Create rolling window starting from trigger time
+    # Create rolling window starting from trigger time (using ORIGINAL format for logic)
     if trigger_time == "OPEN":
-        trigger_time_for_rolling = available_times[0] if available_times else "0900"
+        trigger_time_for_rolling = available_times_original[0] if available_times_original else "0900"
     else:
-        # Convert trigger_time to match available format
+        # Find trigger time in original format
         trigger_candidates = [trigger_time]
         if trigger_time.isdigit():
             trigger_candidates.extend([
                 trigger_time.zfill(4),
-                f"P{trigger_time}",
-                f"DAY{trigger_time}",
-                f"WEEK{trigger_time}"
+                str(int(trigger_time)) if trigger_time != str(int(trigger_time)) else None
             ])
         
         trigger_time_for_rolling = None
         for candidate in trigger_candidates:
-            if candidate in available_times:
+            if candidate and candidate in available_times_original:
                 trigger_time_for_rolling = candidate
                 break
         
         if not trigger_time_for_rolling:
-            trigger_time_for_rolling = available_times[0]
+            trigger_time_for_rolling = available_times_original[0]
     
-    # Find trigger time index and create rolling window
-    if trigger_time_for_rolling in available_times:
-        trigger_index = available_times.index(trigger_time_for_rolling)
+    # Find trigger time index and create rolling window (using ORIGINAL format)
+    if trigger_time_for_rolling in available_times_original:
+        trigger_index = available_times_original.index(trigger_time_for_rolling)
     else:
         trigger_index = 0
     
-    # Generate 8-period rolling sequence (wraps to next day)
-    rolling_hours = []
+    # Generate 8-period rolling sequence (ORIGINAL format for data lookup)
+    rolling_hours_original = []
+    rolling_hours_display = []
     
     for i in range(8):  # Always try for 8 periods
-        period_index = (trigger_index + i) % len(available_times)
-        rolling_hours.append(available_times[period_index])
+        period_index = (trigger_index + i) % len(available_times_original)
+        original_time = available_times_original[period_index]
+        display_time = original_to_display[original_time]
+        
+        rolling_hours_original.append(original_time)
+        rolling_hours_display.append(display_time)
     
-    # Debug: Show what we're creating
-    if len(rolling_hours) >= 8:
-        wrap_point = None
-        for i in range(1, len(rolling_hours)):
-            # Find where we wrap around (when index resets to 0)
-            current_idx = available_times.index(rolling_hours[i])
-            prev_idx = available_times.index(rolling_hours[i-1])
-            if current_idx < prev_idx:  # We wrapped around
-                wrap_point = i
-                break
-    
-    # Display configuration
+    # Display configuration (use DISPLAY format for user-facing elements)
     if show_expanded_view:
-        display_columns = rolling_hours + ["TOTAL"]
+        display_columns = rolling_hours_display + ["TOTAL"]
         display_fib_levels = fib_levels
     else:    
         # For mobile, show first 4 hours of rolling window + TOTAL
-        display_columns = rolling_hours[:4] + ["TOTAL"]
+        display_columns = rolling_hours_display[:4] + ["TOTAL"]
         
         # Adjust fib levels around trigger level
-        trigger_index = fib_levels.index(trigger_level)
-        start_fib = max(0, trigger_index - 3)
-        end_fib = min(len(fib_levels), trigger_index + 4)
+        trigger_index_fib = fib_levels.index(trigger_level)
+        start_fib = max(0, trigger_index_fib - 3)
+        end_fib = min(len(fib_levels), trigger_index_fib + 4)
         display_fib_levels = fib_levels[start_fib:end_fib]
     
-    # Debug info - let's see what's being detected
-    st.info(f"🔧 Debug: Found {len(available_times)} periods: {available_times}")
-    st.info(f"🔧 Debug: Trigger time '{trigger_time}' → Using '{trigger_time_for_rolling}' (index {trigger_index})")
-    st.info(f"🔧 Debug: Rolling sequence: {' → '.join(rolling_hours)}")
+    # Debug info - show both formats
+    st.info(f"🔧 Debug: Found {len(available_times_original)} periods")
+    st.info(f"🔧 Debug: Original format: {available_times_original}")
+    st.info(f"🔧 Debug: Display format: {available_times_display}")
+    st.info(f"🔧 Debug: Rolling sequence (display): {' → '.join(rolling_hours_display)}")
     
-    # Build chart using shared function
-    fig, use_container_width = create_rolling_matrix(
+    # Build chart using MODIFIED rolling matrix function
+    fig, use_container_width = create_rolling_matrix_fixed(
         filtered_data=filtered_rolling,
         display_fib_levels=display_fib_levels,
         display_columns=display_columns,
-        rolling_hours=rolling_hours,
+        rolling_hours_original=rolling_hours_original,  # For data lookup
+        rolling_hours_display=rolling_hours_display,    # For chart display
         price_direction=price_direction,
         trigger_level=trigger_level,
         trigger_time=trigger_time,
