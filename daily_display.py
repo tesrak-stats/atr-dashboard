@@ -169,7 +169,7 @@ elif analysis_type == "Rolling":
         trigger_level = st.selectbox("Trigger Level", fib_levels, index=6, key="rolling_level")
     with col3:
         trigger_time = st.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0, key="rolling_time")
-    rolling_hours = get_rolling_8_hours(trigger_time)
+    rolling_hours = get_rolling_8_periods(trigger_time)
     st.caption(f"🔄 Rolling window: {' → '.join(rolling_hours[:4])} → {' → '.join(rolling_hours[4:])}")
     
 else:  # Session
