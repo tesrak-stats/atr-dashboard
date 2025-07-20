@@ -22,70 +22,184 @@ from shared_chart_functions import (
 )
 st.set_page_config(layout="wide")
 
-# --- Ticker Configuration ---
-ticker_groups = {
-    "📊 Indices": [
-        "SPX - S&P 500",
-        "NDX - Nasdaq 100", 
-        "RUT - Russell 2000"
-    ],
-    "📈 Stocks": [
-        "NVDA - NVIDIA",
-        "AAPL - Apple",
-        "GOOGL - Google",
-        "TSLA - Tesla"
-    ],
-    "🏢 Sectors": [
-        "XLF - Financial Select",
-        "XLE - Energy Select", 
-        "XLK - Technology Select",
-        "XLV - Health Care Select"
-    ],
-    "🔮 Futures": [
-        "ES - E-mini S&P 500",
-        "NQ - E-mini Nasdaq",
-        "YM - E-mini Dow",
-        "RTY - E-mini Russell"
-    ],
-    "💰 Forex": [
-        "EURUSD - Euro/US Dollar",
-        "GBPUSD - British Pound/US Dollar",
-        "USDJPY - US Dollar/Japanese Yen"
-    ],
-    "₿ Crypto": [
-        "BTCUSD - Bitcoin",
-        "ETHUSD - Ethereum"
-    ]
-}
+# Add this section right after the imports and before ticker configuration
 
-# Build ticker options with availability check
+# --- DATA DISCOVERY SYSTEM ---
+def discover_available_tickers():
+    """Discover all tickers that have data files"""
+    # Look for all relevant CSV files
+    session_files = glob.glob("atr_summary_*_SESSION_*.csv")
+    rolling_files = glob.glob("atr_summary_*_ROLLING_*.csv") 
+    statecheck_files = glob.glob("statecheck_detailed_*.csv")
+    zonebaseline_files = glob.glob("atr_summary_*_ZONEBASELINE_*.csv")  # If these exist
+    
+    all_files = session_files + rolling_files + statecheck_files + zonebaseline_files
+    
+    # Extract ticker symbols from filenames
+    tickers = set()
+    for file in all_files:
+        # Extract ticker from patterns like "atr_summary_SPX_SESSION_*.csv"
+        if "atr_summary_" in file:
+            parts = file.split("_")
+            if len(parts) >= 3:
+                ticker = parts[2]  # SPX, ES, AAPL, etc.
+                tickers.add(ticker)
+        elif "statecheck_detailed_" in file:
+            parts = file.split("_")
+            if len(parts) >= 3:
+                ticker = parts[2]  # SPX, ES, AAPL, etc.
+                tickers.add(ticker)
+    
+    return sorted(list(tickers))
+
+def discover_available_analyses(selected_ticker):
+    """Discover which analysis types are available for the selected ticker"""
+    KNOWN_ANALYSIS_PATTERNS = {
+        "SESSION": "Session",
+        "ROLLING": "Rolling", 
+        "statecheck": "StateCheck",
+        "ZONEBASELINE": "ZoneBaseline"
+    }
+    
+    # Find all files for this ticker
+    ticker_files = []
+    ticker_files.extend(glob.glob(f"atr_summary_{selected_ticker}_*.csv"))
+    ticker_files.extend(glob.glob(f"statecheck_detailed_{selected_ticker}_*.csv"))
+    
+    available_analyses = []
+    for pattern, display_name in KNOWN_ANALYSIS_PATTERNS.items():
+        if any(pattern.upper() in f.upper() for f in ticker_files):
+            available_analyses.append(display_name)
+    
+    return available_analyses
+
+def discover_available_trigger_times(selected_ticker, default_analysis="SESSION"):
+    """Discover available trigger times by examining actual data"""
+    # Priority order for finding trigger times
+    analysis_priority = ["SESSION", "STATECHECK", "ZONEBASELINE", "ROLLING"]
+    
+    try:
+        # Try each analysis type in priority order
+        for analysis in analysis_priority:
+            if analysis == "SESSION":
+                files = glob.glob(f"atr_summary_{selected_ticker}_SESSION_*.csv")
+            elif analysis == "STATECHECK":
+                files = glob.glob(f"statecheck_detailed_{selected_ticker}_*.csv")
+            elif analysis == "ZONEBASELINE":
+                files = glob.glob(f"atr_summary_{selected_ticker}_ZONEBASELINE_*.csv")
+            elif analysis == "ROLLING":
+                files = glob.glob(f"atr_summary_{selected_ticker}_ROLLING_*.csv")
+            else:
+                continue
+                
+            if files:
+                df = pd.read_csv(max(files))
+                
+                # Extract unique trigger times from TriggerTime column
+                if 'TriggerTime' in df.columns:
+                    trigger_times = sorted(df['TriggerTime'].unique())
+                    
+                    # Convert to proper format and add OPEN
+                    formatted_times = ["OPEN"]
+                    for t in trigger_times:
+                        if pd.notna(t):
+                            if isinstance(t, (int, float)):
+                                time_int = int(t)
+                                if 0 <= time_int <= 2359:
+                                    formatted_times.append(f"{time_int:04d}")
+                            else:
+                                formatted_times.append(str(t))
+                    
+                    return sorted(list(set(formatted_times)))
+        
+        # Fallback to standard stock hours if no data found
+        return ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+        
+    except Exception as e:
+        # Ultimate fallback
+        return ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+
+def discover_available_fib_levels(selected_ticker, analysis_type, trigger_conditions=None):
+    """Discover available fibonacci levels from actual data"""
+    # Priority order for finding fib levels
+    analysis_priority = ["SESSION", "STATECHECK", "ZONEBASELINE", "ROLLING"]
+    
+    try:
+        # If specific analysis type requested, try that first
+        files_to_try = []
+        if analysis_type == "Session":
+            files_to_try.append(("SESSION", glob.glob(f"atr_summary_{selected_ticker}_SESSION_*.csv")))
+        elif analysis_type == "Rolling":
+            files_to_try.append(("ROLLING", glob.glob(f"atr_summary_{selected_ticker}_ROLLING_*.csv")))
+        elif analysis_type == "StateCheck":
+            files_to_try.append(("STATECHECK", glob.glob(f"statecheck_detailed_{selected_ticker}_*.csv")))
+        elif analysis_type == "ZoneBaseline":
+            files_to_try.append(("ZONEBASELINE", glob.glob(f"atr_summary_{selected_ticker}_ZONEBASELINE_*.csv")))
+        
+        # Then try priority order for any we haven't tried
+        for analysis in analysis_priority:
+            if analysis == "SESSION" and analysis_type != "Session":
+                files_to_try.append(("SESSION", glob.glob(f"atr_summary_{selected_ticker}_SESSION_*.csv")))
+            elif analysis == "STATECHECK" and analysis_type != "StateCheck":
+                files_to_try.append(("STATECHECK", glob.glob(f"statecheck_detailed_{selected_ticker}_*.csv")))
+            elif analysis == "ZONEBASELINE" and analysis_type != "ZoneBaseline":
+                files_to_try.append(("ZONEBASELINE", glob.glob(f"atr_summary_{selected_ticker}_ZONEBASELINE_*.csv")))
+            elif analysis == "ROLLING" and analysis_type != "Rolling":
+                files_to_try.append(("ROLLING", glob.glob(f"atr_summary_{selected_ticker}_ROLLING_*.csv")))
+        
+        # Try each file set
+        for analysis_name, files in files_to_try:
+            if files:
+                df = pd.read_csv(max(files))
+                
+                # Extract unique fibonacci levels
+                if 'GoalLevel' in df.columns:
+                    discovered_levels = sorted(df['GoalLevel'].unique())
+                    
+                    # Validate that we have a reasonable number of levels
+                    if 5 <= len(discovered_levels) <= 20:  # Reasonable range
+                        return discovered_levels
+        
+        # Fallback to standard fibonacci levels
+        return [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+        
+    except Exception as e:
+        # Ultimate fallback
+        return [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+
+# --- MAIN DATA DISCOVERY IMPLEMENTATION ---
+
+# Discover available tickers
+available_tickers = discover_available_tickers()
+
+if not available_tickers:
+    st.error("❌ No data files found! Please ensure CSV files are in the correct directory.")
+    st.info("📝 Expected file patterns: atr_summary_TICKER_ANALYSIS_*.csv or statecheck_detailed_TICKER_*.csv")
+    st.stop()
+
+# Create ticker options with discovery info
 ticker_options = []
 ticker_mapping = {}
 
-for group_name, tickers in ticker_groups.items():
-    ticker_options.append(f"--- {group_name} ---")
-    group_has_available = False
-    
-    for ticker_display in tickers:
-        ticker_symbol = ticker_display.split(" - ")[0]
-        
-        # Currently only SPX is available
-        if ticker_symbol == "SPX":
-            summary_file = "atr_summary_SPX_SESSION_20250710_064535.csv"
-            if os.path.exists(summary_file):
-                ticker_options.append(ticker_display)
-                ticker_mapping[ticker_display] = ticker_symbol
-                group_has_available = True
-    
-    if not group_has_available:
-        ticker_options.append("--- (Coming Soon) ---")
+# Add section headers and tickers
+ticker_options.append("--- 📊 Available Tickers ---")
 
-# Ticker selector
-if len([opt for opt in ticker_options if not opt.startswith("---")]) == 0:
-    st.error("❌ No ticker data files found!")
-    st.info("📝 Have a ticker request? Check back soon!")
-    st.stop()
+for ticker in available_tickers:
+    # Get available analyses for this ticker to show status
+    available_analyses = discover_available_analyses(ticker)
+    
+    # Create display name with analysis count
+    analyses_count = len(available_analyses)
+    analyses_preview = ", ".join(available_analyses[:2])
+    if len(available_analyses) > 2:
+        analyses_preview += "..."
+    
+    ticker_display = f"{ticker} ({analyses_count} analyses: {analyses_preview})"
+    
+    ticker_options.append(ticker_display)
+    ticker_mapping[ticker_display] = ticker
 
+# Ticker selector with discovery
 selected_ticker_display = st.selectbox("Select Ticker", ticker_options, index=1)
 
 # Validate ticker selection
@@ -93,43 +207,46 @@ if not selected_ticker_display.startswith("---"):
     if selected_ticker_display in ticker_mapping:
         selected_ticker = ticker_mapping[selected_ticker_display]
         
-        instrument_category = None
-        for group_name, tickers in ticker_groups.items():
-            if selected_ticker_display in tickers:
-                instrument_category = group_name.split(" ", 1)[1]
-                break
+        # Discover available analyses for selected ticker
+        available_analyses = discover_available_analyses(selected_ticker)
         
-        #st.success(f"✅ Selected: {selected_ticker_display} ({instrument_category})")
+        if not available_analyses:
+            st.error(f"❌ No supported analysis types found for {selected_ticker}")
+            st.stop()
+        
+        st.success(f"✅ Selected: {selected_ticker} | Available: {', '.join(available_analyses)}")
     else:
-        st.error("❌ This ticker is not yet available")
+        st.error("❌ Invalid ticker selection")
         st.stop()
 else:
     st.error("Please select a valid ticker (not a header)")
     st.stop()
 
-# Create ticker config
-ticker_config = {
-    selected_ticker: {
-        "summary_file": f"atr_summary_{selected_ticker}_SESSION_20250710_064535.csv",
-        "display_name": selected_ticker_display.split(" - ")[1],
-        "ticker_symbol": selected_ticker
-    }
-}
+# Discover trigger times for selected ticker
+available_trigger_times = discover_available_trigger_times(selected_ticker)
+
+# Discover fibonacci levels for initial analysis type
+initial_fib_levels = discover_available_fib_levels(selected_ticker, available_analyses[0] if available_analyses else "Session")
 
 # --- App Header ---
 st.title("📈 Daily ATR Analysis")
-st.caption("🔧 App Version: v3.0.0 - Multi-Instrument Daily Viewer")
+st.caption("🔧 App Version: v4.0.0 - Full Data Discovery System")
 
-# --- Analysis Type Selection ---
+# --- Analysis Type Selection (Dynamic) ---
 st.subheader("📊 Analysis Type")
+
+# Only show available analysis types for selected ticker
 analysis_type = st.selectbox(
     "Select Analysis Type",
-    ["Session", "Rolling", "StateCheck", "ZoneBaseline"],
+    available_analyses,
     index=0,
-    help="Session: Full session analysis | Rolling: 8-hour window | StateCheck: Zone transitions | ZoneBaseline: Static zone probability"
+    help="Only analyses with available data for the selected ticker are shown"
 )
 
-# --- Analysis Parameters ---
+# Update fibonacci levels based on selected analysis type
+fib_levels = discover_available_fib_levels(selected_ticker, analysis_type)
+
+# --- Analysis Parameters (Dynamic) ---
 st.subheader("⚙️ Analysis Parameters")
 
 if analysis_type == "ZoneBaseline":
@@ -139,6 +256,7 @@ if analysis_type == "ZoneBaseline":
 elif analysis_type == "StateCheck":
     st.info("🔄 **StateCheck**: Zone transition probabilities from trigger zone over time")
     
+    # Zone definitions (keep existing)
     zone_definitions = [
         "Zone 1: Above +1.0", "Zone 2: +0.786 to +1.0", "Zone 3: +0.618 to +0.786",
         "Zone 4: +0.5 to +0.618", "Zone 5: +0.382 to +0.5", "Zone 6: +0.236 to +0.382",
@@ -151,27 +269,26 @@ elif analysis_type == "StateCheck":
     with col1:
         trigger_zone = st.selectbox("Trigger Zone", zone_definitions, index=6)
     with col2:
-        trigger_time = st.selectbox("Trigger Time", [
-            "0930", "0940", "0950", "1000", "1010", "1020", "1030", "1040", "1050", 
-            "1100", "1110", "1120", "1130", "1140", "1150", "1200", "1210", "1220", 
-            "1230", "1240", "1250", "1300", "1310", "1320", "1330", "1340", "1350", 
-            "1400", "1410", "1420", "1430", "1440", "1450", "1500", "1510", "1520", 
-            "1530", "1540", "1550"
-        ], index=0)
+        # Use discovered trigger times but convert to specific StateCheck format
+        statecheck_times = [t for t in available_trigger_times if t != "OPEN"][:10]  # Limit for UI
+        trigger_time = st.selectbox("Trigger Time", statecheck_times, index=0)
     
 elif analysis_type == "Rolling":
-    st.info("⏰ **Rolling**: 8-hour rolling window analysis from trigger time")
+    st.info("⏰ **Rolling**: 8-period rolling window analysis from trigger time")
     
     col1, col2, col3 = st.columns(3)
     with col1:
         price_direction = st.selectbox("Price Location", ["Above", "Below"], index=0, key="rolling_direction")
     with col2:
-        fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
-        trigger_level = st.selectbox("Trigger Level", fib_levels, index=6, key="rolling_level")
+        # Use discovered fibonacci levels
+        trigger_level = st.selectbox("Trigger Level", fib_levels, index=len(fib_levels)//2, key="rolling_level")
     with col3:
-        trigger_time = st.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0, key="rolling_time")
-    rolling_hours = get_rolling_8_periods(trigger_time)
-    st.caption(f"🔄 Rolling window: {' → '.join(rolling_hours[:4])} → {' → '.join(rolling_hours[4:])}")
+        # Use discovered trigger times
+        trigger_time = st.selectbox("Trigger Time", available_trigger_times, index=0, key="rolling_time")
+    
+    # Show rolling window preview (if we can calculate it)
+    if len(available_trigger_times) > 8:
+        st.caption(f"🔄 Rolling window: 8 periods starting from {trigger_time}")
     
 else:  # Session
     st.info("📈 **Session**: Full session analysis with trigger conditions")
@@ -180,11 +297,31 @@ else:  # Session
     with col1:
         price_direction = st.selectbox("Price Location", ["Above", "Below"], index=0)
     with col2:
-        fib_levels = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0, -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
-        trigger_level = st.selectbox("Trigger Level", fib_levels, index=6)
+        # Use discovered fibonacci levels
+        trigger_level = st.selectbox("Trigger Level", fib_levels, index=len(fib_levels)//2)
     with col3:
-        trigger_time = st.selectbox("Trigger Time", ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
+        # Use discovered trigger times
+        trigger_time = st.selectbox("Trigger Time", available_trigger_times, index=0)
 
+# Show analysis summary
+st.divider()
+if analysis_type == "ZoneBaseline":
+    st.write(f"**Analysis**: {analysis_type} | **Ticker**: {selected_ticker}")
+elif analysis_type == "StateCheck":
+    st.write(f"**Analysis**: {analysis_type} | **From**: {trigger_zone} at {trigger_time} | **Ticker**: {selected_ticker}")
+else:
+    st.write(f"**Analysis**: {analysis_type} | **Trigger**: {price_direction} {trigger_level} at {trigger_time} | **Ticker**: {selected_ticker}")
+
+# Display discovery info
+with st.expander("🔍 Data Discovery Info"):
+    st.write(f"**Discovered Tickers**: {', '.join(available_tickers)}")
+    st.write(f"**Available Analyses for {selected_ticker}**: {', '.join(available_analyses)}")
+    st.write(f"**Available Trigger Times**: {len(available_trigger_times)} times ({available_trigger_times[0]} to {available_trigger_times[-1]})")
+    st.write(f"**Available Fib Levels**: {len(fib_levels)} levels ({min(fib_levels):+.3f} to {max(fib_levels):+.3f})")
+
+# --- Continue with existing analysis logic ---
+# The rest of your analysis code continues unchanged here...
+    
 # Show analysis summary
 st.divider()
 if analysis_type == "ZoneBaseline":
