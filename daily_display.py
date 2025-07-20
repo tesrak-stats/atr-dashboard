@@ -17,8 +17,7 @@ from shared_chart_functions import (
     create_statecheck_matrix,
     get_rolling_8_periods,
     get_total_probability,
-    create_rolling_matrix,
-    create_rolling_matrix_fixed
+    create_rolling_matrix
 )
 st.set_page_config(layout="wide")
 
@@ -868,7 +867,7 @@ elif analysis_type == "Rolling":
     st.info(f"🔧 Debug: Hit breakdown: {' | '.join(hit_info)}")
     
     # Build chart using the fixed rolling matrix function
-    fig, use_container_width = create_rolling_matrix_fixed(
+    fig, use_container_width = create_rolling_matrix(
         filtered_data=filtered_rolling,
         display_fib_levels=display_fib_levels,
         display_columns=display_columns,
