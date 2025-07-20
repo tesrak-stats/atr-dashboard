@@ -761,6 +761,19 @@ elif analysis_type == "Rolling":
     st.stop()
     
 else:  # Session
+    # Load session data using glob pattern
+    try:
+        session_files = glob.glob(f"atr_summary_{selected_ticker}_SESSION_*.csv")
+        if session_files:
+            session_file = max(session_files)  # Most recent by filename
+            df = pd.read_csv(session_file)
+        else:
+            st.error(f"❌ No session data files found for {selected_ticker}")
+            st.stop()
+    except Exception as e:
+        st.error(f"❌ Error loading session data for {selected_ticker}: {str(e)}")
+        st.stop()
+
     # Session data filtering
     filtered = df[
         (df["Direction"] == price_direction) &
@@ -768,24 +781,125 @@ else:  # Session
         (df["TriggerTime"] == trigger_time)
     ].copy()
     
-    # Display configuration for Session
+    if len(filtered) == 0:
+        st.warning(f"No session data found for {price_direction} {trigger_level} at {trigger_time}")
+        st.stop()
+    
+    # EXTRACT MEANINGFUL PERIODS FROM DATA (like Rolling analysis does)
+    available_times_original = []  # For data lookup (exact CSV format)
+    available_times_display = []   # For chart display (cleaned up)
+    original_to_display = {}       # Mapping between formats
+    
+    # Extract periods with actual hits from GoalTime column
+    if 'GoalTime' in filtered.columns:
+        unique_goal_times = sorted(filtered['GoalTime'].unique())
+        
+        for gt in unique_goal_times:
+            if pd.notna(gt):
+                # Check if this time period has any actual hits
+                period_data = filtered[filtered['GoalTime'] == gt]
+                total_hits = period_data['NumHits'].sum()
+                
+                # Only include periods that have some actual activity
+                if total_hits > 0:
+                    if isinstance(gt, (int, float)):
+                        time_int = int(gt)
+                        if time_int == 900:
+                            original_format = str(time_int)
+                            display_format = "0900"
+                        elif time_int < 1000 and time_int >= 0:
+                            original_format = str(time_int)
+                            display_format = f"{time_int:04d}"
+                        elif time_int >= 1000:
+                            original_format = str(time_int)
+                            display_format = str(time_int)
+                        else:
+                            # Day/week numbers: 1, 2, 3, etc.
+                            original_format = str(time_int)
+                            display_format = f"P{time_int}"
+                    else:
+                        # String format - keep original exactly, clean up display
+                        original_format = str(gt)  # Keep exact: "Next Day 0900"
+                        
+                        # Clean up for display: "Next Day 0900" → "0900"
+                        if "Next Day" in str(gt):
+                            display_format = str(gt).replace("Next Day", "").strip()
+                        elif "NEXT DAY" in str(gt):
+                            display_format = str(gt).replace("NEXT DAY", "").strip()
+                        else:
+                            display_format = str(gt).strip()
+                    
+                    available_times_original.append(original_format)
+                    available_times_display.append(display_format)
+                    original_to_display[original_format] = display_format
+    
+    # Add OPEN if trigger time is OPEN (Session analysis needs this)
+    if trigger_time == "OPEN":
+        # Insert OPEN at the beginning
+        available_times_original.insert(0, "OPEN")
+        available_times_display.insert(0, "OPEN")
+        original_to_display["OPEN"] = "OPEN"
+    
+    # Fallback if no periods found
+    if len(available_times_original) <= 1:  # Just OPEN or nothing
+        available_times_original = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+        available_times_display = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+        original_to_display = {k: k for k in available_times_original}
+        st.warning("⚠️ Could not detect time periods from data, using standard trading hours")
+    
+    # DETECT IF THIS IS FUTURES DATA (many periods) vs STOCK DATA (few periods)
+    num_meaningful_periods = len([t for t in available_times_original if t != "OPEN"])
+    is_futures_data = num_meaningful_periods > 15  # Futures will have 20+ periods, stocks have ~7
+    
+    if is_futures_data:
+        st.info(f"🔄 **Futures data detected** ({num_meaningful_periods} periods). Session navigation will be available.")
+        # TODO: Add session navigation logic here
+        # For now, show all periods (will be compressed but functional)
+        
+    # Build display columns 
     if show_expanded_view:
-        display_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500", "TOTAL", "REMAINING"]
+        display_columns = available_times_display + ["TOTAL", "REMAINING"]
         display_fib_levels = fib_levels
         chart_height = 700
-        chart_width = 1800
+        chart_width = 1800 if not is_futures_data else 2400  # Wider for futures
         font_size_multiplier = 1.0
         use_container_width = False
     else:    
-        current_hour_index = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"].index(trigger_time)
-        
-        if trigger_time == "OPEN":
-            display_columns = ["0900", "1000", "1100", "TOTAL", "REMAINING"]
+        # For mobile view - limit to reasonable number of columns
+        if is_futures_data:
+            # Show just NY session for now (0800-1700 ET)
+            ny_start = None
+            ny_periods = []
+            
+            # Find periods in NY session range (0800-1700)
+            for i, time_str in enumerate(available_times_display):
+                if time_str != "OPEN":
+                    try:
+                        hour = int(time_str.replace(":", ""))
+                        if 800 <= hour <= 1700:
+                            ny_periods.append(time_str)
+                    except:
+                        pass
+            
+            # Limit to first 6 periods for readability
+            display_columns = ny_periods[:6] + ["TOTAL", "REMAINING"] if ny_periods else available_times_display[:6] + ["TOTAL", "REMAINING"]
+            st.info(f"📱 **Mobile view**: Showing NY session hours only. Use expanded view or session navigation for full data.")
         else:
-            end_index = min(current_hour_index + 3, 7)
-            time_columns = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"][current_hour_index:end_index + 1]
-            display_columns = time_columns + ["TOTAL", "REMAINING"]
+            # Stock data - use existing logic
+            if trigger_time == "OPEN":
+                display_columns = ["OPEN", "0900", "1000", "1100", "TOTAL", "REMAINING"]
+            else:
+                # Find trigger time and show context around it
+                if trigger_time in available_times_display:
+                    trigger_idx = available_times_display.index(trigger_time)
+                    start_idx = max(0, trigger_idx - 2)
+                    end_idx = min(len(available_times_display), trigger_idx + 4)
+                    context_periods = available_times_display[start_idx:end_idx]
+                    display_columns = context_periods + ["TOTAL", "REMAINING"]
+                else:
+                    display_columns = available_times_display[:6] + ["TOTAL", "REMAINING"]
         
+        # Adjust fib levels around trigger level
         trigger_index = fib_levels.index(trigger_level)
         start_fib = max(0, trigger_index - 3)
         end_fib = min(len(fib_levels), trigger_index + 4)
@@ -798,19 +912,14 @@ else:  # Session
     
     time_order = display_columns.copy()
     
-    # --- Create lookup dictionary from pre-calculated data ---
+    # --- Create lookup dictionary from pre-calculated data (UPDATED to use original format) ---
     data_lookup = {}
     for _, row in filtered.iterrows():
         goal_time = row["GoalTime"]
         if pd.notna(goal_time):
+            # Use original format for lookup keys
             if isinstance(goal_time, (int, float)):
-                time_int = int(goal_time)
-                if time_int == 900:
-                    goal_time_str = "0900"
-                elif time_int < 1000:
-                    goal_time_str = f"0{time_int}"
-                else:
-                    goal_time_str = str(time_int)
+                goal_time_str = str(int(goal_time))
             else:
                 goal_time_str = str(goal_time)
         else:
@@ -823,7 +932,7 @@ else:  # Session
             "pct": row["PctCompletion"]
         }
     
-    # --- Calculate total completion rate for each goal level ---
+    # Calculate totals and remaining (existing logic continues unchanged)
     goal_totals = {}
     goal_remaining = {}
     if len(filtered) > 0:
@@ -832,7 +941,7 @@ else:  # Session
             'NumTriggers': 'first'
         }).reset_index()
         
-        standard_time_order = ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+        standard_time_order = available_times_display.copy()  # Use discovered periods instead of hard-coded
         
         for _, row in goal_summary.iterrows():
             goal_level = row['GoalLevel']
@@ -848,9 +957,18 @@ else:  # Session
             # Calculate remaining probability
             hourly_pcts = {}
             for time_slot in standard_time_order:
-                key = (goal_level, time_slot)
-                if key in data_lookup:
-                    hourly_pcts[time_slot] = data_lookup[key]["pct"]
+                if time_slot in original_to_display.values():  # Check display format
+                    # Find original format
+                    original_time_slot = None
+                    for orig, disp in original_to_display.items():
+                        if disp == time_slot:
+                            original_time_slot = orig
+                            break
+                    
+                    if original_time_slot:
+                        key = (goal_level, original_time_slot)
+                        if key in data_lookup:
+                            hourly_pcts[time_slot] = data_lookup[key]["pct"]
             
             remaining_pct, current_slot_info = calculate_remaining_probability(
                 total_pct, hourly_pcts, current_market_slot, standard_time_order
@@ -862,7 +980,7 @@ else:  # Session
                 "total_pct": total_pct
             }
     
-    # --- Get OPEN trigger data for tooltip ---
+    # Get OPEN trigger data for tooltip (existing logic continues)
     open_trigger_data = {}
     if trigger_time == "OPEN" and len(filtered) > 0:
         open_triggers = filtered['NumTriggers'].iloc[0]
@@ -878,6 +996,9 @@ else:  # Session
                 "triggers": open_triggers,
                 "completions": open_completions
             }
+    
+    # Continue with existing Session chart building logic...
+    # (The chart building code from line ~800 onwards remains the same)
     
     # --- Build Session chart ---
     fig = go.Figure()
