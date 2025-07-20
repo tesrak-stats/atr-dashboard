@@ -602,21 +602,27 @@ elif analysis_type == "Rolling":
         
         for gt in unique_goal_times:
             if pd.notna(gt):
-                if isinstance(gt, (int, float)):
-                    time_int = int(gt)
-                    if time_int == 900:
-                        available_times.append("0900")
-                    elif time_int < 1000 and time_int >= 0:
-                        available_times.append(f"{time_int:04d}")
-                    elif time_int >= 1000:
-                        available_times.append(str(time_int))
+                # Check if this time period has any actual hits (filter out 0% periods)
+                period_data = filtered_rolling[filtered_rolling['GoalTime'] == gt]
+                total_hits = period_data['NumHits'].sum()
+                
+                # Only include periods that have some actual activity
+                if total_hits > 0:
+                    if isinstance(gt, (int, float)):
+                        time_int = int(gt)
+                        if time_int == 900:
+                            available_times.append("0900")
+                        elif time_int < 1000 and time_int >= 0:
+                            available_times.append(f"{time_int:04d}")
+                        elif time_int >= 1000:
+                            available_times.append(str(time_int))
+                        else:
+                            # Could be day/week numbers: 1, 2, 3, etc.
+                            available_times.append(f"P{time_int}")
                     else:
-                        # Could be day/week numbers: 1, 2, 3, etc.
-                        available_times.append(f"P{time_int}")
-                else:
-                    # String format - use as-is but clean up
-                    time_str = str(gt).strip().upper()
-                    available_times.append(time_str)
+                        # String format - use as-is but clean up
+                        time_str = str(gt).strip().upper()
+                        available_times.append(time_str)
     
     # Method 2: Wide format - Look for time/period columns (fallback)
     if not available_times:
@@ -709,9 +715,10 @@ elif analysis_type == "Rolling":
         end_fib = min(len(fib_levels), trigger_index + 4)
         display_fib_levels = fib_levels[start_fib:end_fib]
     
-    # Debug info (can remove later)
-    #st.info(f"🔧 Debug: Found {len(available_times)} periods: {available_times[:5]}{'...' if len(available_times) > 5 else ''}")
-    #st.info(f"🔧 Debug: Rolling sequence: {' → '.join(rolling_hours)}")
+    # Debug info - let's see what's being detected
+    st.info(f"🔧 Debug: Found {len(available_times)} periods: {available_times}")
+    st.info(f"🔧 Debug: Trigger time '{trigger_time}' → Using '{trigger_time_for_rolling}' (index {trigger_index})")
+    st.info(f"🔧 Debug: Rolling sequence: {' → '.join(rolling_hours)}")
     
     # Build chart using shared function
     fig, use_container_width = create_rolling_matrix(
