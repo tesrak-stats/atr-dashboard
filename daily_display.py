@@ -593,12 +593,12 @@ elif analysis_type == "Rolling":
         st.warning(f"No rolling data found for {price_direction} {trigger_level} at {trigger_time}")
         st.stop()
     
-    # SIMPLE APPROACH: Only use periods with meaningful data, no duplicates
+    # SIMPLE APPROACH: Use meaningful periods in natural rolling progression
     available_times_original = []  # For data lookup (exact CSV format)
     available_times_display = []   # For chart display (cleaned up)
     original_to_display = {}       # Mapping between formats
     
-    # Method 1: Long format - extract periods with actual hits
+    # Extract periods with actual hits (no duplicate detection)
     if 'GoalTime' in filtered_rolling.columns:
         unique_goal_times = sorted(filtered_rolling['GoalTime'].unique())
         
@@ -672,33 +672,30 @@ elif analysis_type == "Rolling":
         if not trigger_time_for_rolling:
             trigger_time_for_rolling = available_times_original[0]
     
-    # Find trigger time index and create rolling window (using ORIGINAL format)
+    # Find trigger time index
     if trigger_time_for_rolling in available_times_original:
         trigger_index = available_times_original.index(trigger_time_for_rolling)
     else:
         trigger_index = 0
     
-    # Generate rolling sequence - use ALL meaningful periods (no artificial limit of 8)
+    # Generate rolling sequence - natural progression with no duplicate detection
     rolling_hours_original = []
     rolling_hours_display = []
-    used_display_periods = set()  # Track display periods to avoid duplicates
     
-    max_periods = len(available_times_original)  # Use all available periods
-    for i in range(max_periods * 2):  # Allow up to 2 full cycles to get enough unique periods
+    # Try for up to 8 periods, but use whatever meaningful periods exist
+    max_attempts = min(12, len(available_times_original) * 2)  # Allow some wrapping
+    target_periods = 8
+    
+    for i in range(max_attempts):
         period_index = (trigger_index + i) % len(available_times_original)
         original_time = available_times_original[period_index]
         display_time = original_to_display[original_time]
         
-        # Skip if we've already used this display time (avoid duplicates like "1300" appearing twice)
-        if display_time in used_display_periods:
-            continue
-            
         rolling_hours_original.append(original_time)
         rolling_hours_display.append(display_time)
-        used_display_periods.add(display_time)
         
-        # Stop when we've used all unique display periods or hit a reasonable limit
-        if len(rolling_hours_original) >= min(8, len(available_times_original)):
+        # Stop when we have enough periods or have gone through all available periods once
+        if len(rolling_hours_original) >= min(target_periods, len(available_times_original)):
             break
     
     # Display configuration
@@ -724,13 +721,12 @@ elif analysis_type == "Rolling":
     # Show which periods have hits
     hit_info = []
     for orig in rolling_hours_original:
-        if orig in [str(gt) for gt in filtered_rolling['GoalTime'].values]:
-            period_data = filtered_rolling[filtered_rolling['GoalTime'].astype(str) == orig]
-            hits = period_data['NumHits'].sum() if len(period_data) > 0 else 0
-        else:
-            # Try different format matching
+        # Handle different formats for lookup
+        period_data = filtered_rolling[filtered_rolling['GoalTime'].astype(str) == str(orig)]
+        if len(period_data) == 0:
+            # Try original format matching
             period_data = filtered_rolling[filtered_rolling['GoalTime'] == orig]
-            hits = period_data['NumHits'].sum() if len(period_data) > 0 else 0
+        hits = period_data['NumHits'].sum() if len(period_data) > 0 else 0
         hit_info.append(f"{orig}({hits})")
     st.info(f"🔧 Debug: Hit breakdown: {' | '.join(hit_info)}")
     
@@ -759,7 +755,7 @@ elif analysis_type == "Rolling":
         st.caption(f"📊 ATR levels from {atr_data.get('reference_date', 'unknown')} | Close: {atr_data.get('reference_close', 'N/A')} | ATR: {atr_data.get('reference_atr', 'N/A')}{age_warning}")
     
     # Legend
-    st.caption("📋 **Rolling Analysis Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | Rolling window shows actual progression through periods with historical activity")
+    st.caption("📋 **Rolling Analysis Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | Rolling window shows natural progression through periods with historical activity")
     
     # End Rolling analysis
     st.stop()
