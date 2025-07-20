@@ -630,30 +630,7 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
     # Add matrix cells
     for level in display_fib_levels:
         for i, t in enumerate(display_columns):  # Use enumerate to get proper x positions
-            
-            if t == "OPEN":
-                if trigger_time == "OPEN" and level in open_trigger_data:
-                    triggers = open_trigger_data[level]["triggers"]
-                    completions = open_trigger_data[level]["completions"]
-                    hover = f"OPEN Triggers: {triggers}, Goal {level} Completed at OPEN: {completions}"
-                    
-                    fig.add_trace(go.Scatter(
-                        x=[i], y=[level + text_offset],  # Use index position
-                        mode="text", text=[""],
-                        hovertext=[hover], hoverinfo="text",
-                        textfont=dict(color="white", size=13),
-                        showlegend=False
-                    ))
-                else:
-                    fig.add_trace(go.Scatter(
-                        x=[i], y=[level + text_offset],  # Use index position
-                        mode="text", text=[""],
-                        hoverinfo="skip",
-                        textfont=dict(color="white", size=13),
-                        showlegend=False
-                    ))
-                continue
-            
+                            
             if t == "TOTAL":
                 if level in goal_totals:
                     total_data = goal_totals[level]
@@ -724,17 +701,7 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
                     showlegend=False
                 ))
     
-    # Add anchor point for OPEN if present
-    if "OPEN" in display_columns:
-        open_index = display_columns.index("OPEN")
-        fig.add_trace(go.Scatter(
-            x=[open_index], y=[0.0],  # Use index position
-            mode="markers",
-            marker=dict(opacity=0),
-            showlegend=False,
-            hoverinfo="skip"
-        ))
-    
+        
     # Add horizontal lines for Fibonacci levels
     for level in display_fib_levels:
         if level in fibo_styles:
@@ -903,3 +870,276 @@ def get_rolling_8_periods(trigger_period, data_df=None, window_size=8):
 def get_rolling_8_hours(trigger_time, data_df=None):
     """Backward compatibility wrapper"""
     return get_rolling_8_periods(trigger_time, data_df, window_size=8)
+
+def create_rolling_matrix_fixed(filtered_data, display_fib_levels, display_columns, 
+                               rolling_hours_original, rolling_hours_display,
+                               price_direction, trigger_level, trigger_time, ticker_name, 
+                               show_expanded_view, price_levels_dict=None):
+    """
+    Create Rolling analysis matrix chart with separate data lookup and display formats
+    
+    Args:
+        rolling_hours_original: List of time periods in original CSV format (for data lookup)
+        rolling_hours_display: List of time periods in cleaned format (for chart display)
+    """
+    import plotly.graph_objects as go
+    import pandas as pd
+    
+    # Fibonacci level styling
+    fibo_styles = {
+        1.0: ("lightgray", 3, 16), 0.786: ("lightgray", 1, 12), 0.618: ("lightgray", 2, 14),
+        0.5: ("lightgray", 1, 12), 0.382: ("lightgray", 1, 12), 0.236: ("cyan", 2, 14),
+        0.0: ("lightgray", 1, 12), -0.236: ("yellow", 2, 14), -0.382: ("lightgray", 1, 12),
+        -0.5: ("lightgray", 1, 12), -0.618: ("lightgray", 2, 14), -0.786: ("lightgray", 1, 12),
+        -1.0: ("lightgray", 3, 16)
+    }
+    
+    # Chart configuration based on view type
+    if show_expanded_view:
+        chart_height = 700
+        chart_width = 1800
+        font_size_multiplier = 1.0
+        use_container_width = False
+    else:
+        chart_height = 400
+        chart_width = 700
+        font_size_multiplier = 1.0
+        use_container_width = False
+    
+    # Create data lookup dictionary using ORIGINAL format
+    data_lookup = {}
+    for _, row in filtered_data.iterrows():
+        goal_time_original = row["GoalTime"]  # Keep exact original format from CSV
+        
+        # Convert to string but keep original format exactly
+        if pd.notna(goal_time_original):
+            if isinstance(goal_time_original, (int, float)):
+                goal_time_str = str(int(goal_time_original))
+            else:
+                goal_time_str = str(goal_time_original)  # Keep "Next Day 0900" exactly as-is
+        else:
+            goal_time_str = "Unknown"
+        
+        key = (float(row["GoalLevel"]), goal_time_str)
+        data_lookup[key] = {
+            "hits": row["NumHits"],
+            "triggers": row["NumTriggers"], 
+            "pct": row["PctCompletion"]
+        }
+    
+    # Calculate totals for each goal level
+    goal_totals = {}
+    if len(filtered_data) > 0:
+        goal_summary = filtered_data.groupby('GoalLevel').agg({
+            'NumHits': 'sum',
+            'NumTriggers': 'first'
+        }).reset_index()
+        
+        for _, row in goal_summary.iterrows():
+            goal_level = row['GoalLevel']
+            total_hits = row['NumHits']
+            total_triggers = row['NumTriggers']
+            total_pct = (total_hits / total_triggers * 100) if total_triggers > 0 else 0
+            goal_totals[goal_level] = {
+                "hits": total_hits,
+                "triggers": total_triggers,
+                "pct": total_pct
+            }
+    
+    # Build the chart
+    fig = go.Figure()
+    text_offset = 0.03
+    
+    # Add "Fib Level" title above left axis
+    fig.add_annotation(
+        text="Fib Level",
+        x=-0.05,
+        y=max(display_fib_levels) + 0.15,
+        xref="paper",
+        yref="y",
+        showarrow=False,
+        font=dict(color="gray", size=12 * font_size_multiplier),
+        xanchor="center",
+        yanchor="bottom"
+    )
+    
+    # Add price level annotations if available
+    if price_levels_dict:
+        fig.add_annotation(
+            text="Price Level", 
+            x=1.08,
+            y=max(display_fib_levels) + 0.15,
+            xref="paper", 
+            yref="y",
+            showarrow=False,
+            font=dict(color="gray", size=12 * font_size_multiplier),
+            xanchor="center",
+            yanchor="bottom"
+        )
+        
+        for level in display_fib_levels:
+            level_key = f"{level:+.3f}"
+            price_val = price_levels_dict.get(level_key, 0)
+            
+            fig.add_annotation(
+                text=f"{price_val:.2f}",
+                x=1.08,
+                y=level + text_offset,
+                xref="paper",
+                yref="y",
+                showarrow=False,
+                font=dict(color="white", size=14 * font_size_multiplier),
+                xanchor="left",
+                yanchor="middle"
+            )
+    
+    # Add matrix cells
+    for level in display_fib_levels:
+        for i, t_display in enumerate(display_columns):
+            
+            if t_display == "TOTAL":
+                if level in goal_totals:
+                    total_data = goal_totals[level]
+                    pct = total_data["pct"]
+                    hits = total_data["hits"]
+                    triggers = total_data["triggers"]
+                    
+                    line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
+                    font_size = 12 * font_size_multiplier
+                    
+                    warn = " ⚠️" if triggers < 30 else ""
+                    display_text = f"{pct:.1f}%"
+                    hover = f"Total: {pct:.1f}% ({hits}/{triggers}){warn}"
+                    
+                    fig.add_trace(go.Scatter(
+                        x=[i], y=[level + text_offset],
+                        mode="text", text=[display_text],
+                        hovertext=[hover], hoverinfo="text",
+                        textfont=dict(color=line_color, size=font_size),
+                        showlegend=False
+                    ))
+                else:
+                    fig.add_trace(go.Scatter(
+                        x=[i], y=[level + text_offset],
+                        mode="text", text=[""],
+                        hoverinfo="skip",
+                        textfont=dict(color="white", size=12),
+                        showlegend=False
+                    ))
+                continue
+            
+            # Regular time columns - use ORIGINAL format for lookup
+            if i < len(rolling_hours_original):
+                t_original = rolling_hours_original[i]
+                key = (float(level), t_original)  # Use original format for lookup
+                
+                if key in data_lookup:
+                    data = data_lookup[key]
+                    pct = data["pct"]
+                    hits = data["hits"]
+                    total = data["triggers"]
+                    
+                    warn = " ⚠️" if total < 30 else ""
+                    display_text = f"{pct:.1f}%"
+                    hover = f"{pct:.1f}% ({hits}/{total}){warn} | Period: {t_original}"
+                    
+                    # Color coding based on fibonacci level
+                    line_color, line_width, font_size = fibo_styles.get(level, ("white", 1, 12))
+                    text_color = line_color
+                    font_size = 12 * font_size_multiplier
+                    
+                    fig.add_trace(go.Scatter(
+                        x=[i], y=[level + text_offset],
+                        mode="text", text=[display_text],
+                        hovertext=[hover], hoverinfo="text",
+                        textfont=dict(color=text_color, size=font_size),
+                        showlegend=False
+                    ))
+                else:
+                    # No data available - show debug info in hover
+                    hover = f"No data found for key: ({level}, {t_original})"
+                    fig.add_trace(go.Scatter(
+                        x=[i], y=[level + text_offset],
+                        mode="text", text=["0.0%"],
+                        hovertext=[hover], hoverinfo="text",
+                        textfont=dict(color="gray", size=12),
+                        showlegend=False
+                    ))
+            else:
+                # Index out of range
+                fig.add_trace(go.Scatter(
+                    x=[i], y=[level + text_offset],
+                    mode="text", text=[""],
+                    hoverinfo="skip",
+                    textfont=dict(color="white", size=12),
+                    showlegend=False
+                ))
+    
+    # Add horizontal lines for Fibonacci levels
+    for level in display_fib_levels:
+        if level in fibo_styles:
+            color, width, font_size = fibo_styles[level]
+            fig.add_shape(
+                type="line", x0=0, x1=1, xref="paper", y0=level, y1=level, yref="y",
+                line=dict(color=color, width=width), layer="below"
+            )
+    
+    # Add trigger level highlighting
+    if trigger_level in display_fib_levels:
+        trigger_index = display_fib_levels.index(trigger_level)
+        
+        # Green shading above trigger level
+        if trigger_index > 0:
+            next_level_up = display_fib_levels[trigger_index - 1]
+            fig.add_shape(
+                type="rect",
+                x0=0, x1=1, xref="paper",
+                y0=trigger_level, y1=next_level_up, yref="y",
+                fillcolor="rgba(0, 255, 0, 0.1)",
+                line=dict(width=0),
+                layer="below"
+            )
+        
+        # Yellow shading below trigger level
+        if trigger_index < len(display_fib_levels) - 1:
+            next_level_down = display_fib_levels[trigger_index + 1]
+            fig.add_shape(
+                type="rect",
+                x0=0, x1=1, xref="paper",
+                y0=next_level_down, y1=trigger_level, yref="y",
+                fillcolor="rgba(255, 255, 0, 0.1)",
+                line=dict(width=0),
+                layer="below"
+            )
+    
+    # Update layout
+    fig.update_layout(
+        title=f"{ticker_name} | Rolling {price_direction} {trigger_level}",
+        xaxis=dict(
+            title="Rolling Time Window (Eastern Time)",
+            tickmode="array",
+            tickvals=list(range(len(display_columns))),
+            ticktext=display_columns,  # Use clean display format for axis labels
+            tickfont=dict(color="white", size=12),
+            fixedrange=False if not show_expanded_view else True
+        ),
+        yaxis=dict(
+            title="",
+            categoryorder="array",
+            categoryarray=display_fib_levels,
+            tickmode="array",
+            tickvals=display_fib_levels,
+            ticktext=[f"{lvl:+.3f}" for lvl in display_fib_levels],
+            tickfont=dict(color="white", size=12 * font_size_multiplier),
+            side="left",
+            fixedrange=False if not show_expanded_view else True
+        ),
+        plot_bgcolor="black",
+        paper_bgcolor="black",
+        font=dict(color="white", size=12 * font_size_multiplier),
+        height=chart_height,
+        width=chart_width,
+        margin=dict(l=80, r=150, t=60, b=60)
+    )
+    
+    return fig, use_container_width
