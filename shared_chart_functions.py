@@ -629,7 +629,7 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
     
     # Add matrix cells
     for level in display_fib_levels:
-        for t in display_columns:
+        for i, t in enumerate(display_columns):  # Use enumerate to get proper x positions
             
             if t == "OPEN":
                 if trigger_time == "OPEN" and level in open_trigger_data:
@@ -638,7 +638,7 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
                     hover = f"OPEN Triggers: {triggers}, Goal {level} Completed at OPEN: {completions}"
                     
                     fig.add_trace(go.Scatter(
-                        x=[t], y=[level + text_offset],
+                        x=[i], y=[level + text_offset],  # Use index position
                         mode="text", text=[""],
                         hovertext=[hover], hoverinfo="text",
                         textfont=dict(color="white", size=13),
@@ -646,7 +646,7 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
                     ))
                 else:
                     fig.add_trace(go.Scatter(
-                        x=[t], y=[level + text_offset],
+                        x=[i], y=[level + text_offset],  # Use index position
                         mode="text", text=[""],
                         hoverinfo="skip",
                         textfont=dict(color="white", size=13),
@@ -669,7 +669,7 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
                     hover = f"Total: {pct:.1f}% ({hits}/{triggers}){warn}"
                     
                     fig.add_trace(go.Scatter(
-                        x=[t], y=[level + text_offset],
+                        x=[i], y=[level + text_offset],  # Use index position
                         mode="text", text=[display_text],
                         hovertext=[hover], hoverinfo="text",
                         textfont=dict(color=line_color, size=font_size),
@@ -677,7 +677,7 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
                     ))
                 else:
                     fig.add_trace(go.Scatter(
-                        x=[t], y=[level + text_offset],
+                        x=[i], y=[level + text_offset],  # Use index position
                         mode="text", text=[""],
                         hoverinfo="skip",
                         textfont=dict(color="white", size=12),
@@ -685,40 +685,8 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
                     ))
                 continue
             
+            # Skip REMAINING column since we removed it
             if t == "REMAINING":
-                if level in goal_remaining:
-                    remaining_data = goal_remaining[level]
-                    remaining_pct = remaining_data["pct"]
-                    
-                    line_color, line_width, font_size = fibo_styles.get(level, ("lightgray", 1, 12))
-                    font_size = 12 * font_size_multiplier
-                    
-                    display_text = f"{remaining_pct:.1f}%"
-                    hover = f"Rolling Total: {remaining_pct:.1f}%"
-                    
-                    # Color coding
-                    if remaining_pct > 15:
-                        text_color = "lime"
-                    elif remaining_pct > 5:
-                        text_color = "orange"
-                    else:
-                        text_color = "red"
-                    
-                    fig.add_trace(go.Scatter(
-                        x=[t], y=[level + text_offset],
-                        mode="text", text=[display_text],
-                        hovertext=[hover], hoverinfo="text",
-                        textfont=dict(color=text_color, size=font_size),
-                        showlegend=False
-                    ))
-                else:
-                    fig.add_trace(go.Scatter(
-                        x=[t], y=[level + text_offset],
-                        mode="text", text=[""],
-                        hoverinfo="skip",
-                        textfont=dict(color="white", size=12),
-                        showlegend=False
-                    ))
                 continue
             
             # Regular time columns
@@ -740,7 +708,7 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
                 font_size = 12 * font_size_multiplier
                 
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],
+                    x=[i], y=[level + text_offset],  # Use index position
                     mode="text", text=[display_text],
                     hovertext=[hover], hoverinfo="text",
                     textfont=dict(color=text_color, size=font_size),
@@ -749,7 +717,7 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
             else:
                 # No data available
                 fig.add_trace(go.Scatter(
-                    x=[t], y=[level + text_offset],
+                    x=[i], y=[level + text_offset],  # Use index position
                     mode="text", text=[""],
                     hoverinfo="skip",
                     textfont=dict(color="white", size=12),
@@ -758,8 +726,9 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
     
     # Add anchor point for OPEN if present
     if "OPEN" in display_columns:
+        open_index = display_columns.index("OPEN")
         fig.add_trace(go.Scatter(
-            x=["OPEN"], y=[0.0],
+            x=[open_index], y=[0.0],  # Use index position
             mode="markers",
             marker=dict(opacity=0),
             showlegend=False,
@@ -808,11 +777,9 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
         title=f"{ticker_name} | Rolling {price_direction} {trigger_level}",
         xaxis=dict(
             title="Rolling Time Window (Eastern Time)",
-            categoryorder="array",
-            categoryarray=display_columns,
             tickmode="array",
-            tickvals=display_columns,
-            ticktext=display_columns,
+            tickvals=list(range(len(display_columns))),  # Use numeric positions
+            ticktext=display_columns,  # Show the rolling time labels
             tickfont=dict(color="white", size=12),
             fixedrange=False if not show_expanded_view else True
         ),
