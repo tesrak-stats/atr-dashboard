@@ -885,9 +885,10 @@ else:  # Session
             display_columns = ny_periods[:6] + ["TOTAL", "REMAINING"] if ny_periods else available_times_display[:6] + ["TOTAL", "REMAINING"]
             st.info(f"📱 **Mobile view**: Showing NY session hours only. Use expanded view or session navigation for full data.")
         else:
-            # Stock data - use existing logic
+            # Stock data - use data-driven logic for ALL triggers
             if trigger_time == "OPEN":
-                display_columns = ["OPEN", "0900", "1000", "1100", "TOTAL", "REMAINING"]
+                # Use discovered periods instead of hard-coded times
+                display_columns = ["OPEN"] + available_times_display[:3] + ["TOTAL", "REMAINING"]
             else:
                 # Find trigger time and show context around it
                 if trigger_time in available_times_display:
