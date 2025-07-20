@@ -804,31 +804,102 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns, ro
     
     return fig, use_container_width
     
-def get_rolling_8_hours(trigger_time):
+def get_rolling_8_periods(trigger_period, data_df=None, window_size=8):
+    """Generate rolling window from trigger period based on actual data columns
+    
+    Works with any period type:
+    - Hours: "0900", "1000", "1100"...
+    - Days: "DAY1", "DAY2", "DAY3"...
+    - 4-Hour blocks: "4H1", "4H2", "4H3"...
+    - Custom periods: whatever columns exist in your data
     """
-    Generate 8-hour rolling window from trigger time, crossing days if needed
     
-    Args:
-        trigger_time: Starting time for rolling window
+    if data_df is not None:
+        # Extract period columns from actual data
+        all_columns = data_df.columns.tolist()
+        
+        # Find columns that look like periods
+        potential_period_cols = []
+        for col in all_columns:
+            if col in ["OPEN", "TOTAL", "REMAINING"]:
+                continue  # Skip special columns for rolling analysis
+            
+            # Check if it looks like a time period
+            col_str = str(col)
+            
+            # Traditional hour format: "0900", "1000", etc.
+            if col_str.isdigit() and len(col_str) in [3, 4]:
+                time_str = col_str.zfill(4)
+                potential_period_cols.append(time_str)
+            # Day format: "DAY1", "DAY2", "D1", "D2", etc.
+            elif col_str.upper().startswith(('DAY', 'D')) and any(c.isdigit() for c in col_str):
+                potential_period_cols.append(col_str.upper())
+            # Hour block format: "4H1", "4H2", "1H", "2H", etc.
+            elif 'H' in col_str.upper() and any(c.isdigit() for c in col_str):
+                potential_period_cols.append(col_str.upper())
+            # Week format: "W1", "WEEK1", etc.
+            elif col_str.upper().startswith(('WEEK', 'W')) and any(c.isdigit() for c in col_str):
+                potential_period_cols.append(col_str.upper())
+            # Generic period format: "P1", "P2", "PERIOD1", etc.
+            elif (col_str.upper().startswith(('PERIOD', 'P')) and 
+                  any(c.isdigit() for c in col_str)):
+                potential_period_cols.append(col_str.upper())
+            # Any column that's mostly numbers or has number suffix
+            elif col_str.replace('_', '').replace('-', '').isalnum():
+                potential_period_cols.append(col_str)
+        
+        # Sort the periods intelligently
+        def sort_key(period_str):
+            # Extract numbers for sorting
+            import re
+            numbers = re.findall(r'\d+', period_str)
+            if numbers:
+                return (len(period_str), int(numbers[0]), period_str)
+            else:
+                return (len(period_str), 0, period_str)
+        
+        trading_periods = sorted(list(set(potential_period_cols)), key=sort_key)
+        
+        if len(trading_periods) == 0:
+            # Fallback to stock hours if no period columns found
+            trading_periods = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+    else:
+        # Fallback to stock hours if no data provided
+        trading_periods = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
     
-    Returns:
-        List of 8 consecutive trading hours (clean labels, no day marking)
-    """
-    # OPEN is special case, regular trading hours don't include OPEN
-    regular_hours = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+    # Handle OPEN trigger - start from first available period
+    if trigger_period == "OPEN":
+        trigger_period = trading_periods[0]
     
-    if trigger_time == "OPEN":
-        return ["OPEN", "0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+    # Convert trigger_period to match format in trading_periods
+    trigger_str = str(trigger_period)
+    if trigger_str.isdigit() and len(trigger_str) in [3, 4]:
+        trigger_str = trigger_str.zfill(4)
     
-    if trigger_time not in regular_hours:
-        return ["0900", "1000", "1100", "1200", "1300", "1400", "1500", "0900"]  # Fallback
+    # Find trigger period index
+    matching_periods = [p for p in trading_periods if p == trigger_str or p.upper() == trigger_str.upper()]
+    if matching_periods:
+        trigger_index = trading_periods.index(matching_periods[0])
+    else:
+        # Default fallback to first available period
+        trigger_index = 0
     
-    trigger_index = regular_hours.index(trigger_time)
-    rolling_hours = []
+    # Create rolling window - use specified window size or available periods
+    actual_window_size = min(window_size, len(trading_periods) * 2)  # Allow wrapping around once
+    rolling_periods = []
     
-    for i in range(8):
-        hour_index = (trigger_index + i) % len(regular_hours)
-        hour = regular_hours[hour_index]
-        rolling_hours.append(hour)
+    for i in range(actual_window_size):
+        period_index = (trigger_index + i) % len(trading_periods)
+        rolling_periods.append(trading_periods[period_index])
+        
+        # Stop if we've gone around once and hit our starting point again
+        if (len(rolling_periods) > len(trading_periods) and 
+            rolling_periods[-1] == trading_periods[trigger_index]):
+            break
     
-    return rolling_hours
+    return rolling_periods
+
+# Keep backward compatibility
+def get_rolling_8_hours(trigger_time, data_df=None):
+    """Backward compatibility wrapper"""
+    return get_rolling_8_periods(trigger_time, data_df, window_size=8)
