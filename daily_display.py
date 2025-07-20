@@ -582,9 +582,6 @@ elif analysis_type == "Rolling":
         st.error(f"❌ Error loading rolling data: {str(e)}")
         st.stop()
     
-    # Generate 8-hour rolling window using actual data columns
-    rolling_hours = get_rolling_8_periods(trigger_time, df_rolling)
-    
     # Filter rolling data
     filtered_rolling = df_rolling[
         (df_rolling["Direction"] == price_direction) &
@@ -596,13 +593,112 @@ elif analysis_type == "Rolling":
         st.warning(f"No rolling data found for {price_direction} {trigger_level} at {trigger_time}")
         st.stop()
     
-    # Display configuration - USE the rolling_hours from get_rolling_8_hours()
+    # SMART PERIOD DETECTION - Try multiple methods to find periods
+    available_times = []
+    
+    # Method 1: Long format - Look for GoalTime column (most likely)
+    if 'GoalTime' in filtered_rolling.columns:
+        unique_goal_times = sorted(filtered_rolling['GoalTime'].unique())
+        
+        for gt in unique_goal_times:
+            if pd.notna(gt):
+                if isinstance(gt, (int, float)):
+                    time_int = int(gt)
+                    if time_int == 900:
+                        available_times.append("0900")
+                    elif time_int < 1000 and time_int >= 0:
+                        available_times.append(f"{time_int:04d}")
+                    elif time_int >= 1000:
+                        available_times.append(str(time_int))
+                    else:
+                        # Could be day/week numbers: 1, 2, 3, etc.
+                        available_times.append(f"P{time_int}")
+                else:
+                    # String format - use as-is but clean up
+                    time_str = str(gt).strip().upper()
+                    available_times.append(time_str)
+    
+    # Method 2: Wide format - Look for time/period columns (fallback)
+    if not available_times:
+        all_columns = filtered_rolling.columns.tolist()
+        metadata_columns = {"Direction", "TriggerLevel", "TriggerTime", "GoalLevel", "GoalTime", 
+                          "NumTriggers", "NumHits", "PctCompletion", "TOTAL", "REMAINING", "OPEN"}
+        
+        for col in all_columns:
+            if col in metadata_columns:
+                continue
+                
+            col_str = str(col).strip()
+            
+            # Hour format: "0900", "1000", etc.
+            if col_str.isdigit() and len(col_str) in [3, 4]:
+                available_times.append(col_str.zfill(4))
+            # Day/Period formats: "DAY1", "P1", "WEEK1", "4H1", etc.
+            elif any(pattern in col_str.upper() for pattern in ['DAY', 'WEEK', 'PERIOD', 'H']):
+                available_times.append(col_str.upper())
+            # Pure numbers that might be periods
+            elif col_str.replace('_', '').replace('-', '').isdigit():
+                available_times.append(f"P{col_str}")
+    
+    # Method 3: Ultimate fallback - use standard trading hours
+    if not available_times:
+        available_times = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+        st.warning("⚠️ Could not detect time periods from data, using standard trading hours")
+    
+    # Clean up and sort available times
+    available_times = sorted(list(set(available_times)))
+    
+    # Create rolling window starting from trigger time
+    if trigger_time == "OPEN":
+        trigger_time_for_rolling = available_times[0] if available_times else "0900"
+    else:
+        # Convert trigger_time to match available format
+        trigger_candidates = [trigger_time]
+        if trigger_time.isdigit():
+            trigger_candidates.extend([
+                trigger_time.zfill(4),
+                f"P{trigger_time}",
+                f"DAY{trigger_time}",
+                f"WEEK{trigger_time}"
+            ])
+        
+        trigger_time_for_rolling = None
+        for candidate in trigger_candidates:
+            if candidate in available_times:
+                trigger_time_for_rolling = candidate
+                break
+        
+        if not trigger_time_for_rolling:
+            trigger_time_for_rolling = available_times[0]
+    
+    # Find trigger time index and create rolling window
+    if trigger_time_for_rolling in available_times:
+        trigger_index = available_times.index(trigger_time_for_rolling)
+    else:
+        trigger_index = 0
+    
+    # Generate 8-period rolling sequence
+    rolling_hours = []
+    max_periods = min(8, len(available_times) * 2)  # Allow up to 2 full cycles
+    
+    for i in range(max_periods):
+        period_index = (trigger_index + i) % len(available_times)
+        rolling_hours.append(available_times[period_index])
+        
+        # Stop if we've completed a full cycle and hit start again
+        if len(rolling_hours) > len(available_times) and rolling_hours[-1] == trigger_time_for_rolling:
+            break
+    
+    # Ensure we have exactly 8 periods or less
+    rolling_hours = rolling_hours[:8]
+    
+    # Display configuration
     if show_expanded_view:
-        display_columns = rolling_hours + ["TOTAL"]  # Use the proper rolling sequence
+        display_columns = rolling_hours + ["TOTAL"]
         display_fib_levels = fib_levels
     else:    
         # For mobile, show first 4 hours of rolling window + TOTAL
-        display_columns = rolling_hours[:4] + ["TOTAL"]  # Use rolling sequence, not session sequence
+        display_columns = rolling_hours[:4] + ["TOTAL"]
         
         # Adjust fib levels around trigger level
         trigger_index = fib_levels.index(trigger_level)
@@ -610,12 +706,16 @@ elif analysis_type == "Rolling":
         end_fib = min(len(fib_levels), trigger_index + 4)
         display_fib_levels = fib_levels[start_fib:end_fib]
     
+    # Debug info (can remove later)
+    #st.info(f"🔧 Debug: Found {len(available_times)} periods: {available_times[:5]}{'...' if len(available_times) > 5 else ''}")
+    #st.info(f"🔧 Debug: Rolling sequence: {' → '.join(rolling_hours)}")
+    
     # Build chart using shared function
     fig, use_container_width = create_rolling_matrix(
         filtered_data=filtered_rolling,
         display_fib_levels=display_fib_levels,
         display_columns=display_columns,
-        rolling_hours=rolling_hours,  # Pass the correct rolling sequence
+        rolling_hours=rolling_hours,
         price_direction=price_direction,
         trigger_level=trigger_level,
         trigger_time=trigger_time,
@@ -634,7 +734,7 @@ elif analysis_type == "Rolling":
         st.caption(f"📊 ATR levels from {atr_data.get('reference_date', 'unknown')} | Close: {atr_data.get('reference_close', 'N/A')} | ATR: {atr_data.get('reference_atr', 'N/A')}{age_warning}")
     
     # Legend
-    st.caption("📋 **Rolling Analysis Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | 8-hour window shows probability progression from trigger time")
+    st.caption("📋 **Rolling Analysis Key:** ⚠️ = Less than 30 historical triggers (lower confidence) | 8-period window shows probability progression from trigger time")
     
     # End Rolling analysis
     st.stop()
