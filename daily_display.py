@@ -30,7 +30,8 @@ def discover_available_tickers():
     session_files = glob.glob("atr_summary_*_SESSION_*.csv")
     rolling_files = glob.glob("atr_summary_*_ROLLING_*.csv") 
     statecheck_files = glob.glob("statecheck_detailed_*.csv")
-    zonebaseline_files = glob.glob("atr_summary_*_ZONEBASELINE_*.csv")  # If these exist
+    zonebaseline_detailed_files = glob.glob("zonebaseline_detailed_*.csv")
+    zonebaseline_hourly_files = glob.glob("zonebaseline_hourly_*.csv")
     
     all_files = session_files + rolling_files + statecheck_files + zonebaseline_files
     
@@ -64,6 +65,7 @@ def discover_available_analyses(selected_ticker):
     ticker_files = []
     ticker_files.extend(glob.glob(f"atr_summary_{selected_ticker}_*.csv"))
     ticker_files.extend(glob.glob(f"statecheck_detailed_{selected_ticker}_*.csv"))
+    ticker_files.extend(glob.glob(f"zonebaseline_*_{selected_ticker}_*.csv"))  # FIX: Add zonebaseline pattern
     
     available_analyses = []
     for pattern, display_name in KNOWN_ANALYSIS_PATTERNS.items():
