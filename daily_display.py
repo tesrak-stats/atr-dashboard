@@ -221,6 +221,15 @@ else:
     st.error("Please select a valid ticker (not a header)")
     st.stop()
 
+# Quick patch - create ticker_config from selected ticker
+ticker_config = {
+    selected_ticker: {
+        "display_name": selected_ticker,
+        "ticker_symbol": selected_ticker,
+        "summary_file": ""  # Not used anymore since each analysis loads its own files
+    }
+}
+
 # Discover trigger times for selected ticker
 available_trigger_times = discover_available_trigger_times(selected_ticker)
 
