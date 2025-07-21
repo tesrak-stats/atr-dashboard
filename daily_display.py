@@ -33,7 +33,7 @@ def discover_available_tickers():
     zonebaseline_detailed_files = glob.glob("zonebaseline_detailed_*.csv")
     zonebaseline_hourly_files = glob.glob("zonebaseline_hourly_*.csv")
     
-    all_files = session_files + rolling_files + statecheck_files + zonebaseline_files
+    all_files = session_files + rolling_files + statecheck_files + zonebaseline_hourly_files + zonebaseline_detailed_files
     
     # Extract ticker symbols from filenames
     tickers = set()
