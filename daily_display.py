@@ -279,9 +279,15 @@ elif analysis_type == "StateCheck":
     with col1:
         trigger_zone = st.selectbox("Trigger Zone", zone_definitions, index=6)
     with col2:
-        # Use discovered trigger times but convert to specific StateCheck format
-        statecheck_times = [t for t in available_trigger_times if t != "OPEN"][:10]  # Limit for UI
-        trigger_time = st.selectbox("Trigger Time", statecheck_times, index=0)
+    # Two-step time selector for 10-minute granularity
+        subcol1, subcol2 = st.columns(2)
+        with subcol1:
+            trigger_hour = st.selectbox("Hour", ["0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
+        with subcol2:
+            trigger_minute = st.selectbox("10-Min", ["00", "10", "20", "30", "40", "50"], index=0)
+    
+    # Combine into the format your data expects
+    trigger_time = f"{trigger_hour}{trigger_minute}"  # Results in "090010", "090020", etc.
     
 elif analysis_type == "Rolling":
     st.info("⏰ **Rolling**: 8-period rolling window analysis from trigger time")
@@ -570,8 +576,13 @@ if make_default:
 # --- Analysis-Specific Processing ---
 if analysis_type == "StateCheck":
     try:
-        statecheck_file = f"statecheck_detailed_{selected_ticker}_20250710_063704.csv"
-        statecheck_df = pd.read_csv(statecheck_file)
+        statecheck_files = glob.glob(f"statecheck_detailed_{selected_ticker}_*.csv")
+        if statecheck_files:
+            statecheck_file = max(statecheck_files)  # Most recent by filename
+            statecheck_df = pd.read_csv(statecheck_file)
+        else:
+            st.error(f"❌ No StateCheck data files found for {selected_ticker}")
+            st.stop()
        
         #st.success(f"✅ Loaded StateCheck data: {len(statecheck_df)} records")
         
