@@ -864,13 +864,13 @@ def get_rolling_8_periods(trigger_period, data_df=None, window_size=8):
             
             trading_periods = sorted(list(set(potential_period_cols)), key=sort_key)
 
-        if len(trading_periods) == 0:
+    if len(trading_periods) == 0:
             # Fallback to stock hours if no period columns found
             # Fallback to stock hours if no periods found
             trading_periods = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
     else:
         # Fallback to stock hours if no data provided
-@@ -851,26 +867,19 @@ def sort_key(period_str):
+
         # Default fallback to first available period
         trigger_index = 0
 
