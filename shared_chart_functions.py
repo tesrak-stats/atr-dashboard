@@ -746,7 +746,7 @@ def create_rolling_matrix(filtered_data, display_fib_levels, display_columns,
     return fig, use_container_width
 def get_rolling_8_periods(trigger_period, data_df=None, window_size=8):
     """Generate rolling window from trigger period based on actual data columns
-    """Generate rolling window from trigger period based on actual data structure
+    Generate rolling window from trigger period based on actual data structure
     
     Works with any period type:
     - Hours: "0900", "1000", "1100"...
