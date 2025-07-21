@@ -705,6 +705,104 @@ if analysis_type == "StateCheck":
         st.error(f"Error loading StateCheck data: {str(e)}")
         st.stop()
 
+elif analysis_type == "ZoneBaseline":
+    # Find and load the appropriate file
+    if show_expanded_view:
+        detailed_files = glob.glob(f"zonebaseline_detailed_{selected_ticker}_*.csv")
+        if detailed_files:
+            zonebaseline_file = max(detailed_files)
+        else:
+            st.error(f"No detailed ZoneBaseline files found for {selected_ticker}")
+            st.stop()
+        column_mapping = {
+            "Time": "GoalTime", "Percentage": "PctCompletion"
+            # Removed "Zone": "GoalLevel" to preserve Zone column
+        }
+    else:
+        hourly_files = glob.glob(f"zonebaseline_hourly_{selected_ticker}_*.csv")
+        if hourly_files:
+            zonebaseline_file = max(hourly_files)
+        else:
+            st.error(f"No hourly ZoneBaseline files found for {selected_ticker}")
+            st.stop()
+        column_mapping = {
+            "TimeHourly": "GoalTime", "Percentage": "PctCompletion"
+            # Removed "Zone": "GoalLevel" to preserve Zone column
+        }
+    
+    # Load and process the data
+    zonebaseline_df = pd.read_csv(zonebaseline_file)
+    adapted_data = zonebaseline_df.copy()
+    
+    # Define zone to fibonacci level mapping
+    goal_zone_to_fib = {
+        "above_1.0": 1.0, 
+        "0.786_to_1.0": 0.786, 
+        "0.618_to_0.786": 0.618,
+        "0.5_to_0.618": 0.5, 
+        "0.382_to_0.5": 0.382, 
+        "0.236_to_0.382": 0.236,
+        "0.0_to_0.236": 0.0, 
+        "-0.236_to_0.0": -0.236, 
+        "-0.382_to_-0.236": -0.382,
+        "-0.5_to_-0.382": -0.5, 
+        "-0.618_to_-0.5": -0.618, 
+        "-0.786_to_-0.618": -0.786,
+        "-1.0_to_-0.786": -1.0, 
+        "below_-1.0": -1.15
+    }
+    
+    # Apply column mapping (preserves Zone column)
+    adapted_data = adapted_data.rename(columns=column_mapping)
+    
+    # Create GoalLevel column from Zone column
+    adapted_data['GoalLevel'] = adapted_data['Zone'].map(goal_zone_to_fib)
+    
+    # Format GoalTime column
+    if 'GoalTime' in adapted_data.columns:
+        adapted_data['GoalTime'] = adapted_data['GoalTime'].astype(str).str.zfill(4)
+    
+    # Set filtered data
+    filtered = adapted_data
+    
+    # Set display columns based on view
+    if show_expanded_view:
+        available_times = sorted(filtered['GoalTime'].unique())
+        display_columns = available_times
+    else:
+        display_columns = ["0900", "1000", "1100", "1200", "1300", "1400", "1500"]
+    
+    # Prepare chart variables
+    available_levels = sorted(filtered['GoalLevel'].unique())
+    display_fib_levels = available_levels
+    time_order = display_columns.copy()
+    
+    # Create compatibility variables
+    price_direction = "Zone Occupancy Heatmap"
+    trigger_zone = "All Zones"
+    font_size_multiplier = 1.0
+
+    st.write("Available levels being passed to chart:", display_fib_levels)
+    # BUILD THE CHART using shared function
+    fig, chart_use_container_width = create_zonebaseline_heatmap(
+        filtered_data=filtered,
+        display_fib_levels=display_fib_levels,
+        display_columns=display_columns,
+        time_order=time_order,
+        ticker_name=ticker_config[selected_ticker]['display_name'],
+        text_offset=0.03,
+        font_size_multiplier=font_size_multiplier,
+        price_levels_dict=price_levels_dict
+    )
+    
+    # Display the chart
+    st.markdown('<div style="width: 3200px; overflow-x: auto;">', unsafe_allow_html=True)
+    st.plotly_chart(fig, use_container_width=False)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Skip remaining chart building
+    st.stop()
+
 elif analysis_type == "Rolling":
     
     # Load rolling data first - find most recent file
