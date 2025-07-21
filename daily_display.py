@@ -508,15 +508,6 @@ def get_atr_levels_for_ticker(ticker_key):
 # --- Load Data ---
 current_et_time, current_market_slot = get_current_market_time()
 
-try:
-    df = pd.read_csv(ticker_config[selected_ticker]["summary_file"])
-    #st.success(f"✅ Loaded data for {ticker_config[selected_ticker]['display_name']}")
-except FileNotFoundError:
-    st.error(f"❌ Data file not found for {selected_ticker}: {ticker_config[selected_ticker]['summary_file']}")
-    st.stop()
-except Exception as e:
-    st.error(f"❌ Error loading data for {selected_ticker}: {str(e)}")
-    st.stop()
 
 
 # Load ATR levels
