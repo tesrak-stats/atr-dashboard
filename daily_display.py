@@ -282,9 +282,9 @@ elif analysis_type == "StateCheck":
     # Two-step time selector for 10-minute granularity
         subcol1, subcol2 = st.columns(2)
         with subcol1:
-            trigger_hour = st.selectbox("Hour", ["0900", "1000", "1100", "1200", "1300", "1400", "1500"], index=0)
+            trigger_hour = st.selectbox("Hour", ["09", "10", "11", "12", "13", "14", "15"], index=0)
         with subcol2:
-            trigger_minute = st.selectbox("10-Min", ["00", "10", "20", "30", "40", "50"], index=0)
+            trigger_minute = st.selectbox("10-Min", ["00", "10", "20", "30", "40", "50"], index=3)
     
     # Combine into the format your data expects
     trigger_time = f"{trigger_hour}{trigger_minute}"  # Results in "090010", "090020", etc.
