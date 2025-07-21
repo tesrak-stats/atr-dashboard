@@ -562,15 +562,11 @@ fibo_styles = {
 if 'expanded_view_pref' not in st.session_state:
     st.session_state.expanded_view_pref = False
 
-col1_ui, col2_ui = st.columns([3, 1])
+col1_ui = st.columns([3, 1])
 with col1_ui:
     show_expanded_view = st.checkbox("🖥️ Show Full Matrix (All Times & Levels)", 
                                    value=st.session_state.expanded_view_pref)
-with col2_ui:
-    make_default = st.checkbox("💾 Make Default for Session", value=False)
 
-if make_default:
-    st.session_state.expanded_view_pref = show_expanded_view
     #st.success("✅ Session default updated!")
 
 # --- Analysis-Specific Processing ---
