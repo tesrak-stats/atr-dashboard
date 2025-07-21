@@ -879,7 +879,7 @@ def get_rolling_8_periods(trigger_period, data_df=None, window_size=8):
     # Create rolling window - SIMPLE: just generate exactly window_size periods
     rolling_periods = []
 
-    for i in range(actual_window_size):
+   
     for i in range(window_size):
         period_index = (trigger_index + i) % len(trading_periods)
         rolling_periods.append(trading_periods[period_index])
