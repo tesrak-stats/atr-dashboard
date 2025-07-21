@@ -825,7 +825,7 @@ def get_rolling_8_periods(trigger_period, data_df=None, window_size=8):
             # Remove duplicates and sort
             trading_periods = sorted(list(set(trading_periods)))
             
-        else:
+    else:
             # Wide format - look for time period columns (original logic)
             all_columns = data_df.columns.tolist()
             
