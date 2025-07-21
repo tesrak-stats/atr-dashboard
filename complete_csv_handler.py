@@ -2327,7 +2327,7 @@ elif mode == "📈 Public Data Download":
                 # Timeframe selection
                 timeframe = st.selectbox(
                     "Timeframe",
-                    ["1 minute", "5 minute", "15 minute", "30 minute", "1 hour", "4 hour", "1 day"],
+                    ["1 minute", "5 minute", "10 minute" "15 minute", "30 minute", "1 hour", "4 hour", "1 day"],
                     index=6,  # Default to 1 day
                     help="Select data timeframe"
                 )
@@ -2336,6 +2336,7 @@ elif mode == "📈 Public Data Download":
                 timeframe_map = {
                     "1 minute": ("1", "minute"),
                     "5 minute": ("5", "minute"), 
+                    "10 minute": ("10", "minute"), 
                     "15 minute": ("15", "minute"),
                     "30 minute": ("30", "minute"),
                     "1 hour": ("1", "hour"),
