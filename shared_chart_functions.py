@@ -821,7 +821,7 @@ def get_rolling_8_periods(trigger_period, data_df=None, window_size=8):
             else:
                 return (len(period_str), 0, period_str)
         
-        trading_periods = sorted(list(set(potential_period_cols)), key=sort_key)
+            trading_periods = sorted(list(set(potential_period_cols)), key=sort_key)
             # Remove duplicates and sort
             trading_periods = sorted(list(set(trading_periods)))
             
