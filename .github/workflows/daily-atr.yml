@@ -698,7 +698,7 @@ jobs:
                 return None
         
         def process_ticker(ticker_key, ticker_config, target_date, phase):
-            """Process a single ticker with retry logic"""
+            """Process a single ticker with retry logic for both daily and intraday data"""
             print(f"   🔄 Processing {ticker_key} ({phase})...")
             
             yf_symbol = ticker_config.get('yf_symbol', ticker_key)
@@ -706,7 +706,10 @@ jobs:
                 print(f"      🔄 Using mapped symbol: {ticker_key} -> {yf_symbol}")
             
             try:
-                # Load existing data
+                # === DAILY DATA PROCESSING ===
+                print(f"      📊 Processing daily data...")
+                
+                # Load existing daily data
                 historical_data, compressed_file = load_historical_data(ticker_key)
                 
                 # Determine last date
@@ -714,17 +717,17 @@ jobs:
                 if historical_data is not None and len(historical_data) > 0:
                     last_date = historical_data['Date'].max().date()
                 
-                # Fetch new data
-                new_data = fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date)
+                # Fetch new daily data
+                new_daily_data = fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date)
                 
-                # Update historical data
-                if not save_updated_data(historical_data, new_data, compressed_file):
-                    return {'status': 'error', 'error': 'Failed to save data'}
+                # Update historical daily data
+                if not save_updated_data(historical_data, new_daily_data, compressed_file):
+                    return {'status': 'error', 'error': 'Failed to save daily data'}
                 
                 # Reload for ATR calculation
                 updated_data, _ = load_historical_data(ticker_key)
                 if updated_data is None:
-                    return {'status': 'error', 'error': 'Failed to reload data'}
+                    return {'status': 'error', 'error': 'Failed to reload daily data'}
                 
                 # Calculate ATR
                 updated_data['ATR'] = calculate_atr(updated_data)
@@ -733,7 +736,15 @@ jobs:
                 if pd.isna(latest_row['ATR']):
                     return {'status': 'error', 'error': 'ATR calculation failed'}
                 
-                print(f"      ✅ Success: Close=${latest_row['Close']:.2f}, ATR=${latest_row['ATR']:.2f}")
+                print(f"      ✅ Daily success: Close=${latest_row['Close']:.2f}, ATR=${latest_row['ATR']:.2f}")
+                
+                # === INTRADAY DATA PROCESSING ===
+                print(f"      📈 Processing 10-minute intraday data...")
+                
+                intraday_result = process_intraday_data(ticker_key, yf_symbol, target_date, last_date)
+                intraday_status = "success" if intraday_result else "failed"
+                
+                print(f"      📈 Intraday result: {intraday_status}")
                 
                 return {
                     'status': 'success',
@@ -742,12 +753,214 @@ jobs:
                     'last_updated': datetime.now().isoformat(),
                     'yf_symbol': yf_symbol,
                     'data_points': len(updated_data),
-                    'processing_phase': phase
+                    'processing_phase': phase,
+                    'intraday_status': intraday_status,
+                    'data_source': new_daily_data.get('Data_Source', 'Unknown').iloc[0] if new_daily_data is not None and len(new_daily_data) > 0 else 'No_New_Data'
                 }
                 
             except Exception as e:
                 print(f"      ❌ Error: {str(e)}")
                 return {'status': 'error', 'error': str(e)}
+        
+        def process_intraday_data(ticker_key, yf_symbol, target_date, last_daily_date):
+            """Process 10-minute intraday data for a ticker"""
+            try:
+                # Create intraday directory structure
+                intraday_dir = "historical_data/intraday"
+                os.makedirs(intraday_dir, exist_ok=True)
+                
+                # Load existing intraday data
+                intraday_file = f"{intraday_dir}/{ticker_key}_intraday_10min.csv.gz"
+                existing_intraday = load_intraday_data(intraday_file)
+                
+                # Determine date range for intraday fetch
+                if existing_intraday is not None and len(existing_intraday) > 0:
+                    last_intraday_date = existing_intraday['Datetime'].max().date()
+                    start_date = last_intraday_date
+                else:
+                    # If no existing data, get last 5 trading days
+                    start_date = target_date - timedelta(days=7)
+                
+                # Fetch new intraday data
+                new_intraday = fetch_intraday_data(ticker_key, yf_symbol, start_date, target_date)
+                
+                if new_intraday is None or len(new_intraday) == 0:
+                    print(f"        ⚠️ No new intraday data available")
+                    return existing_intraday is not None  # Consider success if we have existing data
+                
+                # Combine and save
+                if existing_intraday is not None:
+                    combined_intraday = pd.concat([existing_intraday, new_intraday], ignore_index=True)
+                else:
+                    combined_intraday = new_intraday
+                
+                # Remove duplicates and sort
+                combined_intraday = combined_intraday.drop_duplicates(subset=['Datetime'], keep='last')
+                combined_intraday = combined_intraday.sort_values('Datetime')
+                
+                # Save compressed intraday data
+                with gzip.open(intraday_file, 'wt') as f:
+                    combined_intraday.to_csv(f, index=False)
+                
+                compressed_size = os.path.getsize(intraday_file) / 1024  # KB
+                new_records = len(new_intraday)
+                total_records = len(combined_intraday)
+                
+                print(f"        ✅ Intraday saved: +{new_records} records ({total_records} total, {compressed_size:.1f} KB)")
+                return True
+                
+            except Exception as e:
+                print(f"        ❌ Intraday processing error: {str(e)}")
+                return False
+        
+        def load_intraday_data(intraday_file):
+            """Load existing intraday data"""
+            if not os.path.exists(intraday_file):
+                return None
+                
+            try:
+                with gzip.open(intraday_file, 'rt') as f:
+                    data = pd.read_csv(f)
+                data['Datetime'] = pd.to_datetime(data['Datetime'])
+                return data
+            except Exception as e:
+                print(f"        ⚠️ Error loading existing intraday data: {str(e)}")
+                return None
+        
+        def fetch_intraday_data(ticker_key, yf_symbol, start_date, end_date):
+            """Fetch 10-minute intraday data with dual-source support"""
+            try:
+                polygon_symbol = convert_to_polygon_symbol(ticker_key, yf_symbol)
+                use_polygon = should_use_polygon(ticker_key)
+                
+                new_data = None
+                
+                if use_polygon and polygon_symbol:
+                    print(f"        🔵 Trying Polygon intraday: {polygon_symbol}")
+                    new_data = fetch_intraday_from_polygon(polygon_symbol, start_date, end_date)
+                    
+                    if new_data is not None and len(new_data) > 0:
+                        print(f"        ✅ Polygon intraday success: {len(new_data)} records")
+                    else:
+                        print(f"        ⚠️ Polygon intraday failed, trying Yahoo Finance")
+                        new_data = None
+                
+                # Yahoo Finance primary or backup
+                if new_data is None:
+                    print(f"        🟡 Using Yahoo Finance intraday: {yf_symbol}")
+                    new_data = fetch_intraday_from_yahoo(yf_symbol, start_date, end_date)
+                    
+                    if new_data is not None and len(new_data) > 0:
+                        print(f"        ✅ Yahoo intraday success: {len(new_data)} records")
+                    else:
+                        print(f"        ❌ Yahoo intraday also failed")
+                        return None
+                
+                # Add metadata
+                if new_data is not None:
+                    new_data['Ticker'] = ticker_key
+                    new_data['YF_Symbol'] = yf_symbol
+                    new_data['Downloaded_At'] = datetime.now().isoformat()
+                    new_data['Data_Source'] = 'Polygon' if use_polygon and polygon_symbol else 'Yahoo'
+                
+                return new_data
+                
+            except Exception as e:
+                print(f"        ❌ Intraday fetch error: {str(e)}")
+                return None
+        
+        def fetch_intraday_from_polygon(symbol, start_date, end_date):
+            """Fetch 10-minute intraday data from Polygon"""
+            try:
+                import requests
+                
+                api_key = os.getenv('POLYGON_API_KEY')
+                if not api_key:
+                    return None
+                
+                # Polygon intraday endpoint - 10 minute bars
+                url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/10/minute/{start_date}/{end_date}"
+                params = {
+                    'apikey': api_key,
+                    'adjusted': 'true',
+                    'sort': 'asc',
+                    'limit': 5000  # Max per request
+                }
+                
+                response = requests.get(url, params=params, timeout=30)
+                
+                if response.status_code != 200:
+                    return None
+                
+                data = response.json()
+                
+                if data.get('status') != 'OK' or not data.get('results'):
+                    return None
+                
+                # Convert to DataFrame
+                records = []
+                for bar in data['results']:
+                    dt = datetime.fromtimestamp(bar['t'] / 1000)  # Convert from milliseconds
+                    
+                    records.append({
+                        'Datetime': dt,
+                        'Open': bar['o'],
+                        'High': bar['h'],
+                        'Low': bar['l'],
+                        'Close': bar['c'],
+                        'Volume': bar['v']
+                    })
+                
+                if not records:
+                    return None
+                
+                df = pd.DataFrame(records)
+                df['Datetime'] = pd.to_datetime(df['Datetime'])
+                
+                return df
+                
+            except Exception as e:
+                print(f"        ❌ Polygon intraday error: {str(e)}")
+                return None
+        
+        def fetch_intraday_from_yahoo(yf_symbol, start_date, end_date):
+            """Fetch 10-minute intraday data from Yahoo Finance"""
+            try:
+                # Yahoo Finance intraday is limited to recent periods
+                # For 10-minute data, we can typically get about 60 days
+                max_days = min(60, (end_date - start_date).days + 1)
+                actual_start = end_date - timedelta(days=max_days)
+                
+                yf_ticker = yf.Ticker(yf_symbol)
+                
+                # Fetch with 10-minute interval
+                data = yf_ticker.history(
+                    start=actual_start,
+                    end=end_date + timedelta(days=1),
+                    interval="10m"
+                )
+                
+                if data.empty:
+                    return None
+                
+                # Process data
+                data = data.reset_index()
+                if isinstance(data.columns, pd.MultiIndex):
+                    data.columns = data.columns.get_level_values(0)
+                
+                # Rename to match our format
+                data = data.rename(columns={'Date': 'Datetime'})
+                
+                standard_columns = ['Datetime', 'Open', 'High', 'Low', 'Close', 'Volume']
+                available_columns = [col for col in standard_columns if col in data.columns]
+                data = data[available_columns]
+                data['Datetime'] = pd.to_datetime(data['Datetime'])
+                
+                return data
+                
+            except Exception as e:
+                print(f"        ❌ Yahoo intraday error: {str(e)}")
+                return None
         
         def main():
             """Main processing function"""
