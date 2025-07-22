@@ -1,27 +1,34 @@
 {
-  "discovered_at": "2025-07-22T03:32:20.058149",
+  "discovered_at": "2025-07-22T03:55:56.885242",
   "method": "github_repo_discovery",
   "tickers": {
+    "ES": {
+      "ticker": "ES",
+      "yf_symbol": "ES",
+      "data_available": true,
+      "trading_schedule": "weekdays_only",
+      "discovered_at": "2025-07-22T03:55:53.937041"
+    },
     "IWM": {
       "ticker": "IWM",
       "yf_symbol": "IWM",
       "data_available": true,
       "trading_schedule": "weekdays_only",
-      "discovered_at": "2025-07-22T03:32:17.607147"
+      "discovered_at": "2025-07-22T03:55:54.574622"
     },
     "NVDA": {
       "ticker": "NVDA",
       "yf_symbol": "NVDA",
       "data_available": true,
       "trading_schedule": "weekdays_only",
-      "discovered_at": "2025-07-22T03:32:18.197755"
+      "discovered_at": "2025-07-22T03:55:55.175068"
     },
     "QQQ": {
       "ticker": "QQQ",
       "yf_symbol": "QQQ",
       "data_available": true,
       "trading_schedule": "weekdays_only",
-      "discovered_at": "2025-07-22T03:32:18.923487"
+      "discovered_at": "2025-07-22T03:55:55.802381"
     }
   }
 }

@@ -1,11 +1,39 @@
 {
-  "last_updated": "2025-07-22 03:32:20 ",
-  "last_updated_timestamp": 1753155140.965802,
+  "last_updated": "2025-07-22 03:55:57 ",
+  "last_updated_timestamp": 1753156557.848508,
   "discovery_method": "github_repo_scan",
   "tickers": {
+    "ES": {
+      "generated_at": "2025-07-21 23:55:57 EDT",
+      "generated_timestamp": 1753156557.621038,
+      "ticker": "ES",
+      "reference_date": "2025-07-21",
+      "reference_close": 65.54,
+      "reference_atr": 1.19,
+      "data_age_days": 0,
+      "target_date": "next_trading_day",
+      "levels": {
+        "+1.000": 66.73,
+        "+0.786": 66.47,
+        "+0.618": 66.27,
+        "+0.500": 66.13,
+        "+0.382": 65.99,
+        "+0.236": 65.82,
+        "+0.000": 65.54,
+        "-0.236": 65.26,
+        "-0.382": 65.09,
+        "-0.500": 64.95,
+        "-0.618": 64.81,
+        "-0.786": 64.61,
+        "-1.000": 64.35
+      },
+      "status": "success",
+      "ticker_key": "ES",
+      "display_name": "ES (Discovered)"
+    },
     "IWM": {
-      "generated_at": "2025-07-21 23:32:20 EDT",
-      "generated_timestamp": 1753155140.772518,
+      "generated_at": "2025-07-21 23:55:57 EDT",
+      "generated_timestamp": 1753156557.70584,
       "ticker": "IWM",
       "reference_date": "2025-07-21",
       "reference_close": 221.43,
@@ -32,8 +60,8 @@
       "display_name": "IWM (Discovered)"
     },
     "NVDA": {
-      "generated_at": "2025-07-21 23:32:20 EDT",
-      "generated_timestamp": 1753155140.873902,
+      "generated_at": "2025-07-21 23:55:57 EDT",
+      "generated_timestamp": 1753156557.771549,
       "ticker": "NVDA",
       "reference_date": "2025-07-21",
       "reference_close": 171.38,
@@ -60,8 +88,8 @@
       "display_name": "NVDA (Discovered)"
     },
     "QQQ": {
-      "generated_at": "2025-07-21 23:32:20 EDT",
-      "generated_timestamp": 1753155140.965718,
+      "generated_at": "2025-07-21 23:55:57 EDT",
+      "generated_timestamp": 1753156557.848397,
       "ticker": "QQQ",
       "reference_date": "2025-07-21",
       "reference_close": 564.17,
