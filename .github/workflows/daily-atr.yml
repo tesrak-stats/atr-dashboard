@@ -139,60 +139,54 @@ jobs:
                 yf_ticker = yf.Ticker(yf_symbol)
                 test_data = yf_ticker.history(period="5d")
                 
-                if not test_data.empty:
-                    # Learn trading schedule from actual data timestamps
-                    weekdays = [dt.weekday() for dt in test_data.index]
-                    
-                    if all(day < 5 for day in weekdays):
-                        schedule = 'weekdays_only'
-                    elif len(set(weekdays)) == 7:
-                        schedule = 'continuous'  
-                    else:
-                        schedule = 'extended_hours'
-                    
-                    characteristics = {
-                        'ticker': ticker,
-                        'yf_symbol': yf_symbol,  # Use mapped symbol
-                        'data_available': True,
-                        'trading_schedule': schedule,
-                        'discovered_at': datetime.now().isoformat(),
-                        'temp_mapping': yf_symbol != ticker  # Flag for cleanup later
-                    }
-                    
-                    print(f"      ✅ {ticker}: Available, schedule={schedule}")
-                    return characteristics
-                else:
-                    print(f"      ❌ {ticker}: No data available")
+                if test_data.empty:
+                    print(f"      ❌ No data available for {yf_symbol}")
                     return None
-                    
+                
+                # For now, assume weekdays only for most tickers
+                # TODO: Enhance with proper market hour analysis
+                trading_schedule = "weekdays_only"
+                
+                print(f"      ✅ Validated: {yf_symbol} ({len(test_data)} days)")
+                
+                return {
+                    'yf_symbol': yf_symbol,
+                    'trading_schedule': trading_schedule,
+                    'last_verified': datetime.now().isoformat()
+                }
+                
             except Exception as e:
-                print(f"      ⚠️ {ticker}: Error learning characteristics - {e}")
+                print(f"      ❌ Error testing {ticker}: {str(e)}")
                 return None
         
         def main():
-            print("🚀 Dynamic Ticker Discovery")
-            print("=" * 40)
+            """Discover tickers and save configuration"""
+            print("🎯 Dynamic Ticker Discovery")
+            print("=" * 30)
             
-            # Discover tickers
+            # Discover tickers from files
             discovered_tickers = discover_existing_tickers()
             
             if not discovered_tickers:
-                print("❌ No tickers discovered - using fallback")
+                print("❌ No tickers discovered from repository files")
                 return 1
             
-            print(f"📁 Total discovered tickers: {len(discovered_tickers)}")
+            print(f"🔍 Discovered {len(discovered_tickers)} tickers: {', '.join(discovered_tickers)}")
             
-            # Learn characteristics  
+            # Learn characteristics for each ticker
             valid_tickers = {}
             for ticker in discovered_tickers:
-                characteristics = learn_ticker_characteristics(ticker)
-                if characteristics and characteristics.get('data_available', False):
-                    valid_tickers[ticker] = characteristics
-                
-                # Brief pause to respect API limits
-                time.sleep(0.5)
+                ticker_config = learn_ticker_characteristics(ticker)
+                if ticker_config:
+                    valid_tickers[ticker] = ticker_config
+                else:
+                    print(f"   ⚠️ Skipping {ticker} (validation failed)")
             
-            # Create discovered config
+            if not valid_tickers:
+                print("❌ No valid tickers found after validation")
+                return 1
+            
+            # Save configuration for next steps
             config = {
                 'discovered_at': datetime.now().isoformat(),
                 'method': 'github_repo_discovery',
@@ -322,8 +316,72 @@ jobs:
         
         echo "✅ Historical data CSV save completed"
         echo "⏰ CSV save end time: $(date)"
-    - name: Run Dynamic ATR Calculator
-      timeout-minutes: 10
+
+    # NEW STEP: Compress and Store Historical Data
+    - name: Compress and Store Historical Data
+      timeout-minutes: 3
+      run: |
+        echo "🗜️ Compressing and storing historical CSV files..."
+        echo "⏰ Compression start time: $(date)"
+        
+        # Create historical_data directory
+        mkdir -p historical_data
+        
+        # Check what CSV files were created
+        echo "📋 Checking for CSV files to compress..."
+        ls -la *_historical_*.csv 2>/dev/null || echo "   ⚠️  No historical CSV files found"
+        
+        # Compress and store each historical CSV file
+        compressed_count=0
+        for file in *_historical_6months.csv; do
+            if [ -f "$file" ]; then
+                # Extract ticker name (everything before _historical_6months.csv)
+                ticker=$(echo "$file" | sed 's/_historical_6months.csv//')
+                
+                # Compress and save with standardized name
+                compressed_file="historical_data/${ticker}_historical.csv.gz"
+                
+                echo "   🗜️ Compressing: $file → $compressed_file"
+                gzip -c "$file" > "$compressed_file"
+                
+                # Verify compression worked
+                if [ -f "$compressed_file" ]; then
+                    original_size=$(du -h "$file" | cut -f1)
+                    compressed_size=$(du -h "$compressed_file" | cut -f1)
+                    echo "      ✅ Success: $original_size → $compressed_size"
+                    
+                    # Remove original uncompressed file
+                    rm "$file"
+                    echo "      🗑️ Cleaned up original: $file"
+                    
+                    compressed_count=$((compressed_count + 1))
+                else
+                    echo "      ❌ Compression failed for $file"
+                fi
+            fi
+        done
+        
+        # Summary of compression results
+        echo ""
+        echo "📊 Compression Summary:"
+        echo "   🗜️ Files compressed: $compressed_count"
+        echo "   📁 Storage directory: historical_data/"
+        
+        # Show final directory contents
+        if [ -d "historical_data" ]; then
+            echo "   📋 Final contents:"
+            ls -lah historical_data/ | while read line; do echo "      $line"; done
+            
+            # Calculate total storage used
+            total_size=$(du -sh historical_data/ | cut -f1)
+            echo "   💾 Total storage used: $total_size"
+        fi
+        
+        echo "✅ Historical data compression completed"
+        echo "⏰ Compression end time: $(date)"
+
+    - name: Dynamic ATR Calculation
+      timeout-minutes: 5
       run: |
         echo "🔄 Starting dynamic multi-ticker ATR calculation..."
         echo "⏰ Current time: $(date)"
@@ -331,52 +389,129 @@ jobs:
         cat > dynamic_atr_updater.py << 'EOF'
         #!/usr/bin/env python3
         import json
+        import yfinance as yf
+        import pandas as pd
+        import numpy as np
         import sys
-        from daily_atr_updater import calculate_atr_levels
-        from datetime import datetime
+        from datetime import datetime, timedelta
         
-        def load_discovered_tickers():
-            """Load discovered ticker configuration"""
+        def calculate_atr(data, period=14):
+            """Calculate Average True Range (ATR) for given data"""
+            high = data['High']
+            low = data['Low']
+            close = data['Close']
+            
+            # Calculate True Range components
+            tr1 = high - low
+            tr2 = abs(high - close.shift())
+            tr3 = abs(low - close.shift())
+            
+            # True Range is the maximum of the three
+            true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            
+            # ATR is the rolling mean of True Range
+            atr = true_range.rolling(window=period).mean()
+            
+            return atr
+        
+        def calculate_ticker_atr(ticker_key, yf_symbol):
+            """Calculate ATR for a single ticker with comprehensive debugging"""
+            print(f"🔄 Processing {ticker_key}...")
+            
+            # Handle symbol mapping
+            if yf_symbol != ticker_key:
+                print(f"   🔄 Using mapped symbol: {ticker_key} -> {yf_symbol}")
+            
             try:
-                with open('discovered_tickers.json', 'r') as f:
-                    config = json.load(f)
-                return config.get('tickers', {})
+                print(f"🔍 DEBUG: Requesting 6 months of data for {yf_symbol} using period='6mo'")
+                
+                # Get 6 months of data for proper ATR baseline
+                ticker = yf.Ticker(yf_symbol)
+                data = ticker.history(period="6mo")
+                
+                if data.empty:
+                    return {'status': 'error', 'error': 'No data available'}
+                
+                print(f"📊 Downloaded {len(data)} days of data for {yf_symbol} for proper ATR baseline")
+                print(f"📅 Date range: {data.index[0].date()} to {data.index[-1].date()}")
+                
+                # Reset index for easier handling
+                data = data.reset_index()
+                
+                print(f"🔄 Using 6 months of historical data for ATR convergence")
+                
+                # Calculate ATR with 14-period window
+                data['ATR'] = calculate_atr(data, period=14)
+                
+                # Filter out NaN ATR values for debugging info
+                valid_atr_data = data.dropna(subset=['ATR'])
+                
+                print(f"🔍 DEBUG INFO for {yf_symbol}:")
+                print(f"   Total downloaded rows: {len(data)}")
+                print(f"   Valid ATR rows: {len(valid_atr_data)}")
+                if len(valid_atr_data) > 0:
+                    print(f"   First valid ATR date: {valid_atr_data.iloc[0]['Date'].date()}")
+                    print(f"   Last valid ATR date: {valid_atr_data.iloc[-1]['Date'].date()}")
+                    print(f"   First valid ATR value: {valid_atr_data.iloc[0]['ATR']:.4f}")
+                    print(f"   Last valid ATR value: {valid_atr_data.iloc[-1]['ATR']:.4f}")
+                
+                # Get most recent values
+                latest_data = data.iloc[-1]
+                
+                reference_close = latest_data['Close']
+                reference_atr = latest_data['ATR']
+                
+                if pd.isna(reference_atr):
+                    return {'status': 'error', 'error': 'ATR calculation resulted in NaN'}
+                
+                print(f"✅ {ticker_key}: Close=${reference_close:.2f}, ATR=${reference_atr:.2f}")
+                
+                return {
+                    'status': 'success',
+                    'reference_close': float(reference_close),
+                    'reference_atr': float(reference_atr),
+                    'last_updated': datetime.now().isoformat(),
+                    'data_points': len(data),
+                    'valid_atr_points': len(valid_atr_data),
+                    'yf_symbol': yf_symbol
+                }
+                
             except Exception as e:
-                print(f"❌ Could not load discovered tickers: {e}")
-                return None
+                print(f"❌ Error processing {ticker_key}: {str(e)}")
+                return {'status': 'error', 'error': str(e)}
         
         def main():
+            """Main ATR calculation function"""
             print("🎯 Dynamic ATR Calculator")
             print("=" * 30)
             
             # Load discovered tickers
-            discovered_tickers = load_discovered_tickers()
+            try:
+                with open('discovered_tickers.json', 'r') as f:
+                    config = json.load(f)
+                discovered_tickers = config.get('tickers', {})
+            except Exception as e:
+                print(f"❌ Could not load discovered tickers: {e}")
+                return 1
             
             if not discovered_tickers:
-                print("❌ No discovered tickers - calculation failed")
+                print("❌ No discovered tickers found")
                 return 1
             
             print(f"📊 Processing {len(discovered_tickers)} discovered tickers...")
             
-            # Process each discovered ticker
             results = {}
-            for ticker_key, config in discovered_tickers.items():
-                print(f"🔄 Processing {ticker_key}...")
-                
-                yf_symbol = config.get('yf_symbol', ticker_key)
-                if yf_symbol != ticker_key:
-                    print(f"   🔄 Using mapped symbol: {ticker_key} -> {yf_symbol}")
-                
-                ticker_data = calculate_atr_levels(ticker=yf_symbol)
-                
-                # Add metadata
-                ticker_data['ticker_key'] = ticker_key
-                ticker_data['display_name'] = f"{ticker_key} (Discovered)"
-                
-                results[ticker_key] = ticker_data
-                
+            
+            # Process each ticker
+            for ticker_key, ticker_config in discovered_tickers.items():
+                yf_symbol = ticker_config.get('yf_symbol', ticker_key)
+                result = calculate_ticker_atr(ticker_key, yf_symbol)
+                results[ticker_key] = result
+            
+            # Display results summary
+            for ticker_key, ticker_data in results.items():
                 if ticker_data['status'] == 'success':
-                    print(f"✅ {ticker_key}: Close=${ticker_data['reference_close']:.2f}, ATR=${ticker_data['reference_atr']:.2f}")
+                    print(f"✅ {ticker_key}: ${ticker_data['reference_close']:.2f} (ATR: ${ticker_data['reference_atr']:.2f})")
                 else:
                     print(f"❌ {ticker_key}: ERROR - {ticker_data['error']}")
             
@@ -435,6 +570,13 @@ jobs:
           echo "📊 Final ATR results:"
           python -c "import json; data=json.load(open('atr_levels.json')); print(f'🎯 {len(data.get(\"tickers\", {}))} tickers processed')"
           
+          # NEW: Show compressed historical files
+          if [ -d "historical_data" ]; then
+            echo ""
+            echo "📦 Compressed historical files:"
+            ls -lah historical_data/*.gz 2>/dev/null | while read line; do echo "   $line"; done
+          fi
+          
         else
           echo "❌ ATR levels JSON file not found!"
           exit 1
@@ -454,6 +596,10 @@ jobs:
         
         # Add the historical_data directory and compressed CSV files
         git add historical_data/*.gz 2>/dev/null || true
+        
+        # Verify what we're about to commit
+        echo "📋 Files staged for commit:"
+        git diff --staged --name-status
         
         if git diff --staged --quiet; then
           echo "No changes to commit"
