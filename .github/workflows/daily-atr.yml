@@ -929,23 +929,88 @@ jobs:
             except Exception as e:
                 print(f"        ❌ Polygon intraday error: {str(e)}")
                 return None
+      def fetch_intraday_from_yahoo(yf_symbol, start_date, end_date):
+    """Fetch 5-minute intraday data from Yahoo Finance and resample to 10-minute"""
+    try:
+        # Yahoo Finance intraday is limited to recent periods
+        # For 5-minute data, we can typically get about 60 days
+        max_days = min(60, (end_date - start_date).days + 1)
+        actual_start = end_date - timedelta(days=max_days)
         
-        def fetch_intraday_from_yahoo(yf_symbol, start_date, end_date):
-            """Fetch 10-minute intraday data from Yahoo Finance"""
-            try:
-                # Yahoo Finance intraday is limited to recent periods
-                # For 10-minute data, we can typically get about 60 days
-                max_days = min(60, (end_date - start_date).days + 1)
-                actual_start = end_date - timedelta(days=max_days)
-                
-                yf_ticker = yf.Ticker(yf_symbol)
-                
-                # Fetch with 10-minute interval
-                data = yf_ticker.history(
-                    start=actual_start,
-                    end=end_date + timedelta(days=1),
-                    interval="10m"
-                )
+        yf_ticker = yf.Ticker(yf_symbol)
+        
+        # Fetch with 5-minute interval (Yahoo Finance supported)
+        print(f"        📊 Fetching 5-minute data from Yahoo Finance...")
+        data = yf_ticker.history(
+            start=actual_start,
+            end=end_date + timedelta(days=1),
+            interval="5m"  # ← CHANGED FROM "10m" to "5m"
+        )
+        
+        if data.empty:
+            print(f"        ⚠️ No 5-minute data available from Yahoo")
+            return None
+        
+        # Process data
+        data = data.reset_index()
+        if isinstance(data.columns, pd.MultiIndex):
+            data.columns = data.columns.get_level_values(0)
+        
+        # Rename to match our format
+        data = data.rename(columns={'Date': 'Datetime'})
+        
+        standard_columns = ['Datetime', 'Open', 'High', 'Low', 'Close', 'Volume']
+        available_columns = [col for col in standard_columns if col in data.columns]
+        data = data[available_columns]
+        data['Datetime'] = pd.to_datetime(data['Datetime'])
+        
+        print(f"        📊 Retrieved {len(data)} 5-minute bars, resampling to 10-minute...")
+        
+        # Resample 5-minute data to 10-minute
+        resampled_data = resample_to_10min(data)
+        
+        if resampled_data is not None and len(resampled_data) > 0:
+            print(f"        ✅ Resampled to {len(resampled_data)} 10-minute bars")
+            return resampled_data
+        else:
+            print(f"        ❌ Resampling failed")
+            return None
+        
+    except Exception as e:
+        print(f"        ❌ Yahoo intraday error: {str(e)}")
+        return None
+
+def resample_to_10min(data_5min):
+    """Resample 5-minute OHLC data to 10-minute OHLC data"""
+    try:
+        if data_5min is None or len(data_5min) == 0:
+            return None
+        
+        # Set datetime as index for resampling
+        data_5min = data_5min.set_index('Datetime')
+        
+        # Resample to 10-minute intervals
+        resampled = data_5min.resample('10T').agg({
+            'Open': 'first',
+            'High': 'max', 
+            'Low': 'min',
+            'Close': 'last',
+            'Volume': 'sum'
+        })
+        
+        # Remove rows where we don't have complete data (NaN values)
+        resampled = resampled.dropna()
+        
+        # Reset index to get Datetime back as column
+        resampled = resampled.reset_index()
+        
+        print(f"        🔄 Resampling: {len(data_5min)} 5-min → {len(resampled)} 10-min bars")
+        
+        return resampled
+        
+    except Exception as e:
+        print(f"        ❌ Resampling error: {str(e)}")
+        return None
                 
                 if data.empty:
                     return None
