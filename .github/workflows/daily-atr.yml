@@ -1,278 +1,245 @@
-name: Daily ATR Calculator - Dynamic Discovery Mode
-
-# Run at midnight Eastern Time on weekdays (actually early morning of trading day)
-on:
-  schedule:
-    # 05:00 UTC = 12:00 AM ET (during standard time)
-    # 04:00 UTC = 12:00 AM ET (during daylight time)  
-    - cron: '0 5 * * 2-6'  # Tue-Sat at 5:00 AM UTC (EST) = Mon-Fri midnight ET
-    - cron: '0 4 * * 2-6'  # Tue-Sat at 4:00 AM UTC (EDT) = Mon-Fri midnight ET
-  
-  # Allow manual triggering for testing
-  workflow_dispatch:
-
-jobs:
-  calculate-atr:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20  # Overall job timeout
-    
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    
-    - name: Install dependencies
-      timeout-minutes: 5
-      run: |
-        python -m pip install --upgrade pip
-        pip install yfinance pandas pytz
-    
-    - name: Discover Tickers from Repository
+# REPLACED: Daily Append to Historical Data (instead of full 6-month download)
+    - name: Daily Append to Historical Data
       timeout-minutes: 8
       run: |
-        echo "🔍 Starting ticker discovery from repository files..."
-        echo "⏰ Discovery start time: $(date)"
+        echo "🔄 Starting daily append to historical datasets..."
+        echo "⏰ Append start time: $(date)"
         
-        cat > discover_tickers.py << 'EOF'
-        #!/usr/bin/env python3
-        import json
-        import glob
-        import re
-        import yfinance as yf
-        import time
-        from datetime import datetime
-        
-        def extract_ticker_from_filename(filename):
-            """Extract ticker from various filename patterns"""
-            # Pattern: atr_summary_SPX_SESSION_*.csv
-            match = re.match(r'atr_summary_([A-Z]+)_', filename)
-            if match:
-                return match.group(1)
-                
-            # Pattern: atr_level_totals_ES_ROLLING_*.csv
-            match = re.match(r'atr_level_totals_([A-Z]+)_', filename)
-            if match:
-                return match.group(1)
-                
-            # Pattern: statecheck_detailed_SPX_*.csv  
-            match = re.match(r'statecheck_detailed_([A-Z]+)_', filename)
-            if match:
-                return match.group(1)
-                
-            # Pattern: zonebaseline_detailed_ES_*.csv
-            match = re.match(r'zonebaseline_detailed_([A-Z]+)_', filename)
-            if match:
-                return match.group(1)
-                
-            # Pattern: zonebaseline_hourly_ES_*.csv
-            match = re.match(r'zonebaseline_hourly_([A-Z]+)_', filename)
-            if match:
-                return match.group(1)
-                
-            # Pattern: SPX_SESSION_*.csv
-            match = re.match(r'^([A-Z]+)_(SESSION|ROLLING|STATECHECK)', filename)
-            if match:
-                return match.group(1)
-                
-            return None
-        
-        def discover_existing_tickers():
-            """Discover all tickers from existing files"""
-            print("🔍 Discovering existing tickers from file structure...")
-            
-            tickers = set()
-            
-            # Discover from ATR JSON
-            try:
-                with open("atr_levels.json", 'r') as f:
-                    atr_data = json.load(f)
-                    
-                if "tickers" in atr_data:
-                    for ticker_key in atr_data["tickers"]:
-                        tickers.add(ticker_key)
-                        
-                print(f"   📊 Found {len(tickers)} tickers in ATR JSON")
-            except Exception as e:
-                print(f"   ⚠️ Could not read ATR JSON: {e}")
-            
-            # Discover from CSV files using glob patterns
-            csv_patterns = [
-                "atr_summary_*_*.csv",
-                "atr_level_totals_*_*.csv",
-                "statecheck_detailed_*.csv", 
-                "zonebaseline_detailed_*.csv",
-                "zonebaseline_hourly_*.csv",
-                "*_SESSION_*.csv",
-                "*_ROLLING_*.csv"
-            ]
-            
-            for pattern in csv_patterns:
-                files = glob.glob(pattern)
-                for file_path in files:
-                    ticker = extract_ticker_from_filename(file_path)
-                    if ticker:
-                        tickers.add(ticker)
-            
-            return sorted(list(tickers))
-        
-        def learn_ticker_characteristics(ticker):
-            """Learn ticker characteristics from Yahoo Finance"""
-            print(f"   🧠 Learning characteristics of {ticker}...")
-            
-            # TEMPORARY: Symbol mapping for trial period
-            # TODO: Remove after Barchart data dump and enhanced summarizer
-            TEMP_SYMBOL_MAP = {
-                'SPX': '^GSPC',
-                'ES': 'ES=F'
-            }
-            
-            yf_symbol = TEMP_SYMBOL_MAP.get(ticker, ticker)
-            if yf_symbol != ticker:
-                print(f"      🔄 TEMP mapping: {ticker} -> {yf_symbol}")
-            
-            try:
-                # Test data availability with small sample
-                yf_ticker = yf.Ticker(yf_symbol)
-                test_data = yf_ticker.history(period="5d")
-                
-                if test_data.empty:
-                    print(f"      ❌ No data available for {yf_symbol}")
-                    return None
-                
-                # For now, assume weekdays only for most tickers
-                # TODO: Enhance with proper market hour analysis
-                trading_schedule = "weekdays_only"
-                
-                print(f"      ✅ Validated: {yf_symbol} ({len(test_data)} days)")
-                
-                return {
-                    'yf_symbol': yf_symbol,
-                    'trading_schedule': trading_schedule,
-                    'last_verified': datetime.now().isoformat()
-                }
-                
-            except Exception as e:
-                print(f"      ❌ Error testing {ticker}: {str(e)}")
-                return None
-        
-        def main():
-            """Discover tickers and save configuration"""
-            print("🎯 Dynamic Ticker Discovery")
-            print("=" * 30)
-            
-            # Discover tickers from files
-            discovered_tickers = discover_existing_tickers()
-            
-            if not discovered_tickers:
-                print("❌ No tickers discovered from repository files")
-                return 1
-            
-            print(f"🔍 Discovered {len(discovered_tickers)} tickers: {', '.join(discovered_tickers)}")
-            
-            # Learn characteristics for each ticker
-            valid_tickers = {}
-            for ticker in discovered_tickers:
-                ticker_config = learn_ticker_characteristics(ticker)
-                if ticker_config:
-                    valid_tickers[ticker] = ticker_config
-                else:
-                    print(f"   ⚠️ Skipping {ticker} (validation failed)")
-            
-            if not valid_tickers:
-                print("❌ No valid tickers found after validation")
-                return 1
-            
-            # Save configuration for next steps
-            config = {
-                'discovered_at': datetime.now().isoformat(),
-                'method': 'github_repo_discovery',
-                'tickers': valid_tickers
-            }
-            
-            # Save discovered config
-            with open('discovered_tickers.json', 'w') as f:
-                json.dump(config, f, indent=2)
-            
-            print(f"✅ Discovery complete: {len(valid_tickers)} valid tickers")
-            for ticker in valid_tickers:
-                schedule = valid_tickers[ticker]['trading_schedule']
-                print(f"   ✅ {ticker}: {schedule}")
-            
-            return 0
-        
-        if __name__ == "__main__":
-            exit(main())
-        EOF
-        
-        python discover_tickers.py
-        
-        echo "✅ Ticker discovery completed"
-        echo "⏰ Discovery end time: $(date)"
-    
-    - name: Save Historical Data to CSV
-      timeout-minutes: 5
-      run: |
-        echo "💾 Saving 6-month historical data to permanent CSV files..."
-        echo "⏰ CSV save start time: $(date)"
-        
-        cat > save_historical_data.py << 'EOF'
+        cat > daily_append_handler.py << 'EOF'
         #!/usr/bin/env python3
         import json
         import yfinance as yf
         import pandas as pd
+        import gzip
         import os
         from datetime import datetime, timedelta, date
+        import pytz
         
-        def save_ticker_historical_data(ticker_key, yf_symbol):
-            """Save 6 months of historical data to CSV"""
-            print(f"   📊 Saving {ticker_key} ({yf_symbol}) historical data...")
+        def get_yesterday():
+            """Get yesterday's date for data fetching"""
+            # Use EST/EDT timezone for US markets
+            eastern = pytz.timezone('US/Eastern')
+            now_eastern = datetime.now(eastern)
+            
+            # If it's before 6 AM Eastern, use day before yesterday
+            # (market data might not be available yet)
+            if now_eastern.hour < 6:
+                target_date = (now_eastern - timedelta(days=2)).date()
+            else:
+                target_date = (now_eastern - timedelta(days=1)).date()
+            
+            return target_date
+        
+        def load_historical_data(ticker_key):
+            """Load existing compressed historical data"""
+            compressed_file = f"historical_data/{ticker_key}_historical.csv.gz"
+            
+            if not os.path.exists(compressed_file):
+                print(f"      ❌ No existing historical data for {ticker_key}")
+                return None, compressed_file
             
             try:
-                # Get 6 months of data (same as ATR calculation)
-                yf_ticker = yf.Ticker(yf_symbol)
-                historical_data = yf_ticker.history(period="6mo")
+                # Read compressed CSV
+                with gzip.open(compressed_file, 'rt') as f:
+                    historical_data = pd.read_csv(f)
                 
-                if historical_data.empty:
-                    print(f"      ❌ No historical data available for {yf_symbol}")
-                    return False
+                # Convert Date column to datetime for easier manipulation
+                historical_data['Date'] = pd.to_datetime(historical_data['Date'])
+                
+                print(f"      📊 Loaded {len(historical_data)} historical records")
+                print(f"         📅 Data range: {historical_data['Date'].min().date()} to {historical_data['Date'].max().date()}")
+                
+                return historical_data, compressed_file
+                
+            except Exception as e:
+                print(f"      ❌ Error loading historical data: {str(e)}")
+                return None, compressed_file
+        
+        def fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date_in_data):
+            """Fetch new daily data since last update"""
+            print(f"      🔍 Checking for new data since {last_date_in_data}...")
+            
+            try:
+                # Calculate date range for fetching
+                start_date = last_date_in_data + timedelta(days=1)
+                
+                # Don't fetch if we're already up to date
+                if start_date > target_date:
+                    print(f"      ✅ Historical data is current (last: {last_date_in_data}, target: {target_date})")
+                    return None
+                
+                print(f"      🔄 Fetching data from {start_date} to {target_date}")
+                
+                # Fetch data for the date range
+                yf_ticker = yf.Ticker(yf_symbol)
+                new_data = yf_ticker.history(start=start_date, end=target_date + timedelta(days=1))
+                
+                if new_data.empty:
+                    print(f"      ⚠️  No new data available for {yf_symbol}")
+                    return None
                 
                 # Reset index to get Date as column
-                historical_data = historical_data.reset_index()
+                new_data = new_data.reset_index()
                 
                 # Handle MultiIndex columns if present
-                if isinstance(historical_data.columns, pd.MultiIndex):
-                    historical_data.columns = historical_data.columns.get_level_values(0)
+                if isinstance(new_data.columns, pd.MultiIndex):
+                    new_data.columns = new_data.columns.get_level_values(0)
                 
-                # Ensure standard column names
+                # Ensure standard column names and data consistency
                 standard_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
-                available_columns = [col for col in standard_columns if col in historical_data.columns]
-                historical_data = historical_data[available_columns]
+                available_columns = [col for col in standard_columns if col in new_data.columns]
+                new_data = new_data[available_columns]
                 
-                # Add metadata
-                historical_data['Ticker'] = ticker_key
-                historical_data['YF_Symbol'] = yf_symbol
-                historical_data['Downloaded_At'] = datetime.now().isoformat()
+                # Add metadata (consistent with existing data)
+                new_data['Ticker'] = ticker_key
+                new_data['YF_Symbol'] = yf_symbol
+                new_data['Downloaded_At'] = datetime.now().isoformat()
                 
-                # Save to CSV
-                filename = f"{ticker_key}_historical_6months.csv"
-                historical_data.to_csv(filename, index=False)
+                # Convert Date column to datetime for consistency
+                new_data['Date'] = pd.to_datetime(new_data['Date'])
                 
-                print(f"      ✅ Saved {len(historical_data)} records to {filename}")
-                print(f"         📅 Date range: {historical_data['Date'].min()} to {historical_data['Date'].max()}")
+                print(f"      ✅ Fetched {len(new_data)} new records")
+                print(f"         📅 New data range: {new_data['Date'].min().date()} to {new_data['Date'].max().date()}")
+                
+                return new_data
+                
+            except Exception as e:
+                print(f"      ❌ Error fetching new data: {str(e)}")
+                return None
+        
+        def detect_and_handle_gaps(historical_data, new_data, ticker_key, yf_symbol):
+            """Detect missing dates and attempt backfill"""
+            if len(historical_data) == 0:
+                return new_data
+            
+            # Get expected trading days between last historical date and first new date
+            last_historical = historical_data['Date'].max().date()
+            
+            if new_data is not None and len(new_data) > 0:
+                first_new = new_data['Date'].min().date()
+                
+                # Simple gap detection (trading days between last and first new)
+                expected_days = pd.bdate_range(start=last_historical + timedelta(days=1), 
+                                             end=first_new - timedelta(days=1))
+                
+                if len(expected_days) > 0:
+                    print(f"      🔍 Detected {len(expected_days)} potential missing trading days")
+                    
+                    # Attempt to backfill gaps
+                    try:
+                        gap_data = yf.Ticker(yf_symbol).history(
+                            start=last_historical + timedelta(days=1),
+                            end=first_new
+                        )
+                        
+                        if not gap_data.empty:
+                            # Process gap data same as new data
+                            gap_data = gap_data.reset_index()
+                            if isinstance(gap_data.columns, pd.MultiIndex):
+                                gap_data.columns = gap_data.columns.get_level_values(0)
+                            
+                            standard_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+                            available_columns = [col for col in standard_columns if col in gap_data.columns]
+                            gap_data = gap_data[available_columns]
+                            
+                            gap_data['Ticker'] = ticker_key
+                            gap_data['YF_Symbol'] = yf_symbol
+                            gap_data['Downloaded_At'] = datetime.now().isoformat()
+                            gap_data['Date'] = pd.to_datetime(gap_data['Date'])
+                            
+                            print(f"      🔧 Backfilled {len(gap_data)} missing records")
+                            
+                            # Combine gap data with new data
+                            if new_data is not None:
+                                combined = pd.concat([gap_data, new_data], ignore_index=True)
+                                return combined.sort_values('Date').drop_duplicates(subset=['Date'])
+                            else:
+                                return gap_data
+                                
+                    except Exception as e:
+                        print(f"      ⚠️  Gap backfill failed: {str(e)}")
+            
+            return new_data
+        
+        def save_updated_data(historical_data, new_data, compressed_file):
+            """Combine historical and new data, save compressed"""
+            try:
+                if new_data is None or len(new_data) == 0:
+                    print(f"      ℹ️  No new data to append")
+                    return True
+                
+                # Combine historical and new data
+                combined_data = pd.concat([historical_data, new_data], ignore_index=True)
+                
+                # Sort by date and remove any duplicates
+                combined_data = combined_data.sort_values('Date').drop_duplicates(subset=['Date'], keep='last')
+                
+                # Save compressed
+                with gzip.open(compressed_file, 'wt') as f:
+                    combined_data.to_csv(f, index=False)
+                
+                # Calculate file sizes for reporting
+                compressed_size = os.path.getsize(compressed_file) / 1024  # KB
+                
+                print(f"      ✅ Updated dataset saved: {len(combined_data)} total records")
+                print(f"         📦 Compressed size: {compressed_size:.1f} KB")
+                print(f"         📊 Added {len(new_data)} new records")
                 
                 return True
                 
             except Exception as e:
-                print(f"      ❌ Error saving {ticker_key}: {str(e)}")
+                print(f"      ❌ Error saving updated data: {str(e)}")
                 return False
         
+        def append_ticker_data(ticker_key, ticker_config, target_date):
+            """Handle daily append for a single ticker"""
+            print(f"   🔄 Processing {ticker_key}...")
+            
+            yf_symbol = ticker_config.get('yf_symbol', ticker_key)
+            
+            if yf_symbol != ticker_key:
+                print(f"      🔄 Using mapped symbol: {ticker_key} -> {yf_symbol}")
+            
+            try:
+                # Step 1: Load existing historical data
+                historical_data, compressed_file = load_historical_data(ticker_key)
+                
+                if historical_data is None:
+                    print(f"      ⚠️  No existing data - falling back to full 6-month download")
+                    # Could implement fallback to full download here
+                    return {'status': 'error', 'error': 'No existing historical data'}
+                
+                # Step 2: Determine what new data we need
+                last_date_in_data = historical_data['Date'].max().date()
+                
+                # Step 3: Fetch new daily data
+                new_data = fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date_in_data)
+                
+                # Step 4: Handle gaps (backfill missing trading days)
+                new_data = detect_and_handle_gaps(historical_data, new_data, ticker_key, yf_symbol)
+                
+                # Step 5: Save updated dataset
+                if save_updated_data(historical_data, new_data, compressed_file):
+                    return {
+                        'status': 'success', 
+                        'records_added': len(new_data) if new_data is not None else 0,
+                        'total_records': len(historical_data) + (len(new_data) if new_data is not None else 0)
+                    }
+                else:
+                    return {'status': 'error', 'error': 'Failed to save updated data'}
+                
+            except Exception as e:
+                print(f"      ❌ Error processing {ticker_key}: {str(e)}")
+                return {'status': 'error', 'error': str(e)}
+        
         def main():
-            print("💾 Historical Data CSV Saver")
+            """Main daily append function"""
+            print("🔄 Daily Historical Data Append")
             print("=" * 40)
+            
+            # Determine target date (yesterday's market data)
+            target_date = get_yesterday()
+            print(f"🎯 Target date: {target_date}")
             
             # Load discovered tickers
             try:
@@ -287,24 +254,33 @@ jobs:
                 print("❌ No discovered tickers found")
                 return 1
             
-            print(f"📊 Saving historical data for {len(discovered_tickers)} tickers...")
+            print(f"📊 Processing daily append for {len(discovered_tickers)} tickers...")
             
+            results = {}
             success_count = 0
+            
+            # Process each ticker
             for ticker_key, ticker_config in discovered_tickers.items():
-                yf_symbol = ticker_config.get('yf_symbol', ticker_key)
+                result = append_ticker_data(ticker_key, ticker_config, target_date)
+                results[ticker_key] = result
                 
-                if save_ticker_historical_data(ticker_key, yf_symbol):
+                if result['status'] == 'success':
                     success_count += 1
+                    records_added = result.get('records_added', 0)
+                    if records_added > 0:
+                        print(f"   ✅ {ticker_key}: Added {records_added} new records")
+                    else:
+                        print(f"   ✅ {ticker_key}: Already current")
+                else:
+                    print(f"   ❌ {ticker_key}: {result.get('error', 'Unknown error')}")
             
-            print(f"✅ Successfully saved {success_count}/{len(discovered_tickers)} historical datasets")
+            # Summary
+            print(f"\n📊 Daily Append Summary:")
+            print(f"✅ Successful: {success_count}/{len(discovered_tickers)} tickers")
+            print(f"❌ Errors: {len(discovered_tickers) - success_count}/{len(discovered_tickers)} tickers")
             
-            if success_count > 0:
-                print(f"📁 Files created:")
-                for ticker_key in discovered_tickers.keys():
-                    filename = f"{ticker_key}_historical_6months.csv"
-                    if os.path.exists(filename):
-                        size_kb = os.path.getsize(filename) / 1024
-                        print(f"   📄 {filename} ({size_kb:.1f} KB)")
+            total_records_added = sum(r.get('records_added', 0) for r in results.values() if r['status'] == 'success')
+            print(f"📈 Total new records added: {total_records_added}")
             
             return 0 if success_count > 0 else 1
         
@@ -312,308 +288,7 @@ jobs:
             exit(main())
         EOF
         
-        python save_historical_data.py
+        python daily_append_handler.py
         
-        echo "✅ Historical data CSV save completed"
-        echo "⏰ CSV save end time: $(date)"
-
-    # NEW STEP: Compress and Store Historical Data
-    - name: Compress and Store Historical Data
-      timeout-minutes: 3
-      run: |
-        echo "🗜️ Compressing and storing historical CSV files..."
-        echo "⏰ Compression start time: $(date)"
-        
-        # Create historical_data directory
-        mkdir -p historical_data
-        
-        # Check what CSV files were created
-        echo "📋 Checking for CSV files to compress..."
-        ls -la *_historical_*.csv 2>/dev/null || echo "   ⚠️  No historical CSV files found"
-        
-        # Compress and store each historical CSV file
-        compressed_count=0
-        for file in *_historical_6months.csv; do
-            if [ -f "$file" ]; then
-                # Extract ticker name (everything before _historical_6months.csv)
-                ticker=$(echo "$file" | sed 's/_historical_6months.csv//')
-                
-                # Compress and save with standardized name
-                compressed_file="historical_data/${ticker}_historical.csv.gz"
-                
-                echo "   🗜️ Compressing: $file → $compressed_file"
-                gzip -c "$file" > "$compressed_file"
-                
-                # Verify compression worked
-                if [ -f "$compressed_file" ]; then
-                    original_size=$(du -h "$file" | cut -f1)
-                    compressed_size=$(du -h "$compressed_file" | cut -f1)
-                    echo "      ✅ Success: $original_size → $compressed_size"
-                    
-                    # Remove original uncompressed file
-                    rm "$file"
-                    echo "      🗑️ Cleaned up original: $file"
-                    
-                    compressed_count=$((compressed_count + 1))
-                else
-                    echo "      ❌ Compression failed for $file"
-                fi
-            fi
-        done
-        
-        # Summary of compression results
-        echo ""
-        echo "📊 Compression Summary:"
-        echo "   🗜️ Files compressed: $compressed_count"
-        echo "   📁 Storage directory: historical_data/"
-        
-        # Show final directory contents
-        if [ -d "historical_data" ]; then
-            echo "   📋 Final contents:"
-            ls -lah historical_data/ | while read line; do echo "      $line"; done
-            
-            # Calculate total storage used
-            total_size=$(du -sh historical_data/ | cut -f1)
-            echo "   💾 Total storage used: $total_size"
-        fi
-        
-        echo "✅ Historical data compression completed"
-        echo "⏰ Compression end time: $(date)"
-
-    - name: Dynamic ATR Calculation
-      timeout-minutes: 5
-      run: |
-        echo "🔄 Starting dynamic multi-ticker ATR calculation..."
-        echo "⏰ Current time: $(date)"
-        
-        cat > dynamic_atr_updater.py << 'EOF'
-        #!/usr/bin/env python3
-        import json
-        import yfinance as yf
-        import pandas as pd
-        import numpy as np
-        import sys
-        from datetime import datetime, timedelta
-        
-        def calculate_atr(data, period=14):
-            """Calculate Average True Range (ATR) for given data"""
-            high = data['High']
-            low = data['Low']
-            close = data['Close']
-            
-            # Calculate True Range components
-            tr1 = high - low
-            tr2 = abs(high - close.shift())
-            tr3 = abs(low - close.shift())
-            
-            # True Range is the maximum of the three
-            true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-            
-            # ATR is the rolling mean of True Range
-            atr = true_range.rolling(window=period).mean()
-            
-            return atr
-        
-        def calculate_ticker_atr(ticker_key, yf_symbol):
-            """Calculate ATR for a single ticker with comprehensive debugging"""
-            print(f"🔄 Processing {ticker_key}...")
-            
-            # Handle symbol mapping
-            if yf_symbol != ticker_key:
-                print(f"   🔄 Using mapped symbol: {ticker_key} -> {yf_symbol}")
-            
-            try:
-                print(f"🔍 DEBUG: Requesting 6 months of data for {yf_symbol} using period='6mo'")
-                
-                # Get 6 months of data for proper ATR baseline
-                ticker = yf.Ticker(yf_symbol)
-                data = ticker.history(period="6mo")
-                
-                if data.empty:
-                    return {'status': 'error', 'error': 'No data available'}
-                
-                print(f"📊 Downloaded {len(data)} days of data for {yf_symbol} for proper ATR baseline")
-                print(f"📅 Date range: {data.index[0].date()} to {data.index[-1].date()}")
-                
-                # Reset index for easier handling
-                data = data.reset_index()
-                
-                print(f"🔄 Using 6 months of historical data for ATR convergence")
-                
-                # Calculate ATR with 14-period window
-                data['ATR'] = calculate_atr(data, period=14)
-                
-                # Filter out NaN ATR values for debugging info
-                valid_atr_data = data.dropna(subset=['ATR'])
-                
-                print(f"🔍 DEBUG INFO for {yf_symbol}:")
-                print(f"   Total downloaded rows: {len(data)}")
-                print(f"   Valid ATR rows: {len(valid_atr_data)}")
-                if len(valid_atr_data) > 0:
-                    print(f"   First valid ATR date: {valid_atr_data.iloc[0]['Date'].date()}")
-                    print(f"   Last valid ATR date: {valid_atr_data.iloc[-1]['Date'].date()}")
-                    print(f"   First valid ATR value: {valid_atr_data.iloc[0]['ATR']:.4f}")
-                    print(f"   Last valid ATR value: {valid_atr_data.iloc[-1]['ATR']:.4f}")
-                
-                # Get most recent values
-                latest_data = data.iloc[-1]
-                
-                reference_close = latest_data['Close']
-                reference_atr = latest_data['ATR']
-                
-                if pd.isna(reference_atr):
-                    return {'status': 'error', 'error': 'ATR calculation resulted in NaN'}
-                
-                print(f"✅ {ticker_key}: Close=${reference_close:.2f}, ATR=${reference_atr:.2f}")
-                
-                return {
-                    'status': 'success',
-                    'reference_close': float(reference_close),
-                    'reference_atr': float(reference_atr),
-                    'last_updated': datetime.now().isoformat(),
-                    'data_points': len(data),
-                    'valid_atr_points': len(valid_atr_data),
-                    'yf_symbol': yf_symbol
-                }
-                
-            except Exception as e:
-                print(f"❌ Error processing {ticker_key}: {str(e)}")
-                return {'status': 'error', 'error': str(e)}
-        
-        def main():
-            """Main ATR calculation function"""
-            print("🎯 Dynamic ATR Calculator")
-            print("=" * 30)
-            
-            # Load discovered tickers
-            try:
-                with open('discovered_tickers.json', 'r') as f:
-                    config = json.load(f)
-                discovered_tickers = config.get('tickers', {})
-            except Exception as e:
-                print(f"❌ Could not load discovered tickers: {e}")
-                return 1
-            
-            if not discovered_tickers:
-                print("❌ No discovered tickers found")
-                return 1
-            
-            print(f"📊 Processing {len(discovered_tickers)} discovered tickers...")
-            
-            results = {}
-            
-            # Process each ticker
-            for ticker_key, ticker_config in discovered_tickers.items():
-                yf_symbol = ticker_config.get('yf_symbol', ticker_key)
-                result = calculate_ticker_atr(ticker_key, yf_symbol)
-                results[ticker_key] = result
-            
-            # Display results summary
-            for ticker_key, ticker_data in results.items():
-                if ticker_data['status'] == 'success':
-                    print(f"✅ {ticker_key}: ${ticker_data['reference_close']:.2f} (ATR: ${ticker_data['reference_atr']:.2f})")
-                else:
-                    print(f"❌ {ticker_key}: ERROR - {ticker_data['error']}")
-            
-            # Create final data structure
-            final_data = {
-                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z"),
-                "last_updated_timestamp": datetime.now().timestamp(),
-                "discovery_method": "github_repo_scan",
-                "tickers": results
-            }
-            
-            # Save results
-            with open('atr_levels.json', 'w') as f:
-                json.dump(final_data, f, indent=2)
-            
-            # Summary
-            success_count = sum(1 for data in results.values() if data['status'] == 'success')
-            error_count = len(results) - success_count
-            
-            print(f"📊 SUMMARY:")
-            print(f"✅ Successful: {success_count}/{len(results)} tickers")
-            print(f"❌ Errors: {error_count}/{len(results)} tickers")
-            
-            if success_count > 0:
-                print(f"🎯 Successful Calculations:")
-                for ticker_key, data in results.items():
-                    if data['status'] == 'success':
-                        print(f"   {ticker_key}: ${data['reference_close']:.2f} (ATR: ${data['reference_atr']:.2f})")
-            
-            return 0 if success_count > 0 else 1
-        
-        if __name__ == "__main__":
-            sys.exit(main())
-        EOF
-        
-        python dynamic_atr_updater.py
-        
-        echo "✅ Dynamic ATR calculation completed"
-        echo "⏰ Completion time: $(date)"
-    
-    - name: Check Results
-      timeout-minutes: 2
-      run: |
-        if [ -f "atr_levels.json" ]; then
-          echo "✅ ATR levels JSON file created successfully"
-          echo "📊 File size: $(du -h atr_levels.json | cut -f1)"
-          echo "📋 Discovery results:"
-          
-          # Show discovered vs processed tickers
-          if [ -f "discovered_tickers.json" ]; then
-            echo "🔍 Discovered tickers:"
-            python -c "import json; data=json.load(open('discovered_tickers.json')); print('\n'.join([f'   • {k}: {v[\"trading_schedule\"]}' for k,v in data.get('tickers', {}).items()]))"
-          fi
-          
-          echo ""
-          echo "📊 Final ATR results:"
-          python -c "import json; data=json.load(open('atr_levels.json')); print(f'🎯 {len(data.get(\"tickers\", {}))} tickers processed')"
-          
-          # NEW: Show compressed historical files
-          if [ -d "historical_data" ]; then
-            echo ""
-            echo "📦 Compressed historical files:"
-            ls -lah historical_data/*.gz 2>/dev/null | while read line; do echo "   $line"; done
-          fi
-          
-        else
-          echo "❌ ATR levels JSON file not found!"
-          exit 1
-        fi
-    
-    - name: Commit Updated Files
-      timeout-minutes: 3
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        
-        # Add discovered config, ATR results, and compressed historical CSVs
-        git add atr_levels.json
-        if [ -f "discovered_tickers.json" ]; then
-          git add discovered_tickers.json
-        fi
-        
-        # Add the historical_data directory and compressed CSV files
-        git add historical_data/*.gz 2>/dev/null || true
-        
-        # Verify what we're about to commit
-        echo "📋 Files staged for commit:"
-        git diff --staged --name-status
-        
-        if git diff --staged --quiet; then
-          echo "No changes to commit"
-        else
-          echo "📝 Committing changes..."
-          git commit -m "🤖 Dynamic discovery ATR update - $(date '+%Y-%m-%d %H:%M UTC')"
-          echo "📤 Pushing to repository..."
-          git push origin ${{ github.ref_name }}
-          echo "✅ Successfully pushed changes"
-        fi
-    
-    # Optional: Send notification on failure
-    - name: Notify on failure
-      if: failure()
-      run: |
-        echo "❌ Dynamic discovery ATR calculation failed!"
-        echo "Check the logs above for details."
+        echo "✅ Daily append to historical data completed"
+        echo "⏰ Append end time: $(date)"
