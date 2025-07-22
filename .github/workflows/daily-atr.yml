@@ -123,9 +123,20 @@ jobs:
             """Learn ticker characteristics from Yahoo Finance"""
             print(f"   🧠 Learning characteristics of {ticker}...")
             
+            # TEMPORARY: Symbol mapping for trial period
+            # TODO: Remove after Barchart data dump and enhanced summarizer
+            TEMP_SYMBOL_MAP = {
+                'SPX': '^GSPC',
+                'ES': 'ES=F'
+            }
+            
+            yf_symbol = TEMP_SYMBOL_MAP.get(ticker, ticker)
+            if yf_symbol != ticker:
+                print(f"      🔄 TEMP mapping: {ticker} -> {yf_symbol}")
+            
             try:
                 # Test data availability with small sample
-                yf_ticker = yf.Ticker(ticker)
+                yf_ticker = yf.Ticker(yf_symbol)
                 test_data = yf_ticker.history(period="5d")
                 
                 if not test_data.empty:
@@ -141,10 +152,11 @@ jobs:
                     
                     characteristics = {
                         'ticker': ticker,
-                        'yf_symbol': ticker,
+                        'yf_symbol': yf_symbol,  # Use mapped symbol
                         'data_available': True,
                         'trading_schedule': schedule,
-                        'discovered_at': datetime.now().isoformat()
+                        'discovered_at': datetime.now().isoformat(),
+                        'temp_mapping': yf_symbol != ticker  # Flag for cleanup later
                     }
                     
                     print(f"      ✅ {ticker}: Available, schedule={schedule}")
@@ -249,6 +261,9 @@ jobs:
                 print(f"🔄 Processing {ticker_key}...")
                 
                 yf_symbol = config.get('yf_symbol', ticker_key)
+                if yf_symbol != ticker_key:
+                    print(f"   🔄 Using mapped symbol: {ticker_key} -> {yf_symbol}")
+                
                 ticker_data = calculate_atr_levels(ticker=yf_symbol)
                 
                 # Add metadata
