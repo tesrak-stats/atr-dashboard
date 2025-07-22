@@ -219,6 +219,109 @@ jobs:
         echo "✅ Ticker discovery completed"
         echo "⏰ Discovery end time: $(date)"
     
+    - name: Save Historical Data to CSV
+      timeout-minutes: 5
+      run: |
+        echo "💾 Saving 6-month historical data to permanent CSV files..."
+        echo "⏰ CSV save start time: $(date)"
+        
+        cat > save_historical_data.py << 'EOF'
+        #!/usr/bin/env python3
+        import json
+        import yfinance as yf
+        import pandas as pd
+        import os
+        from datetime import datetime, timedelta, date
+        
+        def save_ticker_historical_data(ticker_key, yf_symbol):
+            """Save 6 months of historical data to CSV"""
+            print(f"   📊 Saving {ticker_key} ({yf_symbol}) historical data...")
+            
+            try:
+                # Get 6 months of data (same as ATR calculation)
+                yf_ticker = yf.Ticker(yf_symbol)
+                historical_data = yf_ticker.history(period="6mo")
+                
+                if historical_data.empty:
+                    print(f"      ❌ No historical data available for {yf_symbol}")
+                    return False
+                
+                # Reset index to get Date as column
+                historical_data = historical_data.reset_index()
+                
+                # Handle MultiIndex columns if present
+                if isinstance(historical_data.columns, pd.MultiIndex):
+                    historical_data.columns = historical_data.columns.get_level_values(0)
+                
+                # Ensure standard column names
+                standard_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+                available_columns = [col for col in standard_columns if col in historical_data.columns]
+                historical_data = historical_data[available_columns]
+                
+                # Add metadata
+                historical_data['Ticker'] = ticker_key
+                historical_data['YF_Symbol'] = yf_symbol
+                historical_data['Downloaded_At'] = datetime.now().isoformat()
+                
+                # Save to CSV
+                filename = f"{ticker_key}_historical_6months.csv"
+                historical_data.to_csv(filename, index=False)
+                
+                print(f"      ✅ Saved {len(historical_data)} records to {filename}")
+                print(f"         📅 Date range: {historical_data['Date'].min()} to {historical_data['Date'].max()}")
+                
+                return True
+                
+            except Exception as e:
+                print(f"      ❌ Error saving {ticker_key}: {str(e)}")
+                return False
+        
+        def main():
+            print("💾 Historical Data CSV Saver")
+            print("=" * 40)
+            
+            # Load discovered tickers
+            try:
+                with open('discovered_tickers.json', 'r') as f:
+                    config = json.load(f)
+                discovered_tickers = config.get('tickers', {})
+            except Exception as e:
+                print(f"❌ Could not load discovered tickers: {e}")
+                return 1
+            
+            if not discovered_tickers:
+                print("❌ No discovered tickers found")
+                return 1
+            
+            print(f"📊 Saving historical data for {len(discovered_tickers)} tickers...")
+            
+            success_count = 0
+            for ticker_key, ticker_config in discovered_tickers.items():
+                yf_symbol = ticker_config.get('yf_symbol', ticker_key)
+                
+                if save_ticker_historical_data(ticker_key, yf_symbol):
+                    success_count += 1
+            
+            print(f"✅ Successfully saved {success_count}/{len(discovered_tickers)} historical datasets")
+            
+            if success_count > 0:
+                print(f"📁 Files created:")
+                for ticker_key in discovered_tickers.keys():
+                    filename = f"{ticker_key}_historical_6months.csv"
+                    if os.path.exists(filename):
+                        size_kb = os.path.getsize(filename) / 1024
+                        print(f"   📄 {filename} ({size_kb:.1f} KB)")
+            
+            return 0 if success_count > 0 else 1
+        
+        if __name__ == "__main__":
+            exit(main())
+        EOF
+        
+        python save_historical_data.py
+        
+        echo "✅ Historical data CSV save completed"
+        echo "⏰ CSV save end time: $(date)"
     - name: Run Dynamic ATR Calculator
       timeout-minutes: 10
       run: |
@@ -343,11 +446,14 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         
-        # Add both discovered config and ATR results
+        # Add discovered config, ATR results, and compressed historical CSVs
         git add atr_levels.json
         if [ -f "discovered_tickers.json" ]; then
           git add discovered_tickers.json
         fi
+        
+        # Add the historical_data directory and compressed CSV files
+        git add historical_data/*.gz 2>/dev/null || true
         
         if git diff --staged --quiet; then
           echo "No changes to commit"
