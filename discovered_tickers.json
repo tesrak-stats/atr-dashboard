@@ -1,5 +1,5 @@
 {
-  "discovered_at": "2025-07-22T04:06:22.664154",
+  "discovered_at": "2025-07-22T05:02:56.460330",
   "method": "github_repo_discovery",
   "tickers": {
     "ES": {
@@ -7,7 +7,7 @@
       "yf_symbol": "ES=F",
       "data_available": true,
       "trading_schedule": "weekdays_only",
-      "discovered_at": "2025-07-22T04:06:19.700977",
+      "discovered_at": "2025-07-22T05:02:53.448577",
       "temp_mapping": true
     },
     "IWM": {
@@ -15,7 +15,7 @@
       "yf_symbol": "IWM",
       "data_available": true,
       "trading_schedule": "weekdays_only",
-      "discovered_at": "2025-07-22T04:06:20.342040",
+      "discovered_at": "2025-07-22T05:02:54.119780",
       "temp_mapping": false
     },
     "NVDA": {
@@ -23,7 +23,7 @@
       "yf_symbol": "NVDA",
       "data_available": true,
       "trading_schedule": "weekdays_only",
-      "discovered_at": "2025-07-22T04:06:20.951397",
+      "discovered_at": "2025-07-22T05:02:54.745182",
       "temp_mapping": false
     },
     "QQQ": {
@@ -31,7 +31,7 @@
       "yf_symbol": "QQQ",
       "data_available": true,
       "trading_schedule": "weekdays_only",
-      "discovered_at": "2025-07-22T04:06:21.584038",
+      "discovered_at": "2025-07-22T05:02:55.375846",
       "temp_mapping": false
     },
     "SPX": {
@@ -39,7 +39,7 @@
       "yf_symbol": "^GSPC",
       "data_available": true,
       "trading_schedule": "weekdays_only",
-      "discovered_at": "2025-07-22T04:06:22.163978",
+      "discovered_at": "2025-07-22T05:02:55.960174",
       "temp_mapping": true
     }
   }
