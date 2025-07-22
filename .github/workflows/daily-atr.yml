@@ -483,64 +483,6 @@ jobs:
                 print(f"      ❌ Error loading historical data: {str(e)}")
                 return None, compressed_file
         
-        def fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date_in_data=None):
-            """Fetch new daily data with Polygon primary, Yahoo Finance backup"""
-            try:
-                if last_date_in_data:
-                    start_date = last_date_in_data + timedelta(days=1)
-                    if start_date > target_date:
-                        print(f"      ✅ Data is current")
-                        return None
-                    print(f"      🔄 Fetching from {start_date} to {target_date}")
-                else:
-                    start_date = target_date - timedelta(days=5)
-                    print(f"      🔄 Fallback fetch: last 5 days")
-                
-                # Determine data source preference
-                polygon_symbol = convert_to_polygon_symbol(ticker_key, yf_symbol)
-                use_polygon = should_use_polygon(ticker_key)
-                
-                new_data = None
-                
-                if use_polygon and polygon_symbol:
-                    print(f"      🔵 Trying Polygon first: {polygon_symbol}")
-                    new_data = fetch_from_polygon(polygon_symbol, start_date, target_date)
-                    
-                    if new_data is not None and len(new_data) > 0:
-                        print(f"      ✅ Polygon success: {len(new_data)} records")
-                    else:
-                        print(f"      ⚠️ Polygon failed, falling back to Yahoo Finance")
-                        new_data = None
-                
-                # Yahoo Finance primary or backup
-                if new_data is None:
-                    print(f"      🟡 Using Yahoo Finance: {yf_symbol}")
-                    new_data = fetch_from_yahoo(yf_symbol, start_date, target_date)
-                    
-                    if new_data is not None and len(new_data) > 0:
-                        print(f"      ✅ Yahoo Finance success: {len(new_data)} records")
-                    else:
-                        print(f"      ❌ Yahoo Finance also failed")
-                        return None
-                
-                # Add metadata to processed data
-                if new_data is not None:
-                    new_data['Ticker'] = ticker_key
-                    new_data['YF_Symbol'] = yf_symbol  # Keep for compatibility
-                    new_data['Downloaded_At'] = datetime.now().isoformat()
-                    
-                    # Add data source info
-                    if polygon_symbol and use_polygon:
-                        new_data['Data_Source'] = 'Polygon' if len(new_data) > 0 else 'Yahoo_Backup'
-                    else:
-                        new_data['Data_Source'] = 'Yahoo_Primary'
-                
-                return new_data
-                
-            except Exception as e:
-                print(f"      ❌ Error in data fetch: {str(e)}")
-                return None
-        
         def should_use_polygon(ticker_key):
             """Determine if ticker should use Polygon as primary source"""
             # Polygon is great for stocks, ETFs, some crypto
@@ -662,6 +604,64 @@ jobs:
                 print(f"      ❌ Yahoo Finance error: {str(e)}")
                 return None
         
+        def fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date_in_data=None):
+            """Fetch new daily data with Polygon primary, Yahoo Finance backup"""
+            try:
+                if last_date_in_data:
+                    start_date = last_date_in_data + timedelta(days=1)
+                    if start_date > target_date:
+                        print(f"      ✅ Data is current")
+                        return None
+                    print(f"      🔄 Fetching from {start_date} to {target_date}")
+                else:
+                    start_date = target_date - timedelta(days=5)
+                    print(f"      🔄 Fallback fetch: last 5 days")
+                
+                # Determine data source preference
+                polygon_symbol = convert_to_polygon_symbol(ticker_key, yf_symbol)
+                use_polygon = should_use_polygon(ticker_key)
+                
+                new_data = None
+                
+                if use_polygon and polygon_symbol:
+                    print(f"      🔵 Trying Polygon first: {polygon_symbol}")
+                    new_data = fetch_from_polygon(polygon_symbol, start_date, target_date)
+                    
+                    if new_data is not None and len(new_data) > 0:
+                        print(f"      ✅ Polygon success: {len(new_data)} records")
+                    else:
+                        print(f"      ⚠️ Polygon failed, falling back to Yahoo Finance")
+                        new_data = None
+                
+                # Yahoo Finance primary or backup
+                if new_data is None:
+                    print(f"      🟡 Using Yahoo Finance: {yf_symbol}")
+                    new_data = fetch_from_yahoo(yf_symbol, start_date, target_date)
+                    
+                    if new_data is not None and len(new_data) > 0:
+                        print(f"      ✅ Yahoo Finance success: {len(new_data)} records")
+                    else:
+                        print(f"      ❌ Yahoo Finance also failed")
+                        return None
+                
+                # Add metadata to processed data
+                if new_data is not None:
+                    new_data['Ticker'] = ticker_key
+                    new_data['YF_Symbol'] = yf_symbol  # Keep for compatibility
+                    new_data['Downloaded_At'] = datetime.now().isoformat()
+                    
+                    # Add data source info
+                    if polygon_symbol and use_polygon:
+                        new_data['Data_Source'] = 'Polygon' if len(new_data) > 0 else 'Yahoo_Backup'
+                    else:
+                        new_data['Data_Source'] = 'Yahoo_Primary'
+                
+                return new_data
+                
+            except Exception as e:
+                print(f"      ❌ Error in data fetch: {str(e)}")
+                return None
+        
         def save_updated_data(historical_data, new_data, compressed_file):
             """Save updated historical data"""
             try:
@@ -703,71 +703,6 @@ jobs:
             except Exception as e:
                 print(f"      ❌ ATR calculation error: {str(e)}")
                 return None
-        
-        def process_ticker(ticker_key, ticker_config, target_date, phase):
-            """Process a single ticker with retry logic for both daily and intraday data"""
-            print(f"   🔄 Processing {ticker_key} ({phase})...")
-            
-            yf_symbol = ticker_config.get('yf_symbol', ticker_key)
-            if yf_symbol != ticker_key:
-                print(f"      🔄 Using mapped symbol: {ticker_key} -> {yf_symbol}")
-            
-            try:
-                # === DAILY DATA PROCESSING ===
-                print(f"      📊 Processing daily data...")
-                
-                # Load existing daily data
-                historical_data, compressed_file = load_historical_data(ticker_key)
-                
-                # Determine last date
-                last_date = None
-                if historical_data is not None and len(historical_data) > 0:
-                    last_date = historical_data['Date'].max().date()
-                
-                # Fetch new daily data
-                new_daily_data = fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date)
-                
-                # Update historical daily data
-                if not save_updated_data(historical_data, new_daily_data, compressed_file):
-                    return {'status': 'error', 'error': 'Failed to save daily data'}
-                
-                # Reload for ATR calculation
-                updated_data, _ = load_historical_data(ticker_key)
-                if updated_data is None:
-                    return {'status': 'error', 'error': 'Failed to reload daily data'}
-                
-                # Calculate ATR
-                updated_data['ATR'] = calculate_atr(updated_data)
-                latest_row = updated_data.iloc[-1]
-                
-                if pd.isna(latest_row['ATR']):
-                    return {'status': 'error', 'error': 'ATR calculation failed'}
-                
-                print(f"      ✅ Daily success: Close=${latest_row['Close']:.2f}, ATR=${latest_row['ATR']:.2f}")
-                
-                # === INTRADAY DATA PROCESSING ===
-                print(f"      📈 Processing 10-minute intraday data...")
-                
-                intraday_result = process_intraday_data(ticker_key, yf_symbol, target_date, last_date)
-                intraday_status = "success" if intraday_result else "failed"
-                
-                print(f"      📈 Intraday result: {intraday_status}")
-                
-                return {
-                    'status': 'success',
-                    'reference_close': float(latest_row['Close']),
-                    'reference_atr': float(latest_row['ATR']),
-                    'last_updated': datetime.now().isoformat(),
-                    'yf_symbol': yf_symbol,
-                    'data_points': len(updated_data),
-                    'processing_phase': phase,
-                    'intraday_status': intraday_status,
-                    'data_source': new_daily_data.get('Data_Source', 'Unknown').iloc[0] if new_daily_data is not None and len(new_daily_data) > 0 else 'No_New_Data'
-                }
-                
-            except Exception as e:
-                print(f"      ❌ Error: {str(e)}")
-                return {'status': 'error', 'error': str(e)}
         
         def process_intraday_data(ticker_key, yf_symbol, target_date, last_daily_date):
             """Process 10-minute intraday data for a ticker"""
@@ -858,7 +793,7 @@ jobs:
                     new_data = fetch_intraday_from_yahoo(yf_symbol, start_date, end_date)
                     
                     if new_data is not None and len(new_data) > 0:
-                        print(f"        ✅ Yahoo intraday success: {len(new_data)} records")
+                        print(f"        ✅ Yahoo intraday success: {len(new_data)} 10-minute bars (resampled from 5-min)")
                     else:
                         print(f"        ❌ Yahoo intraday also failed")
                         return None
@@ -929,90 +864,27 @@ jobs:
             except Exception as e:
                 print(f"        ❌ Polygon intraday error: {str(e)}")
                 return None
-      def fetch_intraday_from_yahoo(yf_symbol, start_date, end_date):
-    """Fetch 5-minute intraday data from Yahoo Finance and resample to 10-minute"""
-    try:
-        # Yahoo Finance intraday is limited to recent periods
-        # For 5-minute data, we can typically get about 60 days
-        max_days = min(60, (end_date - start_date).days + 1)
-        actual_start = end_date - timedelta(days=max_days)
         
-        yf_ticker = yf.Ticker(yf_symbol)
-        
-        # Fetch with 5-minute interval (Yahoo Finance supported)
-        print(f"        📊 Fetching 5-minute data from Yahoo Finance...")
-        data = yf_ticker.history(
-            start=actual_start,
-            end=end_date + timedelta(days=1),
-            interval="5m"  # ← CHANGED FROM "10m" to "5m"
-        )
-        
-        if data.empty:
-            print(f"        ⚠️ No 5-minute data available from Yahoo")
-            return None
-        
-        # Process data
-        data = data.reset_index()
-        if isinstance(data.columns, pd.MultiIndex):
-            data.columns = data.columns.get_level_values(0)
-        
-        # Rename to match our format
-        data = data.rename(columns={'Date': 'Datetime'})
-        
-        standard_columns = ['Datetime', 'Open', 'High', 'Low', 'Close', 'Volume']
-        available_columns = [col for col in standard_columns if col in data.columns]
-        data = data[available_columns]
-        data['Datetime'] = pd.to_datetime(data['Datetime'])
-        
-        print(f"        📊 Retrieved {len(data)} 5-minute bars, resampling to 10-minute...")
-        
-        # Resample 5-minute data to 10-minute
-        resampled_data = resample_to_10min(data)
-        
-        if resampled_data is not None and len(resampled_data) > 0:
-            print(f"        ✅ Resampled to {len(resampled_data)} 10-minute bars")
-            return resampled_data
-        else:
-            print(f"        ❌ Resampling failed")
-            return None
-        
-    except Exception as e:
-        print(f"        ❌ Yahoo intraday error: {str(e)}")
-        return None
-
-def resample_to_10min(data_5min):
-    """Resample 5-minute OHLC data to 10-minute OHLC data"""
-    try:
-        if data_5min is None or len(data_5min) == 0:
-            return None
-        
-        # Set datetime as index for resampling
-        data_5min = data_5min.set_index('Datetime')
-        
-        # Resample to 10-minute intervals
-        resampled = data_5min.resample('10T').agg({
-            'Open': 'first',
-            'High': 'max', 
-            'Low': 'min',
-            'Close': 'last',
-            'Volume': 'sum'
-        })
-        
-        # Remove rows where we don't have complete data (NaN values)
-        resampled = resampled.dropna()
-        
-        # Reset index to get Datetime back as column
-        resampled = resampled.reset_index()
-        
-        print(f"        🔄 Resampling: {len(data_5min)} 5-min → {len(resampled)} 10-min bars")
-        
-        return resampled
-        
-    except Exception as e:
-        print(f"        ❌ Resampling error: {str(e)}")
-        return None
+        def fetch_intraday_from_yahoo(yf_symbol, start_date, end_date):
+            """Fetch 5-minute intraday data from Yahoo Finance and resample to 10-minute"""
+            try:
+                # Yahoo Finance intraday is limited to recent periods
+                # For 5-minute data, we can typically get about 60 days
+                max_days = min(60, (end_date - start_date).days + 1)
+                actual_start = end_date - timedelta(days=max_days)
+                
+                yf_ticker = yf.Ticker(yf_symbol)
+                
+                # Fetch with 5-minute interval (Yahoo Finance supported)
+                print(f"        📊 Fetching 5-minute data from Yahoo Finance...")
+                data = yf_ticker.history(
+                    start=actual_start,
+                    end=end_date + timedelta(days=1),
+                    interval="5m"
+                )
                 
                 if data.empty:
+                    print(f"        ⚠️ No 5-minute data available from Yahoo")
                     return None
                 
                 # Process data
@@ -1028,11 +900,118 @@ def resample_to_10min(data_5min):
                 data = data[available_columns]
                 data['Datetime'] = pd.to_datetime(data['Datetime'])
                 
-                return data
+                print(f"        📊 Retrieved {len(data)} 5-minute bars, resampling to 10-minute...")
+                
+                # Resample 5-minute data to 10-minute
+                resampled_data = resample_to_10min(data)
+                
+                if resampled_data is not None and len(resampled_data) > 0:
+                    print(f"        ✅ Resampled to {len(resampled_data)} 10-minute bars")
+                    return resampled_data
+                else:
+                    print(f"        ❌ Resampling failed")
+                    return None
                 
             except Exception as e:
                 print(f"        ❌ Yahoo intraday error: {str(e)}")
                 return None
+        
+        def resample_to_10min(data_5min):
+            """Resample 5-minute OHLC data to 10-minute OHLC data"""
+            try:
+                if data_5min is None or len(data_5min) == 0:
+                    return None
+                
+                # Set datetime as index for resampling
+                data_5min = data_5min.set_index('Datetime')
+                
+                # Resample to 10-minute intervals
+                resampled = data_5min.resample('10T').agg({
+                    'Open': 'first',
+                    'High': 'max', 
+                    'Low': 'min',
+                    'Close': 'last',
+                    'Volume': 'sum'
+                })
+                
+                # Remove rows where we don't have complete data (NaN values)
+                resampled = resampled.dropna()
+                
+                # Reset index to get Datetime back as column
+                resampled = resampled.reset_index()
+                
+                print(f"        🔄 Resampling: {len(data_5min)} 5-min → {len(resampled)} 10-min bars")
+                
+                return resampled
+                
+            except Exception as e:
+                print(f"        ❌ Resampling error: {str(e)}")
+                return None
+        
+        def process_ticker(ticker_key, ticker_config, target_date, phase):
+            """Process a single ticker with retry logic for both daily and intraday data"""
+            print(f"   🔄 Processing {ticker_key} ({phase})...")
+            
+            yf_symbol = ticker_config.get('yf_symbol', ticker_key)
+            if yf_symbol != ticker_key:
+                print(f"      🔄 Using mapped symbol: {ticker_key} -> {yf_symbol}")
+            
+            try:
+                # === DAILY DATA PROCESSING ===
+                print(f"      📊 Processing daily data...")
+                
+                # Load existing daily data
+                historical_data, compressed_file = load_historical_data(ticker_key)
+                
+                # Determine last date
+                last_date = None
+                if historical_data is not None and len(historical_data) > 0:
+                    last_date = historical_data['Date'].max().date()
+                
+                # Fetch new daily data
+                new_daily_data = fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date)
+                
+                # Update historical daily data
+                if not save_updated_data(historical_data, new_daily_data, compressed_file):
+                    return {'status': 'error', 'error': 'Failed to save daily data'}
+                
+                # Reload for ATR calculation
+                updated_data, _ = load_historical_data(ticker_key)
+                if updated_data is None:
+                    return {'status': 'error', 'error': 'Failed to reload daily data'}
+                
+                # Calculate ATR
+                updated_data['ATR'] = calculate_atr(updated_data)
+                latest_row = updated_data.iloc[-1]
+                
+                if pd.isna(latest_row['ATR']):
+                    return {'status': 'error', 'error': 'ATR calculation failed'}
+                
+                print(f"      ✅ Daily success: Close=${latest_row['Close']:.2f}, ATR=${latest_row['ATR']:.2f}")
+                
+                # === INTRADAY DATA PROCESSING ===
+                print(f"      📈 Processing 10-minute intraday data...")
+                
+                intraday_result = process_intraday_data(ticker_key, yf_symbol, target_date, last_date)
+                intraday_status = "success" if intraday_result else "failed"
+                
+                print(f"      📈 Intraday result: {intraday_status}")
+                
+                return {
+                    'status': 'success',
+                    'reference_close': float(latest_row['Close']),
+                    'reference_atr': float(latest_row['ATR']),
+                    'last_updated': datetime.now().isoformat(),
+                    'yf_symbol': yf_symbol,
+                    'data_points': len(updated_data),
+                    'processing_phase': phase,
+                    'intraday_status': intraday_status,
+                    'data_source': new_daily_data.get('Data_Source', 'Unknown').iloc[0] if new_daily_data is not None and len(new_daily_data) > 0 else 'No_New_Data'
+                }
+                
+            except Exception as e:
+                print(f"      ❌ Error: {str(e)}")
+                return {'status': 'error', 'error': str(e)}
         
         def main():
             """Main processing function"""
