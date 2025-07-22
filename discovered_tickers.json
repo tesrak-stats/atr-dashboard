@@ -1,34 +1,46 @@
 {
-  "discovered_at": "2025-07-22T03:56:46.938299",
+  "discovered_at": "2025-07-22T04:06:22.664154",
   "method": "github_repo_discovery",
   "tickers": {
     "ES": {
       "ticker": "ES",
-      "yf_symbol": "ES",
+      "yf_symbol": "ES=F",
       "data_available": true,
       "trading_schedule": "weekdays_only",
-      "discovered_at": "2025-07-22T03:56:43.612487"
+      "discovered_at": "2025-07-22T04:06:19.700977",
+      "temp_mapping": true
     },
     "IWM": {
       "ticker": "IWM",
       "yf_symbol": "IWM",
       "data_available": true,
       "trading_schedule": "weekdays_only",
-      "discovered_at": "2025-07-22T03:56:44.410561"
+      "discovered_at": "2025-07-22T04:06:20.342040",
+      "temp_mapping": false
     },
     "NVDA": {
       "ticker": "NVDA",
       "yf_symbol": "NVDA",
       "data_available": true,
       "trading_schedule": "weekdays_only",
-      "discovered_at": "2025-07-22T03:56:45.194226"
+      "discovered_at": "2025-07-22T04:06:20.951397",
+      "temp_mapping": false
     },
     "QQQ": {
       "ticker": "QQQ",
       "yf_symbol": "QQQ",
       "data_available": true,
       "trading_schedule": "weekdays_only",
-      "discovered_at": "2025-07-22T03:56:45.844246"
+      "discovered_at": "2025-07-22T04:06:21.584038",
+      "temp_mapping": false
+    },
+    "SPX": {
+      "ticker": "SPX",
+      "yf_symbol": "^GSPC",
+      "data_available": true,
+      "trading_schedule": "weekdays_only",
+      "discovered_at": "2025-07-22T04:06:22.163978",
+      "temp_mapping": true
     }
   }
 }

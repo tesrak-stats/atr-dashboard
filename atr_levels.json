@@ -1,44 +1,44 @@
 {
-  "last_updated": "2025-07-22 03:56:47 ",
-  "last_updated_timestamp": 1753156607.975237,
+  "last_updated": "2025-07-22 04:06:23 ",
+  "last_updated_timestamp": 1753157183.654512,
   "discovery_method": "github_repo_scan",
   "tickers": {
     "ES": {
-      "generated_at": "2025-07-21 23:56:47 EDT",
-      "generated_timestamp": 1753156607.696157,
-      "ticker": "ES",
+      "generated_at": "2025-07-22 00:06:23 EDT",
+      "generated_timestamp": 1753157183.317717,
+      "ticker": "ES=F",
       "reference_date": "2025-07-21",
-      "reference_close": 65.54,
-      "reference_atr": 1.19,
-      "data_age_days": 0,
+      "reference_close": 6345.25,
+      "reference_atr": 58.96,
+      "data_age_days": 1,
       "target_date": "next_trading_day",
       "levels": {
-        "+1.000": 66.73,
-        "+0.786": 66.47,
-        "+0.618": 66.27,
-        "+0.500": 66.13,
-        "+0.382": 65.99,
-        "+0.236": 65.82,
-        "+0.000": 65.54,
-        "-0.236": 65.26,
-        "-0.382": 65.09,
-        "-0.500": 64.95,
-        "-0.618": 64.81,
-        "-0.786": 64.61,
-        "-1.000": 64.35
+        "+1.000": 6404.21,
+        "+0.786": 6391.59,
+        "+0.618": 6381.69,
+        "+0.500": 6374.73,
+        "+0.382": 6367.77,
+        "+0.236": 6359.16,
+        "+0.000": 6345.25,
+        "-0.236": 6331.34,
+        "-0.382": 6322.73,
+        "-0.500": 6315.77,
+        "-0.618": 6308.81,
+        "-0.786": 6298.91,
+        "-1.000": 6286.29
       },
       "status": "success",
       "ticker_key": "ES",
       "display_name": "ES (Discovered)"
     },
     "IWM": {
-      "generated_at": "2025-07-21 23:56:47 EDT",
-      "generated_timestamp": 1753156607.777745,
+      "generated_at": "2025-07-22 00:06:23 EDT",
+      "generated_timestamp": 1753157183.431141,
       "ticker": "IWM",
       "reference_date": "2025-07-21",
       "reference_close": 221.43,
       "reference_atr": 3.47,
-      "data_age_days": 0,
+      "data_age_days": 1,
       "target_date": "next_trading_day",
       "levels": {
         "+1.000": 224.9,
@@ -60,13 +60,13 @@
       "display_name": "IWM (Discovered)"
     },
     "NVDA": {
-      "generated_at": "2025-07-21 23:56:47 EDT",
-      "generated_timestamp": 1753156607.846789,
+      "generated_at": "2025-07-22 00:06:23 EDT",
+      "generated_timestamp": 1753157183.509893,
       "ticker": "NVDA",
       "reference_date": "2025-07-21",
       "reference_close": 171.38,
       "reference_atr": 3.78,
-      "data_age_days": 0,
+      "data_age_days": 1,
       "target_date": "next_trading_day",
       "levels": {
         "+1.000": 175.16,
@@ -88,13 +88,13 @@
       "display_name": "NVDA (Discovered)"
     },
     "QQQ": {
-      "generated_at": "2025-07-21 23:56:47 EDT",
-      "generated_timestamp": 1753156607.975148,
+      "generated_at": "2025-07-22 00:06:23 EDT",
+      "generated_timestamp": 1753157183.600049,
       "ticker": "QQQ",
       "reference_date": "2025-07-21",
       "reference_close": 564.17,
       "reference_atr": 5.93,
-      "data_age_days": 0,
+      "data_age_days": 1,
       "target_date": "next_trading_day",
       "levels": {
         "+1.000": 570.1,
@@ -114,6 +114,34 @@
       "status": "success",
       "ticker_key": "QQQ",
       "display_name": "QQQ (Discovered)"
+    },
+    "SPX": {
+      "generated_at": "2025-07-22 00:06:23 EDT",
+      "generated_timestamp": 1753157183.654409,
+      "ticker": "^GSPC",
+      "reference_date": "2025-07-21",
+      "reference_close": 6305.6,
+      "reference_atr": 51.79,
+      "data_age_days": 1,
+      "target_date": "next_trading_day",
+      "levels": {
+        "+1.000": 6357.39,
+        "+0.786": 6346.31,
+        "+0.618": 6337.61,
+        "+0.500": 6331.49,
+        "+0.382": 6325.38,
+        "+0.236": 6317.82,
+        "+0.000": 6305.6,
+        "-0.236": 6293.38,
+        "-0.382": 6285.82,
+        "-0.500": 6279.71,
+        "-0.618": 6273.6,
+        "-0.786": 6264.89,
+        "-1.000": 6253.81
+      },
+      "status": "success",
+      "ticker_key": "SPX",
+      "display_name": "SPX (Discovered)"
     }
   }
 }
