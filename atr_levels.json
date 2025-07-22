@@ -1,11 +1,11 @@
 {
-  "last_updated": "2025-07-22 03:55:57 ",
-  "last_updated_timestamp": 1753156557.848508,
+  "last_updated": "2025-07-22 03:56:47 ",
+  "last_updated_timestamp": 1753156607.975237,
   "discovery_method": "github_repo_scan",
   "tickers": {
     "ES": {
-      "generated_at": "2025-07-21 23:55:57 EDT",
-      "generated_timestamp": 1753156557.621038,
+      "generated_at": "2025-07-21 23:56:47 EDT",
+      "generated_timestamp": 1753156607.696157,
       "ticker": "ES",
       "reference_date": "2025-07-21",
       "reference_close": 65.54,
@@ -32,8 +32,8 @@
       "display_name": "ES (Discovered)"
     },
     "IWM": {
-      "generated_at": "2025-07-21 23:55:57 EDT",
-      "generated_timestamp": 1753156557.70584,
+      "generated_at": "2025-07-21 23:56:47 EDT",
+      "generated_timestamp": 1753156607.777745,
       "ticker": "IWM",
       "reference_date": "2025-07-21",
       "reference_close": 221.43,
@@ -60,8 +60,8 @@
       "display_name": "IWM (Discovered)"
     },
     "NVDA": {
-      "generated_at": "2025-07-21 23:55:57 EDT",
-      "generated_timestamp": 1753156557.771549,
+      "generated_at": "2025-07-21 23:56:47 EDT",
+      "generated_timestamp": 1753156607.846789,
       "ticker": "NVDA",
       "reference_date": "2025-07-21",
       "reference_close": 171.38,
@@ -88,8 +88,8 @@
       "display_name": "NVDA (Discovered)"
     },
     "QQQ": {
-      "generated_at": "2025-07-21 23:55:57 EDT",
-      "generated_timestamp": 1753156557.848397,
+      "generated_at": "2025-07-21 23:56:47 EDT",
+      "generated_timestamp": 1753156607.975148,
       "ticker": "QQQ",
       "reference_date": "2025-07-21",
       "reference_close": 564.17,
