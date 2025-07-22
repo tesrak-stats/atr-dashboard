@@ -1,4 +1,4 @@
-name: Daily ATR Calculator - Multi Ticker
+name: Daily ATR Calculator - Dynamic Discovery Mode
 
 # Run at midnight Eastern Time on weekdays (actually early morning of trading day)
 on:
@@ -31,44 +31,296 @@ jobs:
         python -m pip install --upgrade pip
         pip install yfinance pandas pytz
     
-    - name: Run Multi-Ticker ATR Calculator
-      timeout-minutes: 12  # Timeout for the main script
+    - name: Discover Tickers from Repository
+      timeout-minutes: 8
       run: |
-        echo "🔄 Starting daily multi-ticker ATR calculation..."
+        echo "🔍 Starting ticker discovery from repository files..."
+        echo "⏰ Discovery start time: $(date)"
+        
+        cat > discover_tickers.py << 'EOF'
+        #!/usr/bin/env python3
+        import json
+        import glob
+        import re
+        import yfinance as yf
+        import time
+        from datetime import datetime
+        
+        def extract_ticker_from_filename(filename):
+            """Extract ticker from various filename patterns"""
+            # Pattern: atr_summary_SPX_SESSION_*.csv
+            match = re.match(r'atr_summary_([A-Z]+)_', filename)
+            if match:
+                return match.group(1)
+                
+            # Pattern: statecheck_detailed_SPX_*.csv  
+            match = re.match(r'statecheck_detailed_([A-Z]+)_', filename)
+            if match:
+                return match.group(1)
+                
+            # Pattern: SPX_SESSION_*.csv
+            match = re.match(r'^([A-Z]+)_(SESSION|ROLLING|STATECHECK)', filename)
+            if match:
+                return match.group(1)
+                
+            return None
+        
+        def discover_existing_tickers():
+            """Discover all tickers from existing files"""
+            print("🔍 Discovering existing tickers from file structure...")
+            
+            tickers = set()
+            
+            # Discover from ATR JSON
+            try:
+                with open("atr_levels.json", 'r') as f:
+                    atr_data = json.load(f)
+                    
+                if "tickers" in atr_data:
+                    for ticker_key in atr_data["tickers"]:
+                        tickers.add(ticker_key)
+                        
+                print(f"   📊 Found {len(tickers)} tickers in ATR JSON")
+            except Exception as e:
+                print(f"   ⚠️ Could not read ATR JSON: {e}")
+            
+            # Discover from CSV files using glob patterns
+            csv_patterns = [
+                "atr_summary_*_*.csv",
+                "statecheck_detailed_*.csv", 
+                "*_SESSION_*.csv",
+                "*_ROLLING_*.csv"
+            ]
+            
+            for pattern in csv_patterns:
+                files = glob.glob(pattern)
+                for file_path in files:
+                    ticker = extract_ticker_from_filename(file_path)
+                    if ticker:
+                        tickers.add(ticker)
+            
+            return sorted(list(tickers))
+        
+        def learn_ticker_characteristics(ticker):
+            """Learn ticker characteristics from Yahoo Finance"""
+            print(f"   🧠 Learning characteristics of {ticker}...")
+            
+            try:
+                # Test data availability with small sample
+                yf_ticker = yf.Ticker(ticker)
+                test_data = yf_ticker.history(period="5d")
+                
+                if not test_data.empty:
+                    # Learn trading schedule from actual data timestamps
+                    weekdays = [dt.weekday() for dt in test_data.index]
+                    
+                    if all(day < 5 for day in weekdays):
+                        schedule = 'weekdays_only'
+                    elif len(set(weekdays)) == 7:
+                        schedule = 'continuous'  
+                    else:
+                        schedule = 'extended_hours'
+                    
+                    characteristics = {
+                        'ticker': ticker,
+                        'yf_symbol': ticker,
+                        'data_available': True,
+                        'trading_schedule': schedule,
+                        'discovered_at': datetime.now().isoformat()
+                    }
+                    
+                    print(f"      ✅ {ticker}: Available, schedule={schedule}")
+                    return characteristics
+                else:
+                    print(f"      ❌ {ticker}: No data available")
+                    return None
+                    
+            except Exception as e:
+                print(f"      ⚠️ {ticker}: Error learning characteristics - {e}")
+                return None
+        
+        def main():
+            print("🚀 Dynamic Ticker Discovery")
+            print("=" * 40)
+            
+            # Discover tickers
+            discovered_tickers = discover_existing_tickers()
+            
+            if not discovered_tickers:
+                print("❌ No tickers discovered - using fallback")
+                return 1
+            
+            print(f"📁 Total discovered tickers: {len(discovered_tickers)}")
+            
+            # Learn characteristics  
+            valid_tickers = {}
+            for ticker in discovered_tickers:
+                characteristics = learn_ticker_characteristics(ticker)
+                if characteristics and characteristics.get('data_available', False):
+                    valid_tickers[ticker] = characteristics
+                
+                # Brief pause to respect API limits
+                time.sleep(0.5)
+            
+            # Create discovered config
+            config = {
+                'discovered_at': datetime.now().isoformat(),
+                'method': 'github_repo_discovery',
+                'tickers': valid_tickers
+            }
+            
+            # Save discovered config
+            with open('discovered_tickers.json', 'w') as f:
+                json.dump(config, f, indent=2)
+            
+            print(f"✅ Discovery complete: {len(valid_tickers)} valid tickers")
+            for ticker in valid_tickers:
+                schedule = valid_tickers[ticker]['trading_schedule']
+                print(f"   ✅ {ticker}: {schedule}")
+            
+            return 0
+        
+        if __name__ == "__main__":
+            exit(main())
+        EOF
+        
+        python discover_tickers.py
+        
+        echo "✅ Ticker discovery completed"
+        echo "⏰ Discovery end time: $(date)"
+    
+    - name: Run Dynamic ATR Calculator
+      timeout-minutes: 10
+      run: |
+        echo "🔄 Starting dynamic multi-ticker ATR calculation..."
         echo "⏰ Current time: $(date)"
-        python -u daily_atr_updater.py  # -u for unbuffered output
-        echo "✅ Multi-ticker ATR calculation completed"
+        
+        cat > dynamic_atr_updater.py << 'EOF'
+        #!/usr/bin/env python3
+        import json
+        import sys
+        from daily_atr_updater import calculate_atr_levels
+        from datetime import datetime
+        
+        def load_discovered_tickers():
+            """Load discovered ticker configuration"""
+            try:
+                with open('discovered_tickers.json', 'r') as f:
+                    config = json.load(f)
+                return config.get('tickers', {})
+            except Exception as e:
+                print(f"❌ Could not load discovered tickers: {e}")
+                return None
+        
+        def main():
+            print("🎯 Dynamic ATR Calculator")
+            print("=" * 30)
+            
+            # Load discovered tickers
+            discovered_tickers = load_discovered_tickers()
+            
+            if not discovered_tickers:
+                print("❌ No discovered tickers - calculation failed")
+                return 1
+            
+            print(f"📊 Processing {len(discovered_tickers)} discovered tickers...")
+            
+            # Process each discovered ticker
+            results = {}
+            for ticker_key, config in discovered_tickers.items():
+                print(f"🔄 Processing {ticker_key}...")
+                
+                yf_symbol = config.get('yf_symbol', ticker_key)
+                ticker_data = calculate_atr_levels(ticker=yf_symbol)
+                
+                # Add metadata
+                ticker_data['ticker_key'] = ticker_key
+                ticker_data['display_name'] = f"{ticker_key} (Discovered)"
+                
+                results[ticker_key] = ticker_data
+                
+                if ticker_data['status'] == 'success':
+                    print(f"✅ {ticker_key}: Close=${ticker_data['reference_close']:.2f}, ATR=${ticker_data['reference_atr']:.2f}")
+                else:
+                    print(f"❌ {ticker_key}: ERROR - {ticker_data['error']}")
+            
+            # Create final data structure
+            final_data = {
+                "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z"),
+                "last_updated_timestamp": datetime.now().timestamp(),
+                "discovery_method": "github_repo_scan",
+                "tickers": results
+            }
+            
+            # Save results
+            with open('atr_levels.json', 'w') as f:
+                json.dump(final_data, f, indent=2)
+            
+            # Summary
+            success_count = sum(1 for data in results.values() if data['status'] == 'success')
+            error_count = len(results) - success_count
+            
+            print(f"📊 SUMMARY:")
+            print(f"✅ Successful: {success_count}/{len(results)} tickers")
+            print(f"❌ Errors: {error_count}/{len(results)} tickers")
+            
+            if success_count > 0:
+                print(f"🎯 Successful Calculations:")
+                for ticker_key, data in results.items():
+                    if data['status'] == 'success':
+                        print(f"   {ticker_key}: ${data['reference_close']:.2f} (ATR: ${data['reference_atr']:.2f})")
+            
+            return 0 if success_count > 0 else 1
+        
+        if __name__ == "__main__":
+            sys.exit(main())
+        EOF
+        
+        python dynamic_atr_updater.py
+        
+        echo "✅ Dynamic ATR calculation completed"
         echo "⏰ Completion time: $(date)"
     
-    - name: Check if JSON was created
+    - name: Check Results
       timeout-minutes: 2
       run: |
         if [ -f "atr_levels.json" ]; then
           echo "✅ ATR levels JSON file created successfully"
           echo "📊 File size: $(du -h atr_levels.json | cut -f1)"
-          echo "📋 Contents preview:"
-          head -30 atr_levels.json
+          echo "📋 Discovery results:"
           
-          # Show multi-ticker status summary (simplified to avoid YAML issues)
+          # Show discovered vs processed tickers
+          if [ -f "discovered_tickers.json" ]; then
+            echo "🔍 Discovered tickers:"
+            python -c "import json; data=json.load(open('discovered_tickers.json')); print('\n'.join([f'   • {k}: {v[\"trading_schedule\"]}' for k,v in data.get('tickers', {}).items()]))"
+          fi
+          
           echo ""
-          echo "📈 Checking multi-ticker status..."
-          python -c "import json; data=json.load(open('atr_levels.json')); print(f'Tickers: {len(data.get(\"tickers\", {}))}') if 'tickers' in data else print('Legacy format')"
+          echo "📊 Final ATR results:"
+          python -c "import json; data=json.load(open('atr_levels.json')); print(f'🎯 {len(data.get(\"tickers\", {}))} tickers processed')"
+          
         else
           echo "❌ ATR levels JSON file not found!"
           exit 1
         fi
     
-    - name: Commit updated ATR levels
+    - name: Commit Updated Files
       timeout-minutes: 3
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
+        
+        # Add both discovered config and ATR results
         git add atr_levels.json
+        if [ -f "discovered_tickers.json" ]; then
+          git add discovered_tickers.json
+        fi
+        
         if git diff --staged --quiet; then
           echo "No changes to commit"
         else
           echo "📝 Committing changes..."
-          git commit -m "🤖 Daily multi-ticker ATR levels update - $(date '+%Y-%m-%d %H:%M UTC')"
+          git commit -m "🤖 Dynamic discovery ATR update - $(date '+%Y-%m-%d %H:%M UTC')"
           echo "📤 Pushing to repository..."
           git push origin ${{ github.ref_name }}
           echo "✅ Successfully pushed changes"
@@ -78,6 +330,5 @@ jobs:
     - name: Notify on failure
       if: failure()
       run: |
-        echo "❌ Multi-ticker ATR calculation failed!"
+        echo "❌ Dynamic discovery ATR calculation failed!"
         echo "Check the logs above for details."
-        # Add email/Slack notification here if desired
