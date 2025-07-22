@@ -1,39 +1,39 @@
 {
-  "last_updated": "2025-07-22 05:50:37 ",
-  "last_updated_timestamp": 1753163437.809853,
+  "last_updated": "2025-07-22 12:50:46 ",
+  "last_updated_timestamp": 1753188646.404552,
   "discovery_method": "github_repo_scan",
   "tickers": {
     "ES": {
-      "generated_at": "2025-07-22 01:50:37 EDT",
-      "generated_timestamp": 1753163437.527393,
+      "generated_at": "2025-07-22 08:50:46 EDT",
+      "generated_timestamp": 1753188646.095169,
       "ticker": "ES=F",
       "reference_date": "2025-07-22",
-      "reference_close": 6341.25,
-      "reference_atr": 57.45,
+      "reference_close": 6347.5,
+      "reference_atr": 57.73,
       "data_age_days": 0,
       "target_date": "next_trading_day",
       "levels": {
-        "+1.000": 6398.7,
-        "+0.786": 6386.4,
-        "+0.618": 6376.75,
-        "+0.500": 6369.97,
-        "+0.382": 6363.2,
-        "+0.236": 6354.81,
-        "+0.000": 6341.25,
-        "-0.236": 6327.69,
-        "-0.382": 6319.3,
-        "-0.500": 6312.53,
-        "-0.618": 6305.75,
-        "-0.786": 6296.1,
-        "-1.000": 6283.8
+        "+1.000": 6405.23,
+        "+0.786": 6392.88,
+        "+0.618": 6383.18,
+        "+0.500": 6376.37,
+        "+0.382": 6369.55,
+        "+0.236": 6361.13,
+        "+0.000": 6347.5,
+        "-0.236": 6333.87,
+        "-0.382": 6325.45,
+        "-0.500": 6318.63,
+        "-0.618": 6311.82,
+        "-0.786": 6302.12,
+        "-1.000": 6289.77
       },
       "status": "success",
       "ticker_key": "ES",
       "display_name": "ES (Discovered)"
     },
     "IWM": {
-      "generated_at": "2025-07-22 01:50:37 EDT",
-      "generated_timestamp": 1753163437.619715,
+      "generated_at": "2025-07-22 08:50:46 EDT",
+      "generated_timestamp": 1753188646.188738,
       "ticker": "IWM",
       "reference_date": "2025-07-21",
       "reference_close": 221.43,
@@ -60,8 +60,8 @@
       "display_name": "IWM (Discovered)"
     },
     "NVDA": {
-      "generated_at": "2025-07-22 01:50:37 EDT",
-      "generated_timestamp": 1753163437.687992,
+      "generated_at": "2025-07-22 08:50:46 EDT",
+      "generated_timestamp": 1753188646.256906,
       "ticker": "NVDA",
       "reference_date": "2025-07-21",
       "reference_close": 171.38,
@@ -88,8 +88,8 @@
       "display_name": "NVDA (Discovered)"
     },
     "QQQ": {
-      "generated_at": "2025-07-22 01:50:37 EDT",
-      "generated_timestamp": 1753163437.760982,
+      "generated_at": "2025-07-22 08:50:46 EDT",
+      "generated_timestamp": 1753188646.343067,
       "ticker": "QQQ",
       "reference_date": "2025-07-21",
       "reference_close": 564.17,
@@ -116,8 +116,8 @@
       "display_name": "QQQ (Discovered)"
     },
     "SPX": {
-      "generated_at": "2025-07-22 01:50:37 EDT",
-      "generated_timestamp": 1753163437.809755,
+      "generated_at": "2025-07-22 08:50:46 EDT",
+      "generated_timestamp": 1753188646.404436,
       "ticker": "^GSPC",
       "reference_date": "2025-07-21",
       "reference_close": 6305.6,
