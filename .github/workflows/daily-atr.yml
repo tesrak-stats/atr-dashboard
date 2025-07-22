@@ -53,8 +53,23 @@ jobs:
             if match:
                 return match.group(1)
                 
+            # Pattern: atr_level_totals_ES_ROLLING_*.csv
+            match = re.match(r'atr_level_totals_([A-Z]+)_', filename)
+            if match:
+                return match.group(1)
+                
             # Pattern: statecheck_detailed_SPX_*.csv  
             match = re.match(r'statecheck_detailed_([A-Z]+)_', filename)
+            if match:
+                return match.group(1)
+                
+            # Pattern: zonebaseline_detailed_ES_*.csv
+            match = re.match(r'zonebaseline_detailed_([A-Z]+)_', filename)
+            if match:
+                return match.group(1)
+                
+            # Pattern: zonebaseline_hourly_ES_*.csv
+            match = re.match(r'zonebaseline_hourly_([A-Z]+)_', filename)
             if match:
                 return match.group(1)
                 
@@ -87,7 +102,10 @@ jobs:
             # Discover from CSV files using glob patterns
             csv_patterns = [
                 "atr_summary_*_*.csv",
+                "atr_level_totals_*_*.csv",
                 "statecheck_detailed_*.csv", 
+                "zonebaseline_detailed_*.csv",
+                "zonebaseline_hourly_*.csv",
                 "*_SESSION_*.csv",
                 "*_ROLLING_*.csv"
             ]
