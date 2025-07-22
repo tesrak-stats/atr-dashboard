@@ -359,7 +359,14 @@ jobs:
             return targets
         
         def main():
-            phase = determine_execution_phase()
+            # Load phase from previous step
+            try:
+                with open('execution_phase.txt', 'r') as f:
+                    phase = f.read().strip()
+            except:
+                phase = 'primary'  # Fallback
+                
+            print(f"📋 Loaded execution phase: {phase}")
             
             # Early exit for weekend skips
             if not should_run_today(phase):
@@ -964,7 +971,12 @@ jobs:
         
         def main():
             """Main processing function"""
-            phase = os.getenv('EXECUTION_PHASE', 'primary')
+            # Load phase from previous step
+            try:
+                with open('execution_phase.txt', 'r') as f:
+                    phase = f.read().strip()
+            except:
+                phase = 'primary'  # Fallback
             
             print(f"🎯 Smart Daily Processor - Phase: {phase}")
             print("=" * 50)
@@ -1060,14 +1072,26 @@ jobs:
             failed = len(tickers) - successful
             phase = data.get('execution_phase', 'unknown')
             
+            # Count intraday successes
+            intraday_success = sum(1 for t in tickers.values() if t.get('intraday_status') == 'success')
+            
             print(f'📊 Final Status:')
             print(f'   🕐 Phase: {phase}')
-            print(f'   ✅ Successful: {successful}/{len(tickers)}')
-            print(f'   ❌ Failed: {failed}/{len(tickers)}')
+            print(f'   ✅ Daily successful: {successful}/{len(tickers)}')
+            print(f'   ❌ Daily failed: {failed}/{len(tickers)}')
+            print(f'   📈 Intraday successful: {intraday_success}/{len(tickers)}')
             
             if failed > 0:
                 failed_tickers = [k for k, v in tickers.items() if v.get('status') != 'success']
-                print(f'   🔄 Remaining failures: {failed_tickers}')
+                print(f'   🔄 Remaining daily failures: {failed_tickers}')
+                
+            # Show data source breakdown
+            polygon_count = sum(1 for t in tickers.values() if t.get('data_source', '').startswith('Polygon'))
+            yahoo_count = len(tickers) - polygon_count
+            if polygon_count > 0:
+                print(f'   🔵 Used Polygon: {polygon_count}')
+            if yahoo_count > 0:
+                print(f'   🟡 Used Yahoo: {yahoo_count}')
         except Exception as e:
             print(f'Error analyzing results: {e}')
           "
@@ -1078,6 +1102,7 @@ jobs:
           
           git add atr_levels.json
           git add historical_data/*.gz 2>/dev/null || true
+          git add historical_data/intraday/*.gz 2>/dev/null || true
           
           if ! git diff --staged --quiet; then
             git commit -m "🤖 Smart ATR update [$EXECUTION_PHASE] - $(date '+%Y-%m-%d %H:%M UTC')"
