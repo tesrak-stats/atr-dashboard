@@ -46,6 +46,275 @@ def calculate_atr(df, period=14):
     
     return df
 
+def generate_fibonacci_levels(reference_close, atr):
+    """
+    Generate Fibonacci levels using EXACT same logic as yml scheduler
+    This matches the proven three-phase system perfectly
+    """
+    # Use the same ratios as proven yml scheduler system
+    fib_ratios = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
+                  -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+    
+    levels = {}
+    for ratio in fib_ratios:
+        level_price = reference_close + (ratio * atr)
+        
+        # Format 1: Exact yml scheduler format (+1.000, -0.618, etc.)
+        levels[f"{ratio:+.3f}"] = round(level_price, 2)
+        
+        # Format 2: ATR_ format for analyzer compatibility
+        if ratio == 0.0:
+            levels['ATR_000'] = round(level_price, 2)
+            levels['Daily_Close'] = round(level_price, 2)
+        elif ratio > 0:
+            ratio_str = f"{int(ratio*1000):03d}"
+            levels[f'ATR_{ratio_str}'] = round(level_price, 2)
+        else:
+            ratio_str = f"{int(abs(ratio)*1000):03d}"  
+            levels[f'ATR_neg{ratio_str}'] = round(level_price, 2)
+    
+    # Add the ATR value itself for reference
+    levels['Daily_ATR'] = round(atr, 2)
+    
+    return levels
+
+def combine_timeframes_with_atr_enhanced(daily_file, intraday_file, atr_period=14, align_method='date_match', asset_type='STOCKS', interval_config=None):
+    """
+    Enhanced Multi-Timeframe ATR Combiner with Full Fibonacci Levels
+    
+    This creates truly analyzer-ready files with:
+    - Analysis timeframe OHLC data
+    - ATR calculated from base timeframe
+    - Full Fibonacci levels for each row (ATR_1000, ATR_786, +1.000, etc.)
+    - Proper date alignment (7/22 analysis gets levels from 7/21 base data)
+    - Rolling analysis metadata for downstream compatibility
+    """
+    results = []
+    
+    try:
+        # Handle different input types (file uploads vs session state data)
+        if isinstance(daily_file, pd.DataFrame):
+            daily_df = daily_file.copy()
+        else:
+            # Handle file upload
+            if daily_file.name.endswith('.csv'):
+                daily_df = pd.read_csv(daily_file)
+            else:
+                daily_df = pd.read_excel(daily_file)
+        
+        if isinstance(intraday_file, pd.DataFrame):
+            intraday_df = intraday_file.copy()
+        else:
+            # Handle file upload
+            if intraday_file.name.endswith('.csv'):
+                intraday_df = pd.read_csv(intraday_file)
+            else:
+                intraday_df = pd.read_excel(intraday_file)
+        
+        # Import standardization functions from existing code
+        from complete_csv_handler import CSVProcessor
+        
+        # Standardize both dataframes
+        daily_df = CSVProcessor.standardize_columns(daily_df)
+        daily_df = CSVProcessor.create_datetime_column(daily_df)
+        intraday_df = CSVProcessor.standardize_columns(intraday_df)
+        intraday_df = CSVProcessor.create_datetime_column(intraday_df)
+        
+        # Validate required columns
+        required_cols = ['Date', 'Open', 'High', 'Low', 'Close']
+        for col in required_cols:
+            if col not in daily_df.columns:
+                st.error(f"❌ Missing column in base timeframe: {col}")
+                return None
+            if col not in intraday_df.columns:
+                st.error(f"❌ Missing column in analysis timeframe: {col}")
+                return None
+        
+        # Convert Date columns to datetime for proper alignment
+        daily_df['Date'] = pd.to_datetime(daily_df['Date']).dt.date
+        intraday_df['Date'] = pd.to_datetime(intraday_df['Date']).dt.date
+        
+        # Sort by date
+        daily_df = daily_df.sort_values('Date').reset_index(drop=True)
+        intraday_df = intraday_df.sort_values(['Date', 'Datetime'] if 'Datetime' in intraday_df.columns else ['Date']).reset_index(drop=True)
+        
+        st.info(f"📊 Base timeframe: {len(daily_df)} records")
+        st.info(f"📊 Analysis timeframe: {len(intraday_df)} records")
+        
+        # Calculate ATR on base timeframe (daily data)
+        st.info(f"🔢 Calculating ATR on base timeframe (period={atr_period})...")
+        daily_with_atr = calculate_atr(daily_df, period=atr_period)
+        
+        # Get valid ATR data
+        valid_atr = daily_with_atr[daily_with_atr['ATR'].notna()]
+        
+        if len(valid_atr) == 0:
+            st.error(f"❌ No valid ATR values calculated. Need at least {atr_period} base timeframe periods.")
+            return None
+        
+        st.success(f"✅ ATR calculated: {len(valid_atr)} valid values from {len(daily_with_atr)} base periods")
+        
+        # Create enhanced lookups for analysis timeframe
+        st.info("🔧 Creating enhanced ATR and level lookups...")
+        
+        # For each analysis date, we need:
+        # 1. The ATR from the PREVIOUS base timeframe period
+        # 2. The close from the PREVIOUS base timeframe period (for 0.000 reference)
+        atr_lookup = {}
+        reference_close_lookup = {}
+        
+        for i, row in valid_atr.iterrows():
+            current_date = row['Date']
+            current_atr = row['ATR']
+            current_close = row['Close']
+            
+            # Find next date in the dataset to assign this ATR to
+            next_idx = i + 1
+            if next_idx < len(valid_atr):
+                next_date = valid_atr.iloc[next_idx]['Date']
+                atr_lookup[next_date] = current_atr
+                reference_close_lookup[next_date] = current_close
+            
+            # Also handle case where analysis data might be on same date
+            # but we want to use previous day's values
+            atr_lookup[current_date] = current_atr if i == 0 else valid_atr.iloc[i-1]['ATR']
+            reference_close_lookup[current_date] = current_close if i == 0 else valid_atr.iloc[i-1]['Close']
+        
+        st.info(f"📊 Created lookups for {len(atr_lookup)} dates")
+        
+        # Process each analysis timeframe row
+        st.info("🎯 Processing analysis timeframe rows with Fibonacci levels...")
+        
+        enhanced_rows = []
+        rows_with_levels = 0
+        rows_without_levels = 0
+        
+        for idx, analysis_row in intraday_df.iterrows():
+            analysis_date = analysis_row['Date']
+            
+            # Get ATR and reference close for this analysis date
+            current_atr = atr_lookup.get(analysis_date)
+            reference_close = reference_close_lookup.get(analysis_date)
+            
+            # Create enhanced row starting with analysis timeframe OHLC
+            enhanced_row = {
+                'Date': analysis_date,
+                'Open': analysis_row['Open'],
+                'High': analysis_row['High'],
+                'Low': analysis_row['Low'],
+                'Close': analysis_row['Close'],
+            }
+            
+            # Add Datetime if available
+            if 'Datetime' in analysis_row and pd.notna(analysis_row['Datetime']):
+                enhanced_row['Datetime'] = analysis_row['Datetime']
+            
+            # Add Volume if available
+            if 'Volume' in analysis_row and pd.notna(analysis_row['Volume']):
+                enhanced_row['Volume'] = analysis_row['Volume']
+            
+            # Add ATR and reference data
+            if current_atr is not None and reference_close is not None:
+                enhanced_row['ATR'] = current_atr
+                enhanced_row['Prior_Base_Close'] = reference_close
+                
+                # Generate and add ALL Fibonacci levels
+                fibonacci_levels = generate_fibonacci_levels(reference_close, current_atr)
+                enhanced_row.update(fibonacci_levels)
+                
+                # Add session metadata for analyzer compatibility
+                enhanced_row['SessionID'] = f"{analysis_date}_{idx:04d}"
+                
+                # Add metadata for downstream processing
+                enhanced_row['Trading_Days_Count'] = len(valid_atr)
+                enhanced_row['ATR_Period'] = atr_period
+                
+                # RESTORED: Add interval configuration metadata
+                if interval_config:
+                    enhanced_row['Candle_Interval_Minutes'] = interval_config.get('candle_interval_minutes', 10)
+                    enhanced_row['Rolling_Period_Type'] = interval_config.get('rolling_period_type', 'hourly')
+                    enhanced_row['Rolling_Period_Count'] = interval_config.get('rolling_period_count', 8)
+                    enhanced_row['Analysis_Timeframe'] = interval_config.get('analysis_timeframe', 'Intraday')
+                    enhanced_row['Base_Interval_Minutes'] = interval_config.get('base_interval_minutes', 1440)
+                
+                rows_with_levels += 1
+            else:
+                # No ATR available for this date - add placeholders
+                enhanced_row['ATR'] = None
+                enhanced_row['Prior_Base_Close'] = None
+                enhanced_row['SessionID'] = f"{analysis_date}_{idx:04d}"
+                
+                # Add metadata even for rows without levels
+                if interval_config:
+                    enhanced_row['Candle_Interval_Minutes'] = interval_config.get('candle_interval_minutes', 10)
+                    enhanced_row['Rolling_Period_Type'] = interval_config.get('rolling_period_type', 'hourly')
+                    enhanced_row['Rolling_Period_Count'] = interval_config.get('rolling_period_count', 8)
+                    enhanced_row['Analysis_Timeframe'] = interval_config.get('analysis_timeframe', 'Intraday')
+                    enhanced_row['Base_Interval_Minutes'] = interval_config.get('base_interval_minutes', 1440)
+                
+                rows_without_levels += 1
+            
+            enhanced_rows.append(enhanced_row)
+        
+        # Create final dataframe
+        if not enhanced_rows:
+            st.error("❌ No enhanced rows created")
+            return None
+        
+        result_df = pd.DataFrame(enhanced_rows)
+        
+        # Filter to only rows with valid levels if requested
+        if rows_with_levels > 0:
+            result_df_with_levels = result_df[result_df['ATR'].notna()]
+            
+            st.success(f"🎉 **Analyzer-Ready Data Created with Rolling Configuration!**")
+            st.info(f"✅ Rows with full Fibonacci levels: {rows_with_levels}")
+            if rows_without_levels > 0:
+                st.warning(f"⚠️ Rows without levels (no base ATR): {rows_without_levels}")
+            
+            # Show what was created
+            level_columns = [col for col in result_df_with_levels.columns if col.startswith('ATR_') or col.startswith('+') or col.startswith('-')]
+            metadata_columns = ['Candle_Interval_Minutes', 'Rolling_Period_Type', 'Rolling_Period_Count', 'Analysis_Timeframe', 'Base_Interval_Minutes']
+            metadata_present = [col for col in metadata_columns if col in result_df_with_levels.columns]
+            
+            st.info(f"📊 Fibonacci level columns added: {len(level_columns)}")
+            st.info(f"🔧 Rolling analysis metadata columns: {len(metadata_present)} ({', '.join(metadata_present)})")
+            
+            # Display sample of levels for verification
+            if len(result_df_with_levels) > 0:
+                sample_row = result_df_with_levels.iloc[0]
+                sample_levels = {k: v for k, v in sample_row.items() if k.startswith('ATR_') or k.startswith('+') or k.startswith('-')}
+                
+                with st.expander("🔍 Sample Fibonacci Levels & Metadata (First Row)", expanded=False):
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.write("**Positive Levels:**")
+                        for k, v in sample_levels.items():
+                            if k.startswith('+') or (k.startswith('ATR_') and not k.startswith('ATR_neg')):
+                                st.write(f"{k}: {v}")
+                    with col2:
+                        st.write("**Negative/Zero Levels:**")
+                        for k, v in sample_levels.items():
+                            if k.startswith('-') or k.startswith('ATR_neg') or k == 'ATR_000':
+                                st.write(f"{k}: {v}")
+                    with col3:
+                        st.write("**Rolling Metadata:**")
+                        for k in metadata_columns:
+                            if k in sample_row:
+                                st.write(f"{k}: {sample_row[k]}")
+            
+            return result_df_with_levels
+        else:
+            st.error("❌ No rows with valid ATR levels created")
+            return None
+            
+    except Exception as e:
+        st.error(f"❌ Error in enhanced ATR combination: {str(e)}")
+        import traceback
+        st.error(traceback.format_exc())
+        return None
+
+
 def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_method='date_match', asset_type='STOCKS'):
     """
     Combine daily and intraday data with ATR calculation
