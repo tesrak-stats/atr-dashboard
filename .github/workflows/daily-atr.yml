@@ -595,7 +595,77 @@ jobs:
                 print(f"        ❌ Polygon fetch error: {str(e)}")
                 return None
         
+        def fetch_from_yahoo_period(yf_symbol, period):
+            """Fetch data from Yahoo Finance using period parameter (matches daily_atr_updater.py exactly)"""
+            try:
+                yf_ticker = yf.Ticker(yf_symbol)
+                
+                # Use EXACT same method as daily_atr_updater.py
+                print(f"        🔍 DEBUG: Requesting {period} data for {yf_symbol} using period='{period}'")
+                data = yf_ticker.history(period=period)
+                
+                if data.empty:
+                    return None
+                
+                print(f"        📊 Downloaded {len(data)} days of data for {yf_symbol} for proper ATR baseline")
+                print(f"        📅 Date range: {data.index[0].strftime('%Y-%m-%d')} to {data.index[-1].strftime('%Y-%m-%d')}")
+                print(f"        🔄 Using {period} of historical data for ATR convergence")
+                
+                # Process data with consistent date handling
+                data = data.reset_index()
+                if isinstance(data.columns, pd.MultiIndex):
+                    data.columns = data.columns.get_level_values(0)
+                
+                standard_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+                available_columns = [col for col in standard_columns if col in data.columns]
+                data = data[available_columns]
+                
+                # Normalize datetime handling - remove timezone info for consistency
+                data['Date'] = pd.to_datetime(data['Date'])
+                if hasattr(data['Date'].iloc[0], 'tz') and data['Date'].iloc[0].tz is not None:
+                    data['Date'] = data['Date'].dt.tz_localize(None)
+                
+                return data
+                
+            except Exception as e:
+                print(f"        ❌ Yahoo Finance period fetch error: {str(e)}")
+                return None
+        
         def fetch_from_yahoo(yf_symbol, start_date, end_date):
+            """Fetch data from Yahoo Finance using period parameter (matches daily_atr_updater.py exactly)"""
+            try:
+                yf_ticker = yf.Ticker(yf_symbol)
+                
+                # Use EXACT same method as daily_atr_updater.py
+                print(f"        🔍 DEBUG: Requesting {period} data for {yf_symbol} using period='{period}'")
+                data = yf_ticker.history(period=period)
+                
+                if data.empty:
+                    return None
+                
+                print(f"        📊 Downloaded {len(data)} days of data for {yf_symbol} for proper ATR baseline")
+                print(f"        📅 Date range: {data.index[0].strftime('%Y-%m-%d')} to {data.index[-1].strftime('%Y-%m-%d')}")
+                print(f"        🔄 Using {period} of historical data for ATR convergence")
+                
+                # Process data with consistent date handling
+                data = data.reset_index()
+                if isinstance(data.columns, pd.MultiIndex):
+                    data.columns = data.columns.get_level_values(0)
+                
+                standard_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+                available_columns = [col for col in standard_columns if col in data.columns]
+                data = data[available_columns]
+                
+                # Normalize datetime handling - remove timezone info for consistency
+                data['Date'] = pd.to_datetime(data['Date'])
+                if hasattr(data['Date'].iloc[0], 'tz') and data['Date'].iloc[0].tz is not None:
+                    data['Date'] = data['Date'].dt.tz_localize(None)
+                
+                return data
+                
+            except Exception as e:
+                print(f"        ❌ Yahoo Finance period fetch error: {str(e)}")
+                return None
             """Fetch data from Yahoo Finance with consistent date handling"""
             try:
                 yf_ticker = yf.Ticker(yf_symbol)
@@ -625,7 +695,7 @@ jobs:
                 return None
         
         def fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date_in_data=None):
-            """Fetch new daily data with Polygon primary, Yahoo Finance backup"""
+            """Fetch new daily data with exact matching to daily_atr_updater.py methodology"""
             try:
                 if last_date_in_data:
                     start_date = last_date_in_data + timedelta(days=1)
@@ -633,9 +703,15 @@ jobs:
                         print(f"        ✅ Data is current")
                         return None
                     print(f"        📅 Fetching from {start_date} to {target_date}")
+                    
+                    # For incremental updates, use date range
+                    fetch_method = "date_range"
+                    fetch_params = {"start": start_date, "end": target_date + timedelta(days=1)}
                 else:
-                    start_date = target_date - timedelta(days=180)  # 6 months
-                    print(f"        📅 Initial fetch: {start_date} to {target_date}")
+                    # For initial fetch, use EXACT same method as daily_atr_updater.py
+                    print(f"        📅 Initial fetch: Using period='6mo' (matching daily_atr_updater.py)")
+                    fetch_method = "period"
+                    fetch_params = {"period": "6mo"}
                 
                 # Determine data source preference
                 polygon_symbol = convert_to_polygon_symbol(ticker_key, yf_symbol)
@@ -643,9 +719,10 @@ jobs:
                 
                 new_data = None
                 
-                if use_polygon and polygon_symbol:
+                if use_polygon and polygon_symbol and fetch_method == "date_range":
+                    # Only use Polygon for incremental updates (it doesn't support period parameter)
                     print(f"        🔵 Trying Polygon first: {polygon_symbol}")
-                    new_data = fetch_from_polygon(polygon_symbol, start_date, target_date)
+                    new_data = fetch_from_polygon(polygon_symbol, fetch_params["start"], fetch_params["end"] - timedelta(days=1))
                     
                     if new_data is not None and len(new_data) > 0:
                         print(f"        ✅ Polygon success: {len(new_data)} records")
@@ -656,7 +733,11 @@ jobs:
                 # Yahoo Finance primary or backup
                 if new_data is None:
                     print(f"        🟡 Using Yahoo Finance: {yf_symbol}")
-                    new_data = fetch_from_yahoo(yf_symbol, start_date, target_date)
+                    if fetch_method == "period":
+                        # Use EXACT same method as daily_atr_updater.py for initial fetch
+                        new_data = fetch_from_yahoo_period(yf_symbol, fetch_params["period"])
+                    else:
+                        new_data = fetch_from_yahoo(yf_symbol, fetch_params["start"], fetch_params["end"] - timedelta(days=1))
                     
                     if new_data is not None and len(new_data) > 0:
                         print(f"        ✅ Yahoo Finance success: {len(new_data)} records")
@@ -671,7 +752,7 @@ jobs:
                     new_data['Downloaded_At'] = datetime.now().isoformat()
                     
                     # Add data source info
-                    if polygon_symbol and use_polygon:
+                    if polygon_symbol and use_polygon and fetch_method == "date_range":
                         new_data['Data_Source'] = 'Polygon' if len(new_data) > 0 else 'Yahoo_Backup'
                     else:
                         new_data['Data_Source'] = 'Yahoo_Primary'
