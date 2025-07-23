@@ -413,22 +413,46 @@ jobs:
         import pytz
         
         def calculate_atr(df, period=14):
-            """Calculate Average True Range with proper handling"""
+            """Calculate TRUE Wilder's ATR exactly matching daily_atr_updater.py methodology"""
             if len(df) < period:
                 return pd.Series([np.nan] * len(df), index=df.index)
             
-            # Calculate True Range components
-            high_low = df['High'] - df['Low']
-            high_close_prev = abs(df['High'] - df['Close'].shift(1))
-            low_close_prev = abs(df['Low'] - df['Close'].shift(1))
+            # Calculate True Range components exactly like your system
+            df_copy = df.copy()
+            df_copy["Prev_Close"] = df_copy["Close"].shift(1)
             
-            # True Range is the maximum of the three
-            true_range = pd.concat([high_low, high_close_prev, low_close_prev], axis=1).max(axis=1)
+            # Calculate True Range for each row
+            def calculate_true_range_row(row):
+                if pd.isna(row["Prev_Close"]):
+                    return row["High"] - row["Low"]
+                
+                return max(
+                    row["High"] - row["Low"],
+                    abs(row["High"] - row["Prev_Close"]),
+                    abs(row["Low"] - row["Prev_Close"])
+                )
             
-            # ATR is the rolling mean of True Range
-            atr = true_range.rolling(window=period, min_periods=period).mean()
+            df_copy["TR"] = df_copy.apply(calculate_true_range_row, axis=1)
             
-            return atr
+            # Calculate TRUE Wilder's ATR using EXACT same logic as daily_atr_updater.py
+            atr_values = [None] * len(df_copy)
+            
+            for i in range(len(df_copy)):
+                if i < period - 1:
+                    # No ATR until we have enough data (need 14 periods)
+                    atr_values[i] = None
+                elif i == period - 1:
+                    # First ATR = average of first 14 TR values (index 0 to 13)
+                    # This matches Excel OFFSET(current,-13,0,14,1) logic
+                    atr_values[i] = df_copy["TR"].iloc[0:i+1].mean()
+                else:
+                    # Subsequent ATR = 1/14*current_TR + (1-1/14)*previous_ATR
+                    # Exact Excel formula: 1/I$4*F2915+(1-1/I$4)*I2914
+                    prev_atr = atr_values[i-1]
+                    current_tr = df_copy["TR"].iloc[i]
+                    atr_values[i] = (1/period) * current_tr + (1 - 1/period) * prev_atr
+            
+            return pd.Series(atr_values, index=df.index)
         
         def load_historical_data(ticker_key):
             """Load existing compressed historical data with robust date handling"""
