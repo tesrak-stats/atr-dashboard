@@ -469,19 +469,19 @@ jobs:
                     
                     # Robust date parsing with multiple fallback strategies
                     try:
-                        df['Date'] = pd.to_datetime(df['Date']).dt.date
+                        df['Date'] = pd.to_datetime(df['Date'], utc=True).dt.tz_localize(None).dt.date
                     except (ValueError, AttributeError, TypeError):
                         try:
                             # Fallback 1: Force string conversion first
-                            df['Date'] = pd.to_datetime(df['Date'].astype(str), errors='coerce').dt.date
+                            df['Date'] = pd.to_datetime(df['Date'].astype(str), errors='coerce', utc=True).dt.tz_localize(None).dt.date
                         except:
                             try:
-                                # Fallback 2: Handle mixed date formats
-                                df['Date'] = pd.to_datetime(df['Date'], infer_datetime_format=True, errors='coerce').dt.date
+                                # Fallback 2: Handle mixed date formats without deprecated argument
+                                df['Date'] = pd.to_datetime(df['Date'], errors='coerce', utc=True).dt.tz_localize(None).dt.date
                             except:
                                 # Fallback 3: Manual parsing
                                 print(f"        🔧 Using manual date parsing for {ticker_key}")
-                                df['Date'] = df['Date'].apply(lambda x: pd.to_datetime(str(x), errors='coerce').date() if pd.notna(x) else None)
+                                df['Date'] = df['Date'].apply(lambda x: pd.to_datetime(str(x), errors='coerce', utc=True).tz_localize(None).date() if pd.notna(x) else None)
                     
                     # Remove any rows with failed date parsing
                     df = df.dropna(subset=['Date'])
@@ -1188,7 +1188,7 @@ jobs:
                     'valid_atr_points': len(valid_atr_rows),
                     'processing_phase': phase,
                     'intraday_status': intraday_status,
-                    'data_source': updated_data.get('Data_Source', ['Unknown']).iloc[0] if len(updated_data) > 0 else 'Unknown'
+                    'data_source': df['Data_Source'].iloc[0] if 'Data_Source' in df.columns and len(df) > 0 else 'Yahoo_Primary_6mo'
                 }
                 
             except Exception as e:
@@ -1196,18 +1196,18 @@ jobs:
                 return {'status': 'error', 'error': str(e)}
         
         def get_target_date(phase):
-            """Get target date based on execution phase"""
+            """Get target date based on execution phase - FIXED to use current date"""
             eastern = pytz.timezone('US/Eastern')
             now_eastern = datetime.now(eastern)
             
             if phase == 'gap_detection':
                 return (now_eastern - timedelta(days=1)).date()
             
-            if now_eastern.hour < 6:
-                target_date = (now_eastern - timedelta(days=2)).date()
-            else:
-                target_date = (now_eastern - timedelta(days=1)).date()
+            # FIXED: Use current date (today) instead of yesterday
+            # On 7/22 at 5:30 PM, we want to process 7/22 data
+            target_date = now_eastern.date()
             
+            print(f"        🎯 Target date logic: Using TODAY ({target_date}) for data processing")
             return target_date
         
         def main():
