@@ -1,6 +1,6 @@
-name: Smart Daily ATR - Multi-Time Retry System
+name: Smart Daily ATR - Enhanced with Levels Integration
 
-# Market-aware multi-time execution strategy
+# Market-aware multi-time execution strategy with levels support
 on:
   schedule:
     # 5:30 PM EST/EDT - Primary run (WEEKDAYS ONLY - stocks/ETFs/futures, NO crypto)
@@ -34,9 +34,9 @@ on:
         type: string
 
 jobs:
-  smart-atr-update:
+  smart-atr-with-levels:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30  # Increased for intraday processing
     
     steps:
     - name: Checkout repository
@@ -51,7 +51,7 @@ jobs:
       timeout-minutes: 5
       run: |
         python -m pip install --upgrade pip
-        pip install yfinance pandas pytz requests
+        pip install yfinance pandas pytz requests numpy
     
     - name: Determine Execution Phase
       timeout-minutes: 2
@@ -187,7 +187,7 @@ jobs:
                     else:
                         failed[ticker] = data
                 
-                # Weekend failure analysis: don't treat missing traditional market data as "failed"
+                # Weekend failure analysis
                 if is_weekend:
                     print(f"   🔄 Weekend analysis: Traditional market 'failures' may be expected")
                 
@@ -261,21 +261,13 @@ jobs:
             is_weekend = weekday >= 5
             
             if phase == 'primary':
-                # Primary only runs on weekdays (stocks/futures need trading day)
                 return not is_weekend
-                
             elif phase == 'crypto_retry':
-                # Crypto runs daily, retry portion only on weekdays
                 return True
-                
             elif phase == 'retry_final':
-                # Final retry only on weekdays
                 return not is_weekend
-                
             elif phase == 'weekend_skip':
-                # Explicit skip - should not process
                 return False
-                
             else:  # gap_detection, etc.
                 return True
         
@@ -291,7 +283,7 @@ jobs:
                 return {}
             
             elif phase == 'primary':
-                # Primary: All non-crypto tickers (stocks, ETFs, futures)
+                # Primary: All non-crypto tickers
                 targets = {}
                 for ticker, config in discovered_tickers.items():
                     if not is_crypto_ticker(ticker):
@@ -315,7 +307,6 @@ jobs:
                     failed_tickers = atr_status['failed']
                     for ticker in failed_tickers.keys():
                         if ticker in discovered_tickers and not is_crypto_ticker(ticker):
-                            # Include failed stocks/ETFs, but exclude futures for this phase
                             if not is_futures_ticker(ticker):
                                 targets[ticker] = discovered_tickers[ticker]
                 
@@ -327,25 +318,12 @@ jobs:
                     print(f"🎯 CRYPTO_RETRY (Weekday): {crypto_count} crypto + {retry_count} failed traditional")
                 
             elif phase == 'retry_final':
-                # Final retry: ALL remaining failures (including crypto and futures)
+                # Final retry: ALL remaining failures
                 failed_tickers = atr_status['failed']
                 targets = {k: discovered_tickers[k] for k in failed_tickers.keys() 
                           if k in discovered_tickers}
                 
                 print(f"🎯 RETRY_FINAL: {len(targets)} remaining failures (all asset classes)")
-                
-                # Break down by asset type for clarity
-                crypto_failures = {k: v for k, v in targets.items() if is_crypto_ticker(k)}
-                futures_failures = {k: v for k, v in targets.items() if is_futures_ticker(k)}
-                other_failures = {k: v for k, v in targets.items() 
-                                if not is_crypto_ticker(k) and not is_futures_ticker(k)}
-                
-                if crypto_failures:
-                    print(f"   🪙 Crypto failures: {list(crypto_failures.keys())}")
-                if futures_failures:
-                    print(f"   📈 Futures failures: {list(futures_failures.keys())}")
-                if other_failures:
-                    print(f"   📊 Other failures: {list(other_failures.keys())}")
                 
             elif phase == 'gap_detection':
                 # Gap detection: all tickers
@@ -372,7 +350,6 @@ jobs:
             if not should_run_today(phase):
                 print(f"⏭️ Phase {phase} should not run today - exiting gracefully")
                 
-                # Create minimal targets file to indicate no processing needed
                 with open('retry_targets.json', 'w') as f:
                     json.dump({}, f)
                 with open('should_process.txt', 'w') as f:
@@ -401,7 +378,7 @@ jobs:
             if retry_targets:
                 print(f"   📋 Target list: {list(retry_targets.keys())}")
             
-            # Set flag for whether we should skip processing (no targets)
+            # Set flag for whether we should skip processing
             should_process = len(retry_targets) > 0
             with open('should_process.txt', 'w') as f:
                 f.write('true' if should_process else 'false')
@@ -419,75 +396,76 @@ jobs:
         
         echo "✅ Previous results analysis completed"
 
-    - name: Smart Daily Data Processing
-      timeout-minutes: 10
-      env:
-        POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY || inputs.polygon_api_key }}
+    - name: Create Enhanced Levels Processor
+      timeout-minutes: 3
       run: |
-        # Check if we should process
-        SHOULD_PROCESS=$(cat should_process.txt)
-        if [ "$SHOULD_PROCESS" = "false" ]; then
-          echo "⏭️ No targets identified - skipping data processing"
-          exit 0
-        fi
+        echo "🔧 Creating enhanced levels processor with smart retry support..."
         
-        echo "🔄 Starting smart daily data processing..."
-        echo "📊 Phase: $EXECUTION_PHASE"
-        echo "⏰ Processing start time: $(date)"
-        
-        cat > smart_daily_processor.py << 'EOF'
+        cat > enhanced_levels_processor.py << 'EOF'
         #!/usr/bin/env python3
         import json
         import yfinance as yf
         import pandas as pd
+        import numpy as np
         import gzip
         import os
         from datetime import datetime, timedelta, date
         import pytz
         
-        def get_target_date(phase):
-            """Get target date based on execution phase"""
-            eastern = pytz.timezone('US/Eastern')
-            now_eastern = datetime.now(eastern)
+        def calculate_atr(df, period=14):
+            """Calculate Average True Range with proper handling"""
+            if len(df) < period:
+                return pd.Series([np.nan] * len(df), index=df.index)
             
-            if phase == 'gap_detection':
-                # For gap detection, we might need to look back further
-                return (now_eastern - timedelta(days=1)).date()
+            # Calculate True Range components
+            high_low = df['High'] - df['Low']
+            high_close_prev = abs(df['High'] - df['Close'].shift(1))
+            low_close_prev = abs(df['Low'] - df['Close'].shift(1))
             
-            # Standard logic for regular updates
-            if now_eastern.hour < 6:
-                target_date = (now_eastern - timedelta(days=2)).date()
-            else:
-                target_date = (now_eastern - timedelta(days=1)).date()
+            # True Range is the maximum of the three
+            true_range = pd.concat([high_low, high_close_prev, low_close_prev], axis=1).max(axis=1)
             
-            return target_date
+            # ATR is the rolling mean of True Range
+            atr = true_range.rolling(window=period, min_periods=period).mean()
+            
+            return atr
         
         def load_historical_data(ticker_key):
             """Load existing compressed historical data"""
-            compressed_file = f"historical_data/{ticker_key}_historical.csv.gz"
+            historical_dir = "historical_data"
+            os.makedirs(historical_dir, exist_ok=True)
             
-            if not os.path.exists(compressed_file):
-                print(f"      ❌ No existing historical data for {ticker_key}")
-                return None, compressed_file
+            compressed_file = f"{historical_dir}/{ticker_key}_daily.csv.gz"
             
-            try:
-                with gzip.open(compressed_file, 'rt') as f:
-                    historical_data = pd.read_csv(f)
-                
-                historical_data['Date'] = pd.to_datetime(historical_data['Date'])
-                
-                print(f"      📊 Loaded {len(historical_data)} historical records")
-                return historical_data, compressed_file
-                
-            except Exception as e:
-                print(f"      ❌ Error loading historical data: {str(e)}")
-                return None, compressed_file
+            if os.path.exists(compressed_file):
+                try:
+                    with gzip.open(compressed_file, 'rt') as f:
+                        df = pd.read_csv(f)
+                    df['Date'] = pd.to_datetime(df['Date']).dt.date
+                    return df, compressed_file
+                except Exception as e:
+                    print(f"        ⚠️ Error loading {compressed_file}: {e}")
+            
+            return None, compressed_file
+        
+        def create_ticker_mapping(ticker):
+            """Create Yahoo Finance symbol mapping"""
+            mapping = {
+                'SPX': '^SPX',     # S&P 500 Index
+                'ES': 'ES=F',      # E-mini S&P 500 Futures
+                'NQ': 'NQ=F',      # E-mini NASDAQ Futures  
+                'YM': 'YM=F',      # E-mini Dow Futures
+                'RTY': 'RTY=F',    # E-mini Russell 2000 Futures
+                'GC': 'GC=F',      # Gold Futures
+                'CL': 'CL=F',      # Crude Oil Futures
+                'ZN': 'ZN=F',      # 10-Year Treasury Note Futures
+                'VIX': '^VIX',     # CBOE Volatility Index
+                'DXY': 'DX=F'      # US Dollar Index Futures
+            }
+            return mapping.get(ticker, ticker)
         
         def should_use_polygon(ticker_key):
             """Determine if ticker should use Polygon as primary source"""
-            # Polygon is great for stocks, ETFs, some crypto
-            # Yahoo Finance is better for indices (^GSPC, ^DJI, etc.)
-            
             if ticker_key.startswith('^'):
                 return False  # Indices - use Yahoo Finance
             
@@ -497,22 +475,20 @@ jobs:
             if ticker_key.endswith('=F'):
                 return False  # Futures - Yahoo Finance may be better
             
-            # Futures by symbol pattern  
             if ticker_key in ['ES', 'NQ', 'YM', 'RTY', 'GC', 'SI', 'CL', 'NG']:
-                return False  # Major futures - stick with Yahoo Finance for now
+                return False  # Major futures - stick with Yahoo Finance
             
-            return True  # Default: try Polygon first
+            return True  # Default: try Polygon first for stocks/ETFs
         
         def convert_to_polygon_symbol(ticker_key, yf_symbol):
             """Convert ticker to Polygon format if needed"""
-            # Most stocks: direct mapping
             if ticker_key == yf_symbol and not ticker_key.startswith('^'):
                 return ticker_key
             
             # Handle special mappings
             polygon_mappings = {
-                'SPX': None,  # SPX index - not available on Polygon, use Yahoo
-                'ES': None,   # Futures - complex on Polygon, use Yahoo
+                'SPX': None,  # SPX index - not available on Polygon
+                'ES': None,   # Futures - complex on Polygon
                 'NQ': None,
                 'YM': None,
                 'RTY': None
@@ -525,11 +501,8 @@ jobs:
             try:
                 import requests
                 
-                # Polygon API endpoint for daily bars
-                # Note: This requires POLYGON_API_KEY environment variable
                 api_key = os.getenv('POLYGON_API_KEY')
                 if not api_key:
-                    print(f"      ⚠️ No Polygon API key found")
                     return None
                 
                 url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start_date}/{end_date}"
@@ -542,19 +515,16 @@ jobs:
                 response = requests.get(url, params=params, timeout=30)
                 
                 if response.status_code != 200:
-                    print(f"      ❌ Polygon API error: {response.status_code}")
                     return None
                 
                 data = response.json()
                 
                 if data.get('status') != 'OK' or not data.get('results'):
-                    print(f"      ⚠️ Polygon no data or error: {data.get('status')}")
                     return None
                 
-                # Convert Polygon format to our standard format
+                # Convert Polygon format to standard format
                 records = []
                 for bar in data['results']:
-                    # Polygon timestamps are in milliseconds
                     date = datetime.fromtimestamp(bar['t'] / 1000).date()
                     
                     records.append({
@@ -569,18 +539,17 @@ jobs:
                 if not records:
                     return None
                 
-                # Convert to DataFrame
                 df = pd.DataFrame(records)
                 df['Date'] = pd.to_datetime(df['Date'])
                 
                 return df
                 
             except Exception as e:
-                print(f"      ❌ Polygon fetch error: {str(e)}")
+                print(f"        ❌ Polygon fetch error: {str(e)}")
                 return None
         
         def fetch_from_yahoo(yf_symbol, start_date, end_date):
-            """Fetch data from Yahoo Finance (backup method)"""
+            """Fetch data from Yahoo Finance"""
             try:
                 yf_ticker = yf.Ticker(yf_symbol)
                 data = yf_ticker.history(start=start_date, end=end_date + timedelta(days=1))
@@ -601,7 +570,7 @@ jobs:
                 return data
                 
             except Exception as e:
-                print(f"      ❌ Yahoo Finance error: {str(e)}")
+                print(f"        ❌ Yahoo Finance error: {str(e)}")
                 return None
         
         def fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date_in_data=None):
@@ -610,12 +579,12 @@ jobs:
                 if last_date_in_data:
                     start_date = last_date_in_data + timedelta(days=1)
                     if start_date > target_date:
-                        print(f"      ✅ Data is current")
+                        print(f"        ✅ Data is current")
                         return None
-                    print(f"      🔄 Fetching from {start_date} to {target_date}")
+                    print(f"        📅 Fetching from {start_date} to {target_date}")
                 else:
-                    start_date = target_date - timedelta(days=5)
-                    print(f"      🔄 Fallback fetch: last 5 days")
+                    start_date = target_date - timedelta(days=180)  # 6 months
+                    print(f"        📅 Initial fetch: {start_date} to {target_date}")
                 
                 # Determine data source preference
                 polygon_symbol = convert_to_polygon_symbol(ticker_key, yf_symbol)
@@ -624,30 +593,30 @@ jobs:
                 new_data = None
                 
                 if use_polygon and polygon_symbol:
-                    print(f"      🔵 Trying Polygon first: {polygon_symbol}")
+                    print(f"        🔵 Trying Polygon first: {polygon_symbol}")
                     new_data = fetch_from_polygon(polygon_symbol, start_date, target_date)
                     
                     if new_data is not None and len(new_data) > 0:
-                        print(f"      ✅ Polygon success: {len(new_data)} records")
+                        print(f"        ✅ Polygon success: {len(new_data)} records")
                     else:
-                        print(f"      ⚠️ Polygon failed, falling back to Yahoo Finance")
+                        print(f"        ⚠️ Polygon failed, falling back to Yahoo Finance")
                         new_data = None
                 
                 # Yahoo Finance primary or backup
                 if new_data is None:
-                    print(f"      🟡 Using Yahoo Finance: {yf_symbol}")
+                    print(f"        🟡 Using Yahoo Finance: {yf_symbol}")
                     new_data = fetch_from_yahoo(yf_symbol, start_date, target_date)
                     
                     if new_data is not None and len(new_data) > 0:
-                        print(f"      ✅ Yahoo Finance success: {len(new_data)} records")
+                        print(f"        ✅ Yahoo Finance success: {len(new_data)} records")
                     else:
-                        print(f"      ❌ Yahoo Finance also failed")
+                        print(f"        ❌ Yahoo Finance also failed")
                         return None
                 
                 # Add metadata to processed data
                 if new_data is not None:
                     new_data['Ticker'] = ticker_key
-                    new_data['YF_Symbol'] = yf_symbol  # Keep for compatibility
+                    new_data['YF_Symbol'] = yf_symbol
                     new_data['Downloaded_At'] = datetime.now().isoformat()
                     
                     # Add data source info
@@ -659,11 +628,11 @@ jobs:
                 return new_data
                 
             except Exception as e:
-                print(f"      ❌ Error in data fetch: {str(e)}")
+                print(f"        ❌ Error in data fetch: {str(e)}")
                 return None
         
         def save_updated_data(historical_data, new_data, compressed_file):
-            """Save updated historical data"""
+            """Save updated historical data with compression"""
             try:
                 if new_data is None or len(new_data) == 0:
                     return True
@@ -678,82 +647,31 @@ jobs:
                 with gzip.open(compressed_file, 'wt') as f:
                     combined_data.to_csv(f, index=False)
                 
-                print(f"      ✅ Saved {len(combined_data)} total records")
+                compressed_size = os.path.getsize(compressed_file) / 1024
+                print(f"        💾 Saved {len(combined_data)} total records ({compressed_size:.1f} KB)")
                 return True
                 
             except Exception as e:
-                print(f"      ❌ Error saving: {str(e)}")
+                print(f"        ❌ Save error: {str(e)}")
                 return False
         
-        def calculate_atr(data, period=14):
-            """Calculate ATR for the dataset"""
-            try:
-                high = data['High']
-                low = data['Low']
-                close = data['Close']
-                
-                tr1 = high - low
-                tr2 = abs(high - close.shift())
-                tr3 = abs(low - close.shift())
-                
-                true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-                atr = true_range.rolling(window=period).mean()
-                
-                return atr
-            except Exception as e:
-                print(f"      ❌ ATR calculation error: {str(e)}")
-                return None
-        
-        def process_intraday_data(ticker_key, yf_symbol, target_date, last_daily_date):
-            """Process 10-minute intraday data for a ticker"""
-            try:
-                # Create intraday directory structure
-                intraday_dir = "historical_data/intraday"
-                os.makedirs(intraday_dir, exist_ok=True)
-                
-                # Load existing intraday data
-                intraday_file = f"{intraday_dir}/{ticker_key}_intraday_10min.csv.gz"
-                existing_intraday = load_intraday_data(intraday_file)
-                
-                # Determine date range for intraday fetch
-                if existing_intraday is not None and len(existing_intraday) > 0:
-                    last_intraday_date = existing_intraday['Datetime'].max().date()
-                    start_date = last_intraday_date
-                else:
-                    # If no existing data, get last 5 trading days
-                    start_date = target_date - timedelta(days=7)
-                
-                # Fetch new intraday data
-                new_intraday = fetch_intraday_data(ticker_key, yf_symbol, start_date, target_date)
-                
-                if new_intraday is None or len(new_intraday) == 0:
-                    print(f"        ⚠️ No new intraday data available")
-                    return existing_intraday is not None  # Consider success if we have existing data
-                
-                # Combine and save
-                if existing_intraday is not None:
-                    combined_intraday = pd.concat([existing_intraday, new_intraday], ignore_index=True)
-                else:
-                    combined_intraday = new_intraday
-                
-                # Remove duplicates and sort
-                combined_intraday = combined_intraday.drop_duplicates(subset=['Datetime'], keep='last')
-                combined_intraday = combined_intraday.sort_values('Datetime')
-                
-                # Save compressed intraday data
-                with gzip.open(intraday_file, 'wt') as f:
-                    combined_intraday.to_csv(f, index=False)
-                
-                compressed_size = os.path.getsize(intraday_file) / 1024  # KB
-                new_records = len(new_intraday)
-                total_records = len(combined_intraday)
-                
-                print(f"        ✅ Intraday saved: +{new_records} records ({total_records} total, {compressed_size:.1f} KB)")
-                return True
-                
-            except Exception as e:
-                print(f"        ❌ Intraday processing error: {str(e)}")
-                return False
+        def generate_fibonacci_levels_for_display(reference_close, atr):
+            """Generate Fibonacci-based ATR levels for display"""
+            multipliers = {
+                'fib_0618_below': -0.618,
+                'fib_0382_below': -0.382,
+                'reference_close': 0.000,
+                'fib_0382_above': 0.382,
+                'fib_0618_above': 0.618,
+                'fib_1000_above': 1.000,
+                'fib_1618_above': 1.618
+            }
+            
+            levels = {}
+            for level_name, multiplier in multipliers.items():
+                levels[level_name] = reference_close + (multiplier * atr)
+            
+            return levels
         
         def load_intraday_data(intraday_file):
             """Load existing intraday data"""
@@ -769,113 +687,40 @@ jobs:
                 print(f"        ⚠️ Error loading existing intraday data: {str(e)}")
                 return None
         
-        def fetch_intraday_data(ticker_key, yf_symbol, start_date, end_date):
-            """Fetch 10-minute intraday data with dual-source support"""
-            try:
-                polygon_symbol = convert_to_polygon_symbol(ticker_key, yf_symbol)
-                use_polygon = should_use_polygon(ticker_key)
-                
-                new_data = None
-                
-                if use_polygon and polygon_symbol:
-                    print(f"        🔵 Trying Polygon intraday: {polygon_symbol}")
-                    new_data = fetch_intraday_from_polygon(polygon_symbol, start_date, end_date)
-                    
-                    if new_data is not None and len(new_data) > 0:
-                        print(f"        ✅ Polygon intraday success: {len(new_data)} records")
-                    else:
-                        print(f"        ⚠️ Polygon intraday failed, trying Yahoo Finance")
-                        new_data = None
-                
-                # Yahoo Finance primary or backup
-                if new_data is None:
-                    print(f"        🟡 Using Yahoo Finance intraday: {yf_symbol}")
-                    new_data = fetch_intraday_from_yahoo(yf_symbol, start_date, end_date)
-                    
-                    if new_data is not None and len(new_data) > 0:
-                        print(f"        ✅ Yahoo intraday success: {len(new_data)} 10-minute bars (resampled from 5-min)")
-                    else:
-                        print(f"        ❌ Yahoo intraday also failed")
-                        return None
-                
-                # Add metadata
-                if new_data is not None:
-                    new_data['Ticker'] = ticker_key
-                    new_data['YF_Symbol'] = yf_symbol
-                    new_data['Downloaded_At'] = datetime.now().isoformat()
-                    new_data['Data_Source'] = 'Polygon' if use_polygon and polygon_symbol else 'Yahoo'
-                
-                return new_data
-                
-            except Exception as e:
-                print(f"        ❌ Intraday fetch error: {str(e)}")
-                return None
+        def detect_intraday_data_format(existing_intraday):
+            """Detect whether existing intraday data has levels or is raw OHLC"""
+            if existing_intraday is None or len(existing_intraday) == 0:
+                return 'new_dataset'
+            
+            # Check for fibonacci level columns
+            level_columns = ['fib_0618_below', 'fib_0382_below', 'fib_0382_above', 'fib_0618_above']
+            has_levels = any(col in existing_intraday.columns for col in level_columns)
+            
+            if has_levels:
+                return 'analysis_ready'
+            else:
+                return 'raw_ohlc'
         
-        def fetch_intraday_from_polygon(symbol, start_date, end_date):
-            """Fetch 10-minute intraday data from Polygon"""
-            try:
-                import requests
-                
-                api_key = os.getenv('POLYGON_API_KEY')
-                if not api_key:
-                    return None
-                
-                # Polygon intraday endpoint - 10 minute bars
-                url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/10/minute/{start_date}/{end_date}"
-                params = {
-                    'apikey': api_key,
-                    'adjusted': 'true',
-                    'sort': 'asc',
-                    'limit': 5000  # Max per request
-                }
-                
-                response = requests.get(url, params=params, timeout=30)
-                
-                if response.status_code != 200:
-                    return None
-                
-                data = response.json()
-                
-                if data.get('status') != 'OK' or not data.get('results'):
-                    return None
-                
-                # Convert to DataFrame
-                records = []
-                for bar in data['results']:
-                    dt = datetime.fromtimestamp(bar['t'] / 1000)  # Convert from milliseconds
-                    
-                    records.append({
-                        'Datetime': dt,
-                        'Open': bar['o'],
-                        'High': bar['h'],
-                        'Low': bar['l'],
-                        'Close': bar['c'],
-                        'Volume': bar['v']
-                    })
-                
-                if not records:
-                    return None
-                
-                df = pd.DataFrame(records)
-                df['Datetime'] = pd.to_datetime(df['Datetime'])
-                
-                return df
-                
-            except Exception as e:
-                print(f"        ❌ Polygon intraday error: {str(e)}")
-                return None
+        def attach_levels_to_intraday_bars(new_intraday_bars, fibonacci_levels):
+            """Attach pre-calculated levels to new 10-minute bars"""
+            if new_intraday_bars is None or len(new_intraday_bars) == 0:
+                return new_intraday_bars
+            
+            # Add level columns to each bar
+            for level_name, level_value in fibonacci_levels.items():
+                new_intraday_bars[level_name] = level_value
+            
+            return new_intraday_bars
         
         def fetch_intraday_from_yahoo(yf_symbol, start_date, end_date):
             """Fetch 5-minute intraday data from Yahoo Finance and resample to 10-minute"""
             try:
                 # Yahoo Finance intraday is limited to recent periods
-                # For 5-minute data, we can typically get about 60 days
                 max_days = min(60, (end_date - start_date).days + 1)
                 actual_start = end_date - timedelta(days=max_days)
                 
                 yf_ticker = yf.Ticker(yf_symbol)
                 
-                # Fetch with 5-minute interval (Yahoo Finance supported)
                 print(f"        📊 Fetching 5-minute data from Yahoo Finance...")
                 data = yf_ticker.history(
                     start=actual_start,
@@ -934,7 +779,7 @@ jobs:
                     'Volume': 'sum'
                 })
                 
-                # Remove rows where we don't have complete data (NaN values)
+                # Remove rows where we don't have complete data
                 resampled = resampled.dropna()
                 
                 # Reset index to get Datetime back as column
@@ -948,8 +793,83 @@ jobs:
                 print(f"        ❌ Resampling error: {str(e)}")
                 return None
         
-        def process_ticker(ticker_key, ticker_config, target_date, phase):
-            """Process a single ticker with retry logic for both daily and intraday data"""
+        def process_intraday_data_with_levels(ticker_key, yf_symbol, target_date, previous_close, current_atr):
+            """Process 10-minute intraday data with intelligent level attachment"""
+            try:
+                # Create intraday directory structure
+                intraday_dir = "historical_data/intraday"
+                os.makedirs(intraday_dir, exist_ok=True)
+                
+                # Load existing intraday data
+                intraday_file = f"{intraday_dir}/{ticker_key}_intraday_10min.csv.gz"
+                existing_intraday = load_intraday_data(intraday_file)
+                
+                # Detect current data format
+                data_format = detect_intraday_data_format(existing_intraday)
+                print(f"        📊 Detected intraday format: {data_format}")
+                
+                # Determine date range for intraday fetch
+                if existing_intraday is not None and len(existing_intraday) > 0:
+                    last_intraday_date = existing_intraday['Datetime'].max().date()
+                    start_date = last_intraday_date
+                else:
+                    # If no existing data, get recent days
+                    start_date = target_date - timedelta(days=7)
+                
+                # Fetch new intraday data (simplified for Yahoo Finance only for now)
+                new_intraday = fetch_intraday_from_yahoo(yf_symbol, start_date, target_date)
+                
+                if new_intraday is None or len(new_intraday) == 0:
+                    print(f"        ⚠️ No new intraday data available")
+                    return existing_intraday is not None
+                
+                # Handle level attachment based on existing data format
+                if data_format == 'analysis_ready':
+                    print(f"        🔢 Calculating and attaching levels to new bars...")
+                    
+                    # Generate levels using display calculation logic
+                    fibonacci_levels = generate_fibonacci_levels_for_display(previous_close, current_atr)
+                    
+                    # Attach levels to new bars
+                    new_intraday = attach_levels_to_intraday_bars(new_intraday, fibonacci_levels)
+                    
+                    print(f"        ✅ Added {len(fibonacci_levels)} level columns to {len(new_intraday)} bars")
+                    
+                elif data_format == 'raw_ohlc':
+                    print(f"        📊 Maintaining raw OHLC format (no levels added)")
+                    # Don't add levels - keep existing format
+                    
+                # Combine and save
+                if existing_intraday is not None:
+                    combined_intraday = pd.concat([existing_intraday, new_intraday], ignore_index=True)
+                else:
+                    combined_intraday = new_intraday
+                
+                # Remove duplicates and sort
+                combined_intraday = combined_intraday.drop_duplicates(subset=['Datetime'], keep='last')
+                combined_intraday = combined_intraday.sort_values('Datetime')
+                
+                # Save compressed intraday data
+                with gzip.open(intraday_file, 'wt') as f:
+                    combined_intraday.to_csv(f, index=False)
+                
+                compressed_size = os.path.getsize(intraday_file) / 1024  # KB
+                new_records = len(new_intraday)
+                total_records = len(combined_intraday)
+                
+                if data_format == 'analysis_ready':
+                    print(f"        ✅ Analysis-ready data: +{new_records} bars ({total_records} total, {compressed_size:.1f} KB)")
+                else:
+                    print(f"        ✅ Raw OHLC data: +{new_records} bars ({total_records} total, {compressed_size:.1f} KB)")
+                
+                return True
+                
+            except Exception as e:
+                print(f"        ❌ Intraday processing error: {str(e)}")
+                return False
+        
+        def process_ticker_with_levels(ticker_key, ticker_config, target_date, phase):
+            """Enhanced ticker processing with ATR + levels integration"""
             print(f"   🔄 Processing {ticker_key} ({phase})...")
             
             yf_symbol = ticker_config.get('yf_symbol', ticker_key)
@@ -966,7 +886,7 @@ jobs:
                 # Determine last date
                 last_date = None
                 if historical_data is not None and len(historical_data) > 0:
-                    last_date = historical_data['Date'].max().date()
+                    last_date = historical_data['Date'].max()
                 
                 # Fetch new daily data
                 new_daily_data = fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date)
@@ -980,50 +900,94 @@ jobs:
                 if updated_data is None:
                     return {'status': 'error', 'error': 'Failed to reload daily data'}
                 
-                # Calculate ATR
-                updated_data['ATR'] = calculate_atr(updated_data)
-                latest_row = updated_data.iloc[-1]
+                # === ATR CALCULATION & LEVEL GENERATION ===
+                print(f"      🔢 Calculating ATR and levels...")
                 
-                if pd.isna(latest_row['ATR']):
+                # Bootstrap ATR column if missing
+                if 'ATR' not in updated_data.columns:
+                    print(f"      🔧 Bootstrapping ATR column...")
+                    updated_data['ATR'] = calculate_atr(updated_data)
+                    
+                    # Save with ATR column
+                    with gzip.open(compressed_file, 'wt') as f:
+                        updated_data.to_csv(f, index=False)
+                else:
+                    # Calculate incremental ATR
+                    updated_data['ATR'] = calculate_atr(updated_data)
+                    
+                    # Save updated data with ATR
+                    with gzip.open(compressed_file, 'wt') as f:
+                        updated_data.to_csv(f, index=False)
+                
+                # Get reference values for level calculation
+                latest_row = updated_data.iloc[-1]
+                previous_row = updated_data.iloc[-2] if len(updated_data) > 1 else latest_row
+                
+                current_atr = latest_row['ATR']
+                previous_close = previous_row['Close']  # Reference point (0.000)
+                current_close = latest_row['Close']
+                reference_date = latest_row['Date']
+                
+                if pd.isna(current_atr):
                     return {'status': 'error', 'error': 'ATR calculation failed'}
                 
-                print(f"      ✅ Daily success: Close=${latest_row['Close']:.2f}, ATR=${latest_row['ATR']:.2f}")
+                print(f"      ✅ Daily success: Close=${current_close:.2f}, ATR=${current_atr:.2f}")
+                print(f"      🎯 Reference: Previous close=${previous_close:.2f} (0.000 level)")
                 
-                # === INTRADAY DATA PROCESSING ===
-                print(f"      📈 Processing 10-minute intraday data...")
+                # === INTRADAY DATA PROCESSING WITH LEVELS ===
+                print(f"      📈 Processing 10-minute intraday data with levels...")
                 
-                intraday_result = process_intraday_data(ticker_key, yf_symbol, target_date, last_date)
+                intraday_result = process_intraday_data_with_levels(
+                    ticker_key, yf_symbol, target_date, previous_close, current_atr
+                )
                 intraday_status = "success" if intraday_result else "failed"
                 
                 print(f"      📈 Intraday result: {intraday_status}")
                 
                 return {
                     'status': 'success',
-                    'reference_close': float(latest_row['Close']),
-                    'reference_atr': float(latest_row['ATR']),
+                    'reference_close': float(current_close),
+                    'reference_atr': float(current_atr),
+                    'previous_close': float(previous_close),
+                    'reference_date': str(reference_date),
                     'last_updated': datetime.now().isoformat(),
                     'yf_symbol': yf_symbol,
                     'data_points': len(updated_data),
                     'processing_phase': phase,
                     'intraday_status': intraday_status,
-                    'data_source': new_daily_data.get('Data_Source', 'Unknown').iloc[0] if new_daily_data is not None and len(new_daily_data) > 0 else 'No_New_Data'
+                    'data_source': new_daily_data.get('Data_Source', 'No_New_Data').iloc[0] if new_daily_data is not None and len(new_daily_data) > 0 else 'No_New_Data'
                 }
                 
             except Exception as e:
                 print(f"      ❌ Error: {str(e)}")
                 return {'status': 'error', 'error': str(e)}
         
+        def get_target_date(phase):
+            """Get target date based on execution phase"""
+            eastern = pytz.timezone('US/Eastern')
+            now_eastern = datetime.now(eastern)
+            
+            if phase == 'gap_detection':
+                return (now_eastern - timedelta(days=1)).date()
+            
+            if now_eastern.hour < 6:
+                target_date = (now_eastern - timedelta(days=2)).date()
+            else:
+                target_date = (now_eastern - timedelta(days=1)).date()
+            
+            return target_date
+        
         def main():
-            """Main processing function"""
+            """Main processing function with enhanced levels support"""
             # Load phase from previous step
             try:
                 with open('execution_phase.txt', 'r') as f:
                     phase = f.read().strip()
             except:
-                phase = 'primary'  # Fallback
+                phase = 'primary'
             
-            print(f"🎯 Smart Daily Processor - Phase: {phase}")
-            print("=" * 50)
+            print(f"🎯 Enhanced Levels Processor - Phase: {phase}")
+            print("=" * 55)
             
             # Load retry targets
             try:
@@ -1053,20 +1017,22 @@ jobs:
             results = existing_atr.copy()  # Start with existing results
             success_count = 0
             
-            # Process each target
+            # Process each target with enhanced levels support
             for ticker_key, ticker_config in targets.items():
-                result = process_ticker(ticker_key, ticker_config, target_date, phase)
+                result = process_ticker_with_levels(ticker_key, ticker_config, target_date, phase)
                 results[ticker_key] = result  # Update/overwrite with new result
                 
                 if result['status'] == 'success':
                     success_count += 1
             
-            # Create final ATR JSON
+            # Create final ATR JSON with enhanced metadata
             final_data = {
                 "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z"),
                 "last_updated_timestamp": datetime.now().timestamp(),
-                "discovery_method": "smart_retry_system",
+                "discovery_method": "smart_retry_with_levels",
                 "execution_phase": phase,
+                "levels_integration": "enabled",
+                "intraday_support": "10min_bars_with_levels",
                 "tickers": results
             }
             
@@ -1077,13 +1043,23 @@ jobs:
             # Summary
             total_success = sum(1 for r in results.values() if r['status'] == 'success')
             total_failed = len(results) - total_success
+            intraday_success = sum(1 for r in results.values() if r.get('intraday_status') == 'success')
             
-            print(f"\n📊 Processing Summary:")
+            print(f"\n📊 Enhanced Processing Summary:")
             print(f"🎯 Phase: {phase}")
             print(f"📈 Processed this run: {len(targets)}")
-            print(f"✅ Successful this run: {success_count}")
-            print(f"✅ Total successful: {total_success}/{len(results)}")
+            print(f"✅ Daily successful this run: {success_count}")
+            print(f"✅ Total daily successful: {total_success}/{len(results)}")
+            print(f"📈 Total intraday successful: {intraday_success}/{len(results)}")
             print(f"❌ Total remaining failures: {total_failed}")
+            
+            # Show data source breakdown
+            polygon_count = sum(1 for r in results.values() if r.get('data_source', '').startswith('Polygon'))
+            yahoo_count = len(results) - polygon_count
+            if polygon_count > 0:
+                print(f"🔵 Used Polygon: {polygon_count}")
+            if yahoo_count > 0:
+                print(f"🟡 Used Yahoo: {yahoo_count}")
             
             return 0
         
@@ -1091,20 +1067,38 @@ jobs:
             exit(main())
         EOF
         
-        python smart_daily_processor.py
+        echo "✅ Enhanced levels processor created"
+
+    - name: Smart Data Processing with Enhanced Levels
+      timeout-minutes: 15
+      env:
+        POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY || inputs.polygon_api_key }}
+      run: |
+        # Check if we should process
+        SHOULD_PROCESS=$(cat should_process.txt)
+        if [ "$SHOULD_PROCESS" = "false" ]; then
+          echo "⏭️ No targets identified - skipping data processing"
+          exit 0
+        fi
         
-        echo "✅ Smart daily processing completed"
+        echo "🔄 Starting smart data processing with enhanced levels..."
+        echo "📊 Phase: $EXECUTION_PHASE"
+        echo "⏰ Processing start time: $(date)"
+        
+        python enhanced_levels_processor.py
+        
+        echo "✅ Enhanced levels processing completed"
         echo "⏰ Processing end time: $(date)"
 
-    - name: Verify Results and Commit
-      timeout-minutes: 3
+    - name: Verify Results and Commit Enhanced Changes
+      timeout-minutes: 5
       run: |
-        echo "🔍 Verifying results..."
+        echo "🔍 Verifying enhanced results..."
         
         if [ -f "atr_levels.json" ]; then
           echo "✅ ATR levels JSON exists"
           
-          # Show summary
+          # Show enhanced summary
           python -c "
         import json
         try:
@@ -1115,12 +1109,16 @@ jobs:
             successful = sum(1 for t in tickers.values() if t.get('status') == 'success')
             failed = len(tickers) - successful
             phase = data.get('execution_phase', 'unknown')
+            levels_enabled = data.get('levels_integration', 'unknown')
+            intraday_support = data.get('intraday_support', 'unknown')
             
             # Count intraday successes
             intraday_success = sum(1 for t in tickers.values() if t.get('intraday_status') == 'success')
             
-            print(f'📊 Final Status:')
+            print(f'📊 Enhanced Final Status:')
             print(f'   🕐 Phase: {phase}')
+            print(f'   🔢 Levels integration: {levels_enabled}')
+            print(f'   📈 Intraday support: {intraday_support}')
             print(f'   ✅ Daily successful: {successful}/{len(tickers)}')
             print(f'   ❌ Daily failed: {failed}/{len(tickers)}')
             print(f'   📈 Intraday successful: {intraday_success}/{len(tickers)}')
@@ -1128,19 +1126,47 @@ jobs:
             if failed > 0:
                 failed_tickers = [k for k, v in tickers.items() if v.get('status') != 'success']
                 print(f'   🔄 Remaining daily failures: {failed_tickers}')
-                
-            # Show data source breakdown
+            
+            # Show enhanced data source breakdown
             polygon_count = sum(1 for t in tickers.values() if t.get('data_source', '').startswith('Polygon'))
             yahoo_count = len(tickers) - polygon_count
             if polygon_count > 0:
                 print(f'   🔵 Used Polygon: {polygon_count}')
             if yahoo_count > 0:
                 print(f'   🟡 Used Yahoo: {yahoo_count}')
+                
+            # Show levels and reference data for successful tickers
+            print(f'   🎯 Sample successful calculations:')
+            count = 0
+            for ticker, info in tickers.items():
+                if info.get('status') == 'success' and count < 3:
+                    close = info.get('reference_close', 0)
+                    atr = info.get('reference_atr', 0)
+                    prev_close = info.get('previous_close', 0)
+                    intraday = info.get('intraday_status', 'unknown')
+                    print(f'      {ticker}: Close=${close:.2f}, ATR=${atr:.2f}, Ref=${prev_close:.2f}, Intraday={intraday}')
+                    count += 1
         except Exception as e:
-            print(f'Error analyzing results: {e}')
+            print(f'Error analyzing enhanced results: {e}')
           "
           
-          # Git commit
+          # Check for compressed data files
+          echo ""
+          echo "📁 Compressed data files:"
+          if [ -d "historical_data" ]; then
+            ls -la historical_data/*.gz 2>/dev/null | head -5 | while read line; do
+              echo "   📄 $line"
+            done
+            
+            if [ -d "historical_data/intraday" ]; then
+              echo "📈 Intraday data files:"
+              ls -la historical_data/intraday/*.gz 2>/dev/null | head -3 | while read line; do
+                echo "   📈 $line"
+              done
+            fi
+          fi
+          
+          # Git commit with enhanced messaging
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           
@@ -1149,9 +1175,9 @@ jobs:
           git add historical_data/intraday/*.gz 2>/dev/null || true
           
           if ! git diff --staged --quiet; then
-            git commit -m "🤖 Smart ATR update [$EXECUTION_PHASE] - $(date '+%Y-%m-%d %H:%M UTC')"
+            git commit -m "🚀 Enhanced Smart ATR with Levels [$EXECUTION_PHASE] - $(date '+%Y-%m-%d %H:%M UTC')"
             git push origin ${{ github.ref_name }}
-            echo "✅ Changes committed and pushed"
+            echo "✅ Enhanced changes committed and pushed"
           else
             echo "ℹ️ No changes to commit"
           fi
@@ -1159,3 +1185,16 @@ jobs:
           echo "❌ ATR levels JSON not found!"
           exit 1
         fi
+    
+    - name: Notify on Enhanced Failure
+      if: failure()
+      run: |
+        echo "❌ Enhanced Smart ATR calculation with levels failed!"
+        echo "🔍 Check the logs above for details."
+        echo "📊 This enhanced workflow includes:"
+        echo "   • Smart multi-time retry system with market awareness"
+        echo "   • Dual-source data acquisition (Polygon + Yahoo Finance)"
+        echo "   • Enhanced levels integration with Fibonacci calculations"
+        echo "   • Intelligent intraday data processing (10-minute bars)"
+        echo "   • Advanced compression and storage optimization"
+        echo "   • Comprehensive error handling and recovery"
