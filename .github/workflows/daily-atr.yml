@@ -1,17 +1,17 @@
-name: Smart Daily ATR - Enhanced with Levels Integration
+name: Three-Phase Smart ATR System
 
-# Market-aware multi-time execution strategy with levels support
+# Market-aware three-phase execution with asset class separation
 on:
   schedule:
-    # 5:30 PM EST/EDT - Primary run (WEEKDAYS ONLY - stocks/ETFs/futures, NO crypto)
+    # PHASE 1: 5:30 PM EST/EDT - Primary run (stocks, ETFs, futures - NO crypto)
     - cron: '30 22 * * 1-5'  # Mon-Fri 5:30 PM EST (22:30 UTC)
     - cron: '30 21 * * 1-5'  # Mon-Fri 5:30 PM EDT (21:30 UTC)
     
-    # 8:00 PM EST/EDT - Crypto + retry run (DAILY - crypto always, retry stocks if weekday)
-    - cron: '0 1 * * *'      # Daily 8:00 PM EST (01:00 UTC next day)
-    - cron: '0 0 * * *'      # Daily 8:00 PM EDT (00:00 UTC next day)
+    # PHASE 2: 8:05 PM EST/EDT - Crypto + retry run (DAILY - includes weekends for crypto)
+    - cron: '5 1 * * *'      # Daily 8:05 PM EST (01:05 UTC next day)
+    - cron: '5 0 * * *'      # Daily 8:05 PM EDT (00:05 UTC next day)
     
-    # 12:30 AM EST/EDT - Final retry (WEEKDAYS ONLY - final attempt for all failures)
+    # PHASE 3: 12:30 AM EST/EDT - Final cleanup (WEEKDAYS ONLY)
     - cron: '30 5 * * 2-6'  # Tue-Sat 12:30 AM EST (05:30 UTC) - covers Mon-Fri trading
     - cron: '30 4 * * 2-6'  # Tue-Sat 12:30 AM EDT (04:30 UTC)
   
@@ -25,18 +25,18 @@ on:
         type: choice
         options:
           - 'primary'
-          - 'retry_stocks'
-          - 'retry_final'
-          - 'gap_detection'
+          - 'crypto_retry'
+          - 'final_cleanup'
+          - 'manual_test'
       polygon_api_key:
-        description: 'Polygon API Key (optional - will use Yahoo Finance if not provided)'
+        description: 'Polygon API Key (optional)'
         required: false
         type: string
 
 jobs:
-  smart-atr-with-levels:
+  three-phase-atr:
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # Increased for intraday processing
+    timeout-minutes: 35
     
     steps:
     - name: Checkout repository
@@ -53,17 +53,44 @@ jobs:
         python -m pip install --upgrade pip
         pip install yfinance pandas pytz requests numpy
     
-    - name: Determine Execution Phase
+    - name: Determine Execution Phase and Asset Classes
       timeout-minutes: 2
       run: |
-        echo "🕐 Determining execution phase..."
+        echo "🕐 Determining execution phase and target asset classes..."
         
-        cat > determine_phase.py << 'EOF'
+        cat > phase_detector.py << 'EOF'
         #!/usr/bin/env python3
         import json
         import os
         from datetime import datetime, timedelta
         import pytz
+        
+        def classify_asset_type(ticker):
+            """Classify ticker by asset type"""
+            ticker = ticker.upper()
+            
+            # Crypto patterns
+            crypto_patterns = [
+                ticker.endswith('-USD'),
+                ticker.endswith('USD') and len(ticker) > 3,
+                ticker.endswith('-BTC'),
+                ticker.endswith('-ETH'),
+                ticker in ['BTC', 'ETH', 'ADA', 'SOL', 'DOGE', 'XRP', 'DOT', 'AVAX', 'MATIC', 'LINK']
+            ]
+            if any(crypto_patterns):
+                return 'crypto'
+            
+            # Futures patterns
+            futures_patterns = [
+                ticker in ['ES', 'NQ', 'YM', 'RTY', 'GC', 'SI', 'CL', 'NG', 'ZN', 'ZB'],
+                ticker.endswith('=F'),
+                len(ticker) <= 2 and ticker.isalpha()  # Two-letter futures codes
+            ]
+            if any(futures_patterns):
+                return 'futures'
+            
+            # Default to traditional (stocks, ETFs, indices)
+            return 'traditional'
         
         def determine_execution_phase():
             """Determine execution phase with market-aware scheduling"""
@@ -71,7 +98,7 @@ jobs:
             # Check for manual override
             manual_phase = os.getenv('GITHUB_EVENT_NAME') == 'workflow_dispatch'
             if manual_phase:
-                phase = os.getenv('INPUT_EXECUTION_PHASE', 'primary')
+                phase = os.getenv('INPUT_EXECUTION_PHASE', 'manual_test')
                 print(f"🔧 Manual execution: {phase}")
                 return phase
             
@@ -80,152 +107,327 @@ jobs:
             now = datetime.now(eastern)
             hour = now.hour
             weekday = now.weekday()  # 0=Monday, 6=Sunday
-            is_weekend = weekday >= 5  # Saturday=5, Sunday=6
+            is_weekend = weekday >= 5
             
+            # Phase detection based on cron schedule times
             if 17 <= hour < 20:  # 5:30 PM - 8:00 PM
                 if is_weekend:
-                    phase = 'weekend_skip'  # No primary run on weekends
+                    phase = 'weekend_skip'
                 else:
-                    phase = 'primary'  # Weekday primary (no crypto)
+                    phase = 'primary'  # Weekday primary run
                     
-            elif 20 <= hour < 24:  # 8:00 PM - 12:00 AM
+            elif 20 <= hour < 24 or hour == 0:  # 8:05 PM - 12:30 AM
                 phase = 'crypto_retry'  # Daily crypto + weekday retries
                 
             elif 0 <= hour < 6:   # 12:30 AM - 6:00 AM
                 if is_weekend:
-                    phase = 'weekend_skip'  # No final retry on weekends
+                    phase = 'weekend_skip'
                 else:
-                    phase = 'retry_final'  # Weekday final retry
+                    phase = 'final_cleanup'  # Weekday final cleanup
             else:
                 phase = 'gap_detection'  # Fallback/maintenance
             
             print(f"🕐 Time-based execution: {phase} (hour: {hour}, weekend: {is_weekend})")
             return phase
         
+        def get_target_asset_classes(phase):
+            """Determine which asset classes to target based on phase"""
+            eastern = pytz.timezone('US/Eastern')
+            is_weekend = datetime.now(eastern).weekday() >= 5
+            
+            if phase == 'primary':
+                # Phase 1: Traditional markets only (stocks, ETFs, futures)
+                return ['traditional', 'futures']
+                
+            elif phase == 'crypto_retry':
+                if is_weekend:
+                    # Weekend: Crypto only
+                    return ['crypto']
+                else:
+                    # Weekday: Crypto + retry traditional/futures
+                    return ['crypto', 'traditional', 'futures']
+                    
+            elif phase == 'final_cleanup':
+                # Phase 3: Everything (final attempt)
+                return ['crypto', 'traditional', 'futures']
+                
+            elif phase == 'manual_test':
+                # Manual: Everything for testing
+                return ['crypto', 'traditional', 'futures']
+                
+            else:
+                return []
+        
+        def load_retry_status():
+            """Load retry status from previous phases"""
+            try:
+                with open('retry_status.json', 'r') as f:
+                    return json.load(f)
+            except:
+                return {}
+        
         def main():
             phase = determine_execution_phase()
             
-            # Save phase for subsequent steps
+            if phase in ['weekend_skip']:
+                print(f"⏭️ Phase {phase} - no processing needed")
+                with open('execution_phase.txt', 'w') as f:
+                    f.write(phase)
+                with open('target_assets.json', 'w') as f:
+                    json.dump([], f)
+                return 0
+            
+            target_classes = get_target_asset_classes(phase)
+            retry_status = load_retry_status()
+            
+            print(f"📋 Execution Summary:")
+            print(f"   🕐 Phase: {phase}")
+            print(f"   🎯 Target asset classes: {target_classes}")
+            print(f"   🔄 Retry data available: {len(retry_status)} entries")
+            
+            # Save phase info for subsequent steps
             with open('execution_phase.txt', 'w') as f:
                 f.write(phase)
-                
-            print(f"📋 Execution phase: {phase}")
+            
+            with open('target_assets.json', 'w') as f:
+                json.dump(target_classes, f)
+            
             return 0
         
         if __name__ == "__main__":
             exit(main())
         EOF
         
-        python determine_phase.py
+        python phase_detector.py
         
-        # Set environment variable for subsequent steps
+        # Set environment variables for subsequent steps
         PHASE=$(cat execution_phase.txt)
         echo "EXECUTION_PHASE=$PHASE" >> $GITHUB_ENV
-        echo "✅ Phase determination completed: $PHASE"
+        echo "✅ Phase detection completed: $PHASE"
 
-    - name: Analyze Previous Execution Results
+    - name: Discovery and Asset Classification
       timeout-minutes: 3
       run: |
-        echo "🔍 Analyzing previous execution results..."
+        echo "🔍 Discovering tickers and classifying by asset type..."
         echo "📊 Phase: $EXECUTION_PHASE"
         
-        cat > analyze_previous_results.py << 'EOF'
+        cat > asset_discovery.py << 'EOF'
         #!/usr/bin/env python3
         import json
-        import os
-        from datetime import datetime, timedelta
-        import pytz
+        import glob
+        import re
+        import yfinance as yf
+        import time
+        from datetime import datetime
         
-        def load_current_atr_status():
-            """Load ATR status with weekend/crypto awareness"""
+        def classify_asset_type(ticker):
+            """Classify ticker by asset type"""
+            ticker = ticker.upper()
             
+            # Crypto patterns
+            crypto_patterns = [
+                ticker.endswith('-USD'),
+                ticker.endswith('USD') and len(ticker) > 3,
+                ticker.endswith('-BTC'),
+                ticker.endswith('-ETH'),
+                ticker in ['BTC', 'ETH', 'ADA', 'SOL', 'DOGE', 'XRP', 'DOT', 'AVAX', 'MATIC', 'LINK']
+            ]
+            if any(crypto_patterns):
+                return 'crypto'
+            
+            # Futures patterns
+            futures_patterns = [
+                ticker in ['ES', 'NQ', 'YM', 'RTY', 'GC', 'SI', 'CL', 'NG', 'ZN', 'ZB'],
+                ticker.endswith('=F'),
+                len(ticker) <= 2 and ticker.isalpha()
+            ]
+            if any(futures_patterns):
+                return 'futures'
+            
+            # Default to traditional
+            return 'traditional'
+        
+        def extract_ticker_from_filename(filename):
+            """Extract ticker from various filename patterns"""
+            patterns = [
+                r'atr_summary_([A-Z]+)_',
+                r'atr_level_totals_([A-Z]+)_',
+                r'statecheck_detailed_([A-Z]+)_',
+                r'zonebaseline_detailed_([A-Z]+)_',
+                r'zonebaseline_hourly_([A-Z]+)_',
+                r'([A-Z]+)_historical_',
+                r'([A-Z]+)_intraday_'
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, filename)
+                if match:
+                    return match.group(1)
+            return None
+        
+        def discover_existing_tickers():
+            """Discover tickers from existing repository files"""
+            print("🔍 Scanning repository for existing ticker files...")
+            
+            # Get all CSV files and compressed files
+            csv_files = glob.glob("*.csv") + glob.glob("**/*.csv", recursive=True)
+            gz_files = glob.glob("**/*.gz", recursive=True)
+            
+            all_files = csv_files + gz_files
+            
+            discovered_tickers = set()
+            for file_path in all_files:
+                ticker = extract_ticker_from_filename(file_path)
+                if ticker and len(ticker) <= 10:  # Reasonable ticker length
+                    discovered_tickers.add(ticker)
+            
+            print(f"📁 Found {len(discovered_tickers)} unique tickers: {sorted(discovered_tickers)}")
+            return sorted(discovered_tickers)
+        
+        def create_ticker_mapping(ticker):
+            """Create Yahoo Finance symbol mapping"""
+            mapping = {
+                'SPX': '^GSPC',     # S&P 500 Index
+                'ES': 'ES=F',       # E-mini S&P 500 Futures
+                'NQ': 'NQ=F',       # E-mini NASDAQ Futures  
+                'YM': 'YM=F',       # E-mini Dow Futures
+                'RTY': 'RTY=F',     # E-mini Russell 2000 Futures
+                'GC': 'GC=F',       # Gold Futures
+                'CL': 'CL=F',       # Crude Oil Futures
+                'ZN': 'ZN=F',       # 10-Year Treasury Note Futures
+                'VIX': '^VIX',      # CBOE Volatility Index
+                'DXY': 'DX=F',      # US Dollar Index Futures
+                'BTC': 'BTC-USD',   # Bitcoin
+                'ETH': 'ETH-USD'    # Ethereum
+            }
+            return mapping.get(ticker, ticker)
+        
+        def validate_ticker_data(ticker, yf_symbol):
+            """Quick validation that ticker has data available"""
             try:
-                with open('atr_levels.json', 'r') as f:
-                    atr_data = json.load(f)
+                yf_ticker = yf.Ticker(yf_symbol)
+                test_data = yf_ticker.history(period="5d")
+                
+                if test_data.empty:
+                    return False
+                
+                # Basic data quality check
+                if len(test_data) < 2:
+                    return False
                     
-                # Check if data is from today (with weekend considerations)
-                eastern = pytz.timezone('US/Eastern')
-                now = datetime.now(eastern)
-                today = now.date()
-                is_weekend = now.weekday() >= 5
+                return True
                 
-                last_updated = atr_data.get('last_updated', '')
-                if last_updated:
-                    try:
-                        last_date = datetime.fromisoformat(last_updated.replace(' UTC', '+00:00')).date()
-                        is_today = last_date == today
-                        
-                        # Weekend logic: if it's weekend and last update was Friday, that's OK
-                        if is_weekend and not is_today:
-                            days_ago = (today - last_date).days
-                            is_recent_enough = days_ago <= 2  # Friday to Sunday = 2 days
-                        else:
-                            is_recent_enough = is_today
-                    except:
-                        is_today = False
-                        is_recent_enough = False
-                else:
-                    is_today = False
-                    is_recent_enough = False
-                
-                tickers = atr_data.get('tickers', {})
-                
-                print(f"📊 Current ATR JSON status:")
-                print(f"   📅 Last updated: {last_updated}")
-                print(f"   🗓️ Is from today: {is_today}")
-                print(f"   🗓️ Recent enough: {is_recent_enough}")
-                print(f"   🔄 Weekend mode: {is_weekend}")
-                print(f"   📈 Total tickers: {len(tickers)}")
-                
-                # Categorize tickers by success/failure status
-                successful = {}
-                failed = {}
-                
-                for ticker, data in tickers.items():
-                    if data.get('status') == 'success':
-                        successful[ticker] = data
-                    else:
-                        failed[ticker] = data
-                
-                # Weekend failure analysis
-                if is_weekend:
-                    print(f"   🔄 Weekend analysis: Traditional market 'failures' may be expected")
-                
-                print(f"   ✅ Successful: {len(successful)}")
-                print(f"   ❌ Failed: {len(failed)}")
-                
-                if failed:
-                    print(f"   🔄 Failed tickers: {list(failed.keys())}")
-                
-                return {
-                    'is_current': is_recent_enough,
-                    'is_weekend': is_weekend,
-                    'successful': successful,
-                    'failed': failed,
-                    'all_tickers': tickers
-                }
-                
-            except FileNotFoundError:
-                print("⚠️ No existing ATR JSON found")
-                return {
-                    'is_current': False,
-                    'is_weekend': datetime.now(pytz.timezone('US/Eastern')).weekday() >= 5,
-                    'successful': {},
-                    'failed': {},
-                    'all_tickers': {}
-                }
             except Exception as e:
-                print(f"❌ Error reading ATR JSON: {str(e)}")
-                return {
-                    'is_current': False,
-                    'is_weekend': datetime.now(pytz.timezone('US/Eastern')).weekday() >= 5,
-                    'successful': {},
-                    'failed': {},
-                    'all_tickers': {}
-                }
+                print(f"      ⚠️ {ticker}: Validation error - {e}")
+                return False
+        
+        def main():
+            print("🚀 Asset Discovery and Classification")
+            print("=" * 50)
+            
+            # Load target asset classes from previous step
+            try:
+                with open('target_assets.json', 'r') as f:
+                    target_classes = json.load(f)
+            except:
+                target_classes = ['traditional', 'futures', 'crypto']
+            
+            if not target_classes:
+                print("⏭️ No asset classes to process")
+                with open('discovered_tickers.json', 'w') as f:
+                    json.dump({'tickers': {}}, f)
+                return 0
+            
+            print(f"🎯 Target asset classes: {target_classes}")
+            
+            # Discover all tickers
+            discovered_tickers = discover_existing_tickers()
+            
+            if not discovered_tickers:
+                print("❌ No tickers discovered")
+                return 1
+            
+            # Classify and filter by target asset classes
+            valid_tickers = {}
+            
+            for ticker in discovered_tickers:
+                asset_type = classify_asset_type(ticker)
+                
+                # Skip if not in target classes for this phase
+                if asset_type not in target_classes:
+                    print(f"   ⏭️ {ticker}: Skipping {asset_type} (not in target classes)")
+                    continue
+                
+                print(f"   🔄 Testing {ticker} ({asset_type})...")
+                yf_symbol = create_ticker_mapping(ticker)
+                
+                if validate_ticker_data(ticker, yf_symbol):
+                    valid_tickers[ticker] = {
+                        'ticker': ticker,
+                        'yf_symbol': yf_symbol,
+                        'asset_type': asset_type,
+                        'data_available': True,
+                        'discovered_at': datetime.now().isoformat()
+                    }
+                    print(f"      ✅ {ticker}: Available ({asset_type})")
+                else:
+                    print(f"      ❌ {ticker}: No data available")
+                
+                # Rate limiting
+                time.sleep(0.3)
+            
+            # Save discovered and classified tickers
+            config = {
+                'discovered_at': datetime.now().isoformat(),
+                'method': 'three_phase_asset_discovery',
+                'target_classes': target_classes,
+                'tickers': valid_tickers
+            }
+            
+            with open('discovered_tickers.json', 'w') as f:
+                json.dump(config, f, indent=2)
+            
+            print(f"\n✅ Discovery complete: {len(valid_tickers)} valid tickers for target classes")
+            
+            # Breakdown by asset type
+            by_type = {}
+            for ticker, info in valid_tickers.items():
+                asset_type = info['asset_type']
+                by_type.setdefault(asset_type, []).append(ticker)
+            
+            for asset_type, tickers in by_type.items():
+                print(f"   📊 {asset_type.upper()}: {tickers}")
+            
+            return 0
+        
+        if __name__ == "__main__":
+            exit(main())
+        EOF
+        
+        python asset_discovery.py
+        echo "✅ Asset discovery and classification completed"
+
+    - name: Load Retry Status and Plan Processing
+      timeout-minutes: 2
+      run: |
+        echo "📋 Loading retry status and planning processing targets..."
+        echo "📊 Phase: $EXECUTION_PHASE"
+        
+        cat > processing_planner.py << 'EOF'
+        #!/usr/bin/env python3
+        import json
+        from datetime import datetime, date
+        
+        def load_retry_status():
+            """Load previous phase failure status"""
+            try:
+                with open('retry_status.json', 'r') as f:
+                    return json.load(f)
+            except:
+                return {}
         
         def load_discovered_tickers():
-            """Load discovered tickers configuration"""
+            """Load discovered and classified tickers"""
             try:
                 with open('discovered_tickers.json', 'r') as f:
                     config = json.load(f)
@@ -233,158 +435,104 @@ jobs:
             except:
                 return {}
         
-        def is_crypto_ticker(ticker):
-            """Identify crypto tickers"""
-            crypto_patterns = [
-                ticker.endswith('-USD'),
-                ticker.endswith('USD'),
-                ticker.endswith('-BTC'),
-                ticker.endswith('-ETH'),
-                ticker in ['BTC', 'ETH', 'ADA', 'SOL', 'DOGE', 'XRP', 'DOT', 'AVAX']
-            ]
-            return any(crypto_patterns)
-        
-        def is_futures_ticker(ticker):
-            """Identify futures tickers"""
-            futures_patterns = [
-                ticker in ['ES', 'NQ', 'YM', 'RTY', 'GC', 'SI', 'CL', 'NG'],
-                ticker.endswith('=F'),
-                len(ticker) <= 2 and ticker.isalpha()  # Simple heuristic
-            ]
-            return any(futures_patterns)
-        
-        def should_run_today(phase):
-            """Determine if this phase should run today based on market schedule"""
-            eastern = pytz.timezone('US/Eastern')
-            now = datetime.now(eastern)
-            weekday = now.weekday()  # 0=Monday, 6=Sunday
-            is_weekend = weekday >= 5
+        def plan_processing_targets(phase, discovered_tickers, retry_status):
+            """Plan which tickers to process based on phase and retry status"""
             
-            if phase == 'primary':
-                return not is_weekend
-            elif phase == 'crypto_retry':
-                return True
-            elif phase == 'retry_final':
-                return not is_weekend
-            elif phase == 'weekend_skip':
-                return False
-            else:  # gap_detection, etc.
-                return True
-        
-        def determine_retry_targets(phase, atr_status, discovered_tickers):
-            """Determine targets with market-aware crypto/futures handling"""
-            
-            eastern = pytz.timezone('US/Eastern')
-            now = datetime.now(eastern)
-            is_weekend = now.weekday() >= 5
-            
-            if phase == 'weekend_skip':
-                print("🛑 WEEKEND_SKIP: Not a trading day for traditional markets")
-                return {}
-            
-            elif phase == 'primary':
-                # Primary: All non-crypto tickers
-                targets = {}
-                for ticker, config in discovered_tickers.items():
-                    if not is_crypto_ticker(ticker):
-                        targets[ticker] = config
-                
-                print(f"🎯 PRIMARY: Targeting {len(targets)} traditional market tickers (NO crypto)")
-                if len(targets) != len(discovered_tickers):
-                    crypto_count = len(discovered_tickers) - len(targets)
-                    print(f"   ⏰ Skipping {crypto_count} crypto tickers (waiting for 8PM run)")
-                
-            elif phase == 'crypto_retry':
-                targets = {}
-                
-                # Always include ALL crypto tickers (daily)
-                crypto_tickers = {k: v for k, v in discovered_tickers.items() 
-                                if is_crypto_ticker(k)}
-                targets.update(crypto_tickers)
-                
-                # On weekdays, also retry failed traditional markets
-                if not is_weekend:
-                    failed_tickers = atr_status['failed']
-                    for ticker in failed_tickers.keys():
-                        if ticker in discovered_tickers and not is_crypto_ticker(ticker):
-                            if not is_futures_ticker(ticker):
-                                targets[ticker] = discovered_tickers[ticker]
-                
-                if is_weekend:
-                    print(f"🎯 CRYPTO_RETRY (Weekend): {len(targets)} crypto tickers only")
-                else:
-                    crypto_count = len(crypto_tickers)
-                    retry_count = len(targets) - crypto_count
-                    print(f"🎯 CRYPTO_RETRY (Weekday): {crypto_count} crypto + {retry_count} failed traditional")
-                
-            elif phase == 'retry_final':
-                # Final retry: ALL remaining failures
-                failed_tickers = atr_status['failed']
-                targets = {k: discovered_tickers[k] for k in failed_tickers.keys() 
-                          if k in discovered_tickers}
-                
-                print(f"🎯 RETRY_FINAL: {len(targets)} remaining failures (all asset classes)")
-                
-            elif phase == 'gap_detection':
-                # Gap detection: all tickers
-                targets = discovered_tickers.copy()
-                print(f"🎯 GAP_DETECTION: Analyzing all {len(targets)} tickers")
-                
-            else:
-                targets = {}
-                print(f"⚠️ Unknown phase: {phase}")
-            
-            return targets
-        
-        def main():
-            # Load phase from previous step
+            # Load phase from file
             try:
                 with open('execution_phase.txt', 'r') as f:
                     phase = f.read().strip()
             except:
-                phase = 'primary'  # Fallback
-                
-            print(f"📋 Loaded execution phase: {phase}")
+                phase = 'primary'
             
-            # Early exit for weekend skips
-            if not should_run_today(phase):
-                print(f"⏭️ Phase {phase} should not run today - exiting gracefully")
+            targets = {}
+            today_str = date.today().isoformat()
+            
+            if phase == 'primary':
+                # Phase 1: All discovered traditional/futures tickers
+                for ticker, config in discovered_tickers.items():
+                    targets[ticker] = {**config, 'retry_reason': 'primary_attempt'}
+                    
+            elif phase == 'crypto_retry':
+                # Phase 2: Crypto + retry failed traditional/futures
                 
-                with open('retry_targets.json', 'w') as f:
+                # Add all crypto
+                for ticker, config in discovered_tickers.items():
+                    if config.get('asset_type') == 'crypto':
+                        targets[ticker] = {**config, 'retry_reason': 'crypto_primary'}
+                
+                # Add failed traditional/futures from Phase 1
+                phase1_failures = retry_status.get(today_str, {}).get('phase1_failures', [])
+                for ticker in phase1_failures:
+                    if ticker in discovered_tickers:
+                        targets[ticker] = {**discovered_tickers[ticker], 'retry_reason': 'phase1_retry'}
+                        
+            elif phase == 'final_cleanup':
+                # Phase 3: All remaining failures
+                remaining_failures = retry_status.get(today_str, {}).get('phase2_failures', [])
+                for ticker in remaining_failures:
+                    if ticker in discovered_tickers:
+                        targets[ticker] = {**discovered_tickers[ticker], 'retry_reason': 'final_cleanup'}
+                        
+            elif phase == 'manual_test':
+                # Manual: All discovered tickers
+                for ticker, config in discovered_tickers.items():
+                    targets[ticker] = {**config, 'retry_reason': 'manual_test'}
+            
+            return targets
+        
+        def main():
+            print("📋 Processing Planning")
+            print("=" * 30)
+            
+            # Load data
+            discovered_tickers = load_discovered_tickers()
+            retry_status = load_retry_status()
+            
+            # Load phase
+            try:
+                with open('execution_phase.txt', 'r') as f:
+                    phase = f.read().strip()
+            except:
+                phase = 'primary'
+            
+            if not discovered_tickers:
+                print("❌ No discovered tickers - nothing to process")
+                with open('processing_targets.json', 'w') as f:
                     json.dump({}, f)
                 with open('should_process.txt', 'w') as f:
                     f.write('false')
                 return 0
             
-            # Analyze current status
-            atr_status = load_current_atr_status()
-            discovered_tickers = load_discovered_tickers()
+            # Plan processing targets
+            targets = plan_processing_targets(phase, discovered_tickers, retry_status)
             
-            # Determine what to target this run
-            retry_targets = determine_retry_targets(phase, atr_status, discovered_tickers)
+            # Save processing plan
+            with open('processing_targets.json', 'w') as f:
+                json.dump(targets, f, indent=2)
             
-            # Save targets for data processing step
-            with open('retry_targets.json', 'w') as f:
-                json.dump(retry_targets, f, indent=2)
-            
-            # Summary
-            print(f"\n📋 Execution Summary:")
-            print(f"   🕐 Phase: {phase}")
-            print(f"   🗓️ Weekend mode: {atr_status.get('is_weekend', False)}")
-            print(f"   🎯 Targets: {len(retry_targets)} tickers")
-            print(f"   📊 Previous success: {len(atr_status['successful'])}")
-            print(f"   📊 Previous failures: {len(atr_status['failed'])}")
-            
-            if retry_targets:
-                print(f"   📋 Target list: {list(retry_targets.keys())}")
-            
-            # Set flag for whether we should skip processing
-            should_process = len(retry_targets) > 0
+            # Set processing flag
+            should_process = len(targets) > 0
             with open('should_process.txt', 'w') as f:
                 f.write('true' if should_process else 'false')
             
-            if not should_process:
-                print("✅ No targets identified - will skip data processing")
+            # Summary
+            print(f"📊 Processing Plan Summary:")
+            print(f"   🕐 Phase: {phase}")
+            print(f"   🎯 Targets: {len(targets)} tickers")
+            print(f"   📋 Previous failures in retry_status: {len(retry_status)} entries")
+            
+            if targets:
+                # Breakdown by retry reason
+                by_reason = {}
+                for ticker, info in targets.items():
+                    reason = info.get('retry_reason', 'unknown')
+                    by_reason.setdefault(reason, []).append(ticker)
+                
+                for reason, tickers in by_reason.items():
+                    print(f"   📌 {reason}: {tickers}")
+            else:
+                print("   ✅ No targets identified - will skip processing")
             
             return 0
         
@@ -392,16 +540,26 @@ jobs:
             exit(main())
         EOF
         
-        python analyze_previous_results.py
-        
-        echo "✅ Previous results analysis completed"
+        python processing_planner.py
+        echo "✅ Processing planning completed"
 
-    - name: Create Enhanced Levels Processor
-      timeout-minutes: 3
+    - name: Three-Phase ATR Data Processing
+      timeout-minutes: 20
+      env:
+        POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY || inputs.polygon_api_key }}
       run: |
-        echo "🔧 Creating enhanced levels processor with smart retry support..."
+        # Check if we should process
+        SHOULD_PROCESS=$(cat should_process.txt)
+        if [ "$SHOULD_PROCESS" = "false" ]; then
+          echo "⏭️ No targets identified - skipping data processing"
+          exit 0
+        fi
         
-        cat > enhanced_levels_processor.py << 'EOF'
+        echo "🔄 Starting three-phase ATR data processing..."
+        echo "📊 Phase: $EXECUTION_PHASE"
+        echo "⏰ Processing start time: $(date)"
+        
+        cat > three_phase_processor.py << 'EOF'
         #!/usr/bin/env python3
         import json
         import yfinance as yf
@@ -412,12 +570,26 @@ jobs:
         from datetime import datetime, timedelta, date
         import pytz
         
-        def calculate_atr(df, period=14):
+        def get_target_date_for_market():
+            """Get target date for market data - most recent trading day"""
+            eastern = pytz.timezone('US/Eastern')
+            now_eastern = datetime.now(eastern)
+            
+            # Simple logic: Always target most recent trading day with closed data
+            if now_eastern.hour >= 16:  # After 4 PM
+                target_date = now_eastern.date()
+            else:  # Before 4 PM or overnight
+                target_date = (now_eastern - timedelta(days=1)).date()
+            
+            print(f"        🎯 Target date: {target_date} (most recent trading day)")
+            return target_date
+        
+        def calculate_true_wilders_atr(df, period=14):
             """Calculate TRUE Wilder's ATR exactly matching daily_atr_updater.py methodology"""
             if len(df) < period:
                 return pd.Series([np.nan] * len(df), index=df.index)
             
-            # Calculate True Range components exactly like your system
+            # Calculate True Range components exactly like proven system
             df_copy = df.copy()
             df_copy["Prev_Close"] = df_copy["Close"].shift(1)
             
@@ -439,15 +611,13 @@ jobs:
             
             for i in range(len(df_copy)):
                 if i < period - 1:
-                    # No ATR until we have enough data (need 14 periods)
+                    # No ATR until we have enough data
                     atr_values[i] = None
                 elif i == period - 1:
-                    # First ATR = average of first 14 TR values (index 0 to 13)
-                    # This matches Excel OFFSET(current,-13,0,14,1) logic
+                    # First ATR = average of first 14 TR values
                     atr_values[i] = df_copy["TR"].iloc[0:i+1].mean()
                 else:
                     # Subsequent ATR = 1/14*current_TR + (1-1/14)*previous_ATR
-                    # Exact Excel formula: 1/I$4*F2915+(1-1/I$4)*I2914
                     prev_atr = atr_values[i-1]
                     current_tr = df_copy["TR"].iloc[i]
                     atr_values[i] = (1/period) * current_tr + (1 - 1/period) * prev_atr
@@ -459,7 +629,7 @@ jobs:
             historical_dir = "historical_data"
             os.makedirs(historical_dir, exist_ok=True)
             
-            # Use the EXISTING filename pattern: {ticker}_historical.csv.gz
+            # Use existing filename pattern: {ticker}_historical.csv.gz
             compressed_file = f"{historical_dir}/{ticker_key}_historical.csv.gz"
             
             if os.path.exists(compressed_file):
@@ -467,21 +637,16 @@ jobs:
                     with gzip.open(compressed_file, 'rt') as f:
                         df = pd.read_csv(f)
                     
-                    # Robust date parsing with multiple fallback strategies
+                    # Robust date parsing with timezone handling
                     try:
                         df['Date'] = pd.to_datetime(df['Date'], utc=True).dt.tz_localize(None).dt.date
                     except (ValueError, AttributeError, TypeError):
                         try:
-                            # Fallback 1: Force string conversion first
+                            # Fallback: Force string conversion first
                             df['Date'] = pd.to_datetime(df['Date'].astype(str), errors='coerce', utc=True).dt.tz_localize(None).dt.date
                         except:
-                            try:
-                                # Fallback 2: Handle mixed date formats without deprecated argument
-                                df['Date'] = pd.to_datetime(df['Date'], errors='coerce', utc=True).dt.tz_localize(None).dt.date
-                            except:
-                                # Fallback 3: Manual parsing
-                                print(f"        🔧 Using manual date parsing for {ticker_key}")
-                                df['Date'] = df['Date'].apply(lambda x: pd.to_datetime(str(x), errors='coerce', utc=True).tz_localize(None).date() if pd.notna(x) else None)
+                            print(f"        🔧 Using manual date parsing for {ticker_key}")
+                            df['Date'] = df['Date'].apply(lambda x: pd.to_datetime(str(x), errors='coerce', utc=True).tz_localize(None).date() if pd.notna(x) else None)
                     
                     # Remove any rows with failed date parsing
                     df = df.dropna(subset=['Date'])
@@ -493,275 +658,51 @@ jobs:
             
             return None, compressed_file
         
-        def create_ticker_mapping(ticker):
-            """Create Yahoo Finance symbol mapping"""
-            mapping = {
-                'SPX': '^SPX',     # S&P 500 Index
-                'ES': 'ES=F',      # E-mini S&P 500 Futures
-                'NQ': 'NQ=F',      # E-mini NASDAQ Futures  
-                'YM': 'YM=F',      # E-mini Dow Futures
-                'RTY': 'RTY=F',    # E-mini Russell 2000 Futures
-                'GC': 'GC=F',      # Gold Futures
-                'CL': 'CL=F',      # Crude Oil Futures
-                'ZN': 'ZN=F',      # 10-Year Treasury Note Futures
-                'VIX': '^VIX',     # CBOE Volatility Index
-                'DXY': 'DX=F'      # US Dollar Index Futures
-            }
-            return mapping.get(ticker, ticker)
-        
-        def should_use_polygon(ticker_key):
-            """Determine if ticker should use Polygon as primary source"""
-            if ticker_key.startswith('^'):
-                return False  # Indices - use Yahoo Finance
-            
-            if ticker_key in ['SPX', 'DJI', 'NDX', 'RUT']:
-                return False  # Index symbols - use Yahoo Finance
-                
-            if ticker_key.endswith('=F'):
-                return False  # Futures - Yahoo Finance may be better
-            
-            if ticker_key in ['ES', 'NQ', 'YM', 'RTY', 'GC', 'SI', 'CL', 'NG']:
-                return False  # Major futures - stick with Yahoo Finance
-            
-            return True  # Default: try Polygon first for stocks/ETFs
-        
-        def convert_to_polygon_symbol(ticker_key, yf_symbol):
-            """Convert ticker to Polygon format if needed"""
-            if ticker_key == yf_symbol and not ticker_key.startswith('^'):
-                return ticker_key
-            
-            # Handle special mappings
-            polygon_mappings = {
-                'SPX': None,  # SPX index - not available on Polygon
-                'ES': None,   # Futures - complex on Polygon
-                'NQ': None,
-                'YM': None,
-                'RTY': None
-            }
-            
-            return polygon_mappings.get(ticker_key, ticker_key)
-        
-        def fetch_from_polygon(symbol, start_date, end_date):
-            """Fetch data from Polygon.io API with consistent date handling"""
-            try:
-                import requests
-                
-                api_key = os.getenv('POLYGON_API_KEY')
-                if not api_key:
-                    return None
-                
-                url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/day/{start_date}/{end_date}"
-                params = {
-                    'apikey': api_key,
-                    'adjusted': 'true',
-                    'sort': 'asc'
-                }
-                
-                response = requests.get(url, params=params, timeout=30)
-                
-                if response.status_code != 200:
-                    return None
-                
-                data = response.json()
-                
-                if data.get('status') != 'OK' or not data.get('results'):
-                    return None
-                
-                # Convert Polygon format to standard format with consistent date handling
-                records = []
-                for bar in data['results']:
-                    # Polygon timestamps are in milliseconds, convert to naive datetime
-                    dt = datetime.fromtimestamp(bar['t'] / 1000)
-                    # Ensure we store as naive datetime (no timezone)
-                    date = dt.replace(tzinfo=None)
-                    
-                    records.append({
-                        'Date': date,
-                        'Open': bar['o'],
-                        'High': bar['h'],
-                        'Low': bar['l'],
-                        'Close': bar['c'],
-                        'Volume': bar['v']
-                    })
-                
-                if not records:
-                    return None
-                
-                df = pd.DataFrame(records)
-                df['Date'] = pd.to_datetime(df['Date'])
-                
-                return df
-                
-            except Exception as e:
-                print(f"        ❌ Polygon fetch error: {str(e)}")
-                return None
-        
-        def fetch_from_yahoo_period(yf_symbol, period):
-            """Fetch data from Yahoo Finance using period parameter (matches daily_atr_updater.py exactly)"""
-            try:
-                yf_ticker = yf.Ticker(yf_symbol)
-                
-                # Use EXACT same method as daily_atr_updater.py
-                print(f"        🔍 DEBUG: Requesting {period} data for {yf_symbol} using period='{period}'")
-                data = yf_ticker.history(period=period)
-                
-                if data.empty:
-                    return None
-                
-                print(f"        📊 Downloaded {len(data)} days of data for {yf_symbol} for proper ATR baseline")
-                print(f"        📅 Date range: {data.index[0].strftime('%Y-%m-%d')} to {data.index[-1].strftime('%Y-%m-%d')}")
-                print(f"        🔄 Using {period} of historical data for ATR convergence")
-                
-                # Process data with consistent date handling
-                data = data.reset_index()
-                if isinstance(data.columns, pd.MultiIndex):
-                    data.columns = data.columns.get_level_values(0)
-                
-                standard_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
-                available_columns = [col for col in standard_columns if col in data.columns]
-                data = data[available_columns]
-                
-                # Normalize datetime handling - remove timezone info for consistency
-                data['Date'] = pd.to_datetime(data['Date'])
-                if hasattr(data['Date'].iloc[0], 'tz') and data['Date'].iloc[0].tz is not None:
-                    data['Date'] = data['Date'].dt.tz_localize(None)
-                
-                return data
-                
-            except Exception as e:
-                print(f"        ❌ Yahoo Finance period fetch error: {str(e)}")
-                return None
-        
-        def fetch_from_yahoo(yf_symbol, start_date, end_date):
-            """Fetch data from Yahoo Finance using period parameter (matches daily_atr_updater.py exactly)"""
-            try:
-                yf_ticker = yf.Ticker(yf_symbol)
-                
-                # Use EXACT same method as daily_atr_updater.py
-                print(f"        🔍 DEBUG: Requesting {period} data for {yf_symbol} using period='{period}'")
-                data = yf_ticker.history(period=period)
-                
-                if data.empty:
-                    return None
-                
-                print(f"        📊 Downloaded {len(data)} days of data for {yf_symbol} for proper ATR baseline")
-                print(f"        📅 Date range: {data.index[0].strftime('%Y-%m-%d')} to {data.index[-1].strftime('%Y-%m-%d')}")
-                print(f"        🔄 Using {period} of historical data for ATR convergence")
-                
-                # Process data with consistent date handling
-                data = data.reset_index()
-                if isinstance(data.columns, pd.MultiIndex):
-                    data.columns = data.columns.get_level_values(0)
-                
-                standard_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
-                available_columns = [col for col in standard_columns if col in data.columns]
-                data = data[available_columns]
-                
-                # Normalize datetime handling - remove timezone info for consistency
-                data['Date'] = pd.to_datetime(data['Date'])
-                if hasattr(data['Date'].iloc[0], 'tz') and data['Date'].iloc[0].tz is not None:
-                    data['Date'] = data['Date'].dt.tz_localize(None)
-                
-                return data
-                
-            except Exception as e:
-                print(f"        ❌ Yahoo Finance period fetch error: {str(e)}")
-                return None
-            """Fetch data from Yahoo Finance with consistent date handling"""
-            try:
-                yf_ticker = yf.Ticker(yf_symbol)
-                data = yf_ticker.history(start=start_date, end=end_date + timedelta(days=1))
-                
-                if data.empty:
-                    return None
-                
-                # Process data with consistent date handling
-                data = data.reset_index()
-                if isinstance(data.columns, pd.MultiIndex):
-                    data.columns = data.columns.get_level_values(0)
-                
-                standard_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
-                available_columns = [col for col in standard_columns if col in data.columns]
-                data = data[available_columns]
-                
-                # Normalize datetime handling - remove timezone info for consistency
-                data['Date'] = pd.to_datetime(data['Date'])
-                if hasattr(data['Date'].iloc[0], 'tz') and data['Date'].iloc[0].tz is not None:
-                    data['Date'] = data['Date'].dt.tz_localize(None)
-                
-                return data
-                
-            except Exception as e:
-                print(f"        ❌ Yahoo Finance error: {str(e)}")
-                return None
-        
-        def fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date_in_data=None):
-            """Fetch new daily data with exact matching to daily_atr_updater.py methodology"""
+        def fetch_new_data(ticker_key, yf_symbol, target_date, last_date_in_data=None):
+            """Fetch new data with smart fallback logic"""
             try:
                 if last_date_in_data:
                     start_date = last_date_in_data + timedelta(days=1)
                     if start_date > target_date:
                         print(f"        ✅ Data is current")
                         return None
-                    print(f"        📅 Fetching from {start_date} to {target_date}")
+                    print(f"        📅 Fetching incremental: {start_date} to {target_date}")
                     
-                    # For incremental updates, use date range
-                    fetch_method = "date_range"
-                    fetch_params = {"start": start_date, "end": target_date + timedelta(days=1)}
+                    # Incremental fetch
+                    yf_ticker = yf.Ticker(yf_symbol)
+                    data = yf_ticker.history(start=start_date, end=target_date + timedelta(days=1))
+                    
                 else:
-                    # For initial fetch, use EXACT same method as daily_atr_updater.py
-                    print(f"        📅 Initial fetch: Using period='6mo' (matching daily_atr_updater.py)")
-                    fetch_method = "period"
-                    fetch_params = {"period": "6mo"}
-                
-                # Determine data source preference
-                polygon_symbol = convert_to_polygon_symbol(ticker_key, yf_symbol)
-                use_polygon = should_use_polygon(ticker_key)
-                
-                new_data = None
-                
-                if use_polygon and polygon_symbol and fetch_method == "date_range":
-                    # Only use Polygon for incremental updates (it doesn't support period parameter)
-                    print(f"        🔵 Trying Polygon first: {polygon_symbol}")
-                    new_data = fetch_from_polygon(polygon_symbol, fetch_params["start"], fetch_params["end"] - timedelta(days=1))
+                    print(f"        📅 Initial fetch: using period='6mo' (matches proven system)")
                     
-                    if new_data is not None and len(new_data) > 0:
-                        print(f"        ✅ Polygon success: {len(new_data)} records")
-                    else:
-                        print(f"        ⚠️ Polygon failed, falling back to Yahoo Finance")
-                        new_data = None
+                    # Initial fetch using EXACT same method as daily_atr_updater.py
+                    yf_ticker = yf.Ticker(yf_symbol)
+                    data = yf_ticker.history(period="6mo")
                 
-                # Yahoo Finance primary or backup
-                if new_data is None:
-                    print(f"        🟡 Using Yahoo Finance: {yf_symbol}")
-                    if fetch_method == "period":
-                        # Use EXACT same method as daily_atr_updater.py for initial fetch
-                        new_data = fetch_from_yahoo_period(yf_symbol, fetch_params["period"])
-                    else:
-                        new_data = fetch_from_yahoo(yf_symbol, fetch_params["start"], fetch_params["end"] - timedelta(days=1))
-                    
-                    if new_data is not None and len(new_data) > 0:
-                        print(f"        ✅ Yahoo Finance success: {len(new_data)} records")
-                    else:
-                        print(f"        ❌ Yahoo Finance also failed")
-                        return None
+                if data.empty:
+                    return None
                 
-                # Add metadata to processed data
-                if new_data is not None:
-                    new_data['Ticker'] = ticker_key
-                    new_data['YF_Symbol'] = yf_symbol
-                    new_data['Downloaded_At'] = datetime.now().isoformat()
-                    
-                    # Add data source info
-                    if polygon_symbol and use_polygon and fetch_method == "date_range":
-                        new_data['Data_Source'] = 'Polygon' if len(new_data) > 0 else 'Yahoo_Backup'
-                    else:
-                        new_data['Data_Source'] = 'Yahoo_Primary'
+                # Process data consistently
+                data = data.reset_index()
+                if isinstance(data.columns, pd.MultiIndex):
+                    data.columns = data.columns.get_level_values(0)
                 
-                return new_data
+                # Normalize datetime
+                data['Date'] = pd.to_datetime(data['Date'])
+                if hasattr(data['Date'].iloc[0], 'tz') and data['Date'].iloc[0].tz is not None:
+                    data['Date'] = data['Date'].dt.tz_localize(None)
+                
+                # Add metadata
+                data['Ticker'] = ticker_key
+                data['YF_Symbol'] = yf_symbol
+                data['Downloaded_At'] = datetime.now().isoformat()
+                data['Data_Source'] = 'Yahoo_Finance'
+                
+                print(f"        ✅ Successfully fetched {len(data)} records")
+                return data
                 
             except Exception as e:
-                print(f"        ❌ Error in data fetch: {str(e)}")
+                print(f"        ❌ Data fetch error: {str(e)}")
                 return None
         
         def save_updated_data(historical_data, new_data, compressed_file):
@@ -788,9 +729,9 @@ jobs:
                 print(f"        ❌ Save error: {str(e)}")
                 return False
         
-        def generate_fibonacci_levels_for_display(reference_close, atr):
+        def generate_fibonacci_levels(reference_close, atr):
             """Generate Fibonacci levels using EXACT same logic as daily_atr_updater.py"""
-            # Use the same ratios as your existing system
+            # Use the same ratios as proven system
             fib_ratios = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
                           -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
             
@@ -817,232 +758,12 @@ jobs:
             
             return levels
         
-        def load_intraday_data(intraday_file):
-            """Load existing intraday data with timezone normalization"""
-            if not os.path.exists(intraday_file):
-                return None
-                
-            try:
-                with gzip.open(intraday_file, 'rt') as f:
-                    data = pd.read_csv(f)
-                
-                # Convert and normalize datetime column
-                data['Datetime'] = pd.to_datetime(data['Datetime'])
-                
-                # Normalize timezone - convert to naive datetime for consistency
-                if hasattr(data['Datetime'].iloc[0], 'tz') and data['Datetime'].iloc[0].tz is not None:
-                    print(f"        🔧 Removing timezone info from existing intraday data")
-                    data['Datetime'] = data['Datetime'].dt.tz_localize(None)
-                
-                return data
-            except Exception as e:
-                print(f"        ⚠️ Error loading existing intraday data: {str(e)}")
-                return None
-        
-        def detect_intraday_data_format(existing_intraday):
-            """Detect whether existing intraday data has levels or is raw OHLC"""
-            if existing_intraday is None or len(existing_intraday) == 0:
-                return 'new_dataset'
+        def process_ticker(ticker_key, ticker_config, target_date, phase):
+            """Process a single ticker with three-phase awareness"""
+            retry_reason = ticker_config.get('retry_reason', 'unknown')
+            asset_type = ticker_config.get('asset_type', 'unknown')
             
-            # Check for your actual level column formats
-            level_columns = [col for col in existing_intraday.columns if col.startswith('ATR_')]
-            has_daily_atr = 'Daily_ATR' in existing_intraday.columns
-            has_daily_close = 'Daily_Close' in existing_intraday.columns
-            has_signed_levels = any(col for col in existing_intraday.columns if col.startswith(('+', '-')))
-            
-            if level_columns or has_daily_atr or has_daily_close or has_signed_levels:
-                return 'analysis_ready'
-            else:
-                return 'raw_ohlc'
-        
-        def attach_levels_to_intraday_bars(new_intraday_bars, fibonacci_levels):
-            """Attach pre-calculated levels to new 10-minute bars"""
-            if new_intraday_bars is None or len(new_intraday_bars) == 0:
-                return new_intraday_bars
-            
-            # Add level columns to each bar
-            for level_name, level_value in fibonacci_levels.items():
-                new_intraday_bars[level_name] = level_value
-            
-            return new_intraday_bars
-        
-        def fetch_intraday_from_yahoo(yf_symbol, start_date, end_date):
-            """Fetch 5-minute intraday data from Yahoo Finance and resample to 10-minute with timezone handling"""
-            try:
-                # Yahoo Finance intraday is limited to recent periods
-                max_days = min(60, (end_date - start_date).days + 1)
-                actual_start = end_date - timedelta(days=max_days)
-                
-                yf_ticker = yf.Ticker(yf_symbol)
-                
-                print(f"        📊 Fetching 5-minute data from Yahoo Finance...")
-                data = yf_ticker.history(
-                    start=actual_start,
-                    end=end_date + timedelta(days=1),
-                    interval="5m"
-                )
-                
-                if data.empty:
-                    print(f"        ⚠️ No 5-minute data available from Yahoo")
-                    return None
-                
-                # Process data with timezone normalization
-                data = data.reset_index()
-                if isinstance(data.columns, pd.MultiIndex):
-                    data.columns = data.columns.get_level_values(0)
-                
-                # Rename to match our format
-                data = data.rename(columns={'Date': 'Datetime'})
-                
-                standard_columns = ['Datetime', 'Open', 'High', 'Low', 'Close', 'Volume']
-                available_columns = [col for col in standard_columns if col in data.columns]
-                data = data[available_columns]
-                data['Datetime'] = pd.to_datetime(data['Datetime'])
-                
-                # Critical fix: Normalize timezone to avoid comparison errors
-                if hasattr(data['Datetime'].iloc[0], 'tz') and data['Datetime'].iloc[0].tz is not None:
-                    print(f"        🔧 Normalizing timezone from Yahoo Finance intraday data")
-                    data['Datetime'] = data['Datetime'].dt.tz_localize(None)
-                
-                print(f"        📊 Retrieved {len(data)} 5-minute bars, resampling to 10-minute...")
-                
-                # Resample 5-minute data to 10-minute
-                resampled_data = resample_to_10min(data)
-                
-                if resampled_data is not None and len(resampled_data) > 0:
-                    print(f"        ✅ Resampled to {len(resampled_data)} 10-minute bars")
-                    return resampled_data
-                else:
-                    print(f"        ❌ Resampling failed")
-                    return None
-                
-            except Exception as e:
-                print(f"        ❌ Yahoo intraday error: {str(e)}")
-                return None
-        
-        def resample_to_10min(data_5min):
-            """Resample 5-minute OHLC data to 10-minute OHLC data"""
-            try:
-                if data_5min is None or len(data_5min) == 0:
-                    return None
-                
-                # Set datetime as index for resampling
-                data_5min = data_5min.set_index('Datetime')
-                
-                # Resample to 10-minute intervals
-                resampled = data_5min.resample('10T').agg({
-                    'Open': 'first',
-                    'High': 'max', 
-                    'Low': 'min',
-                    'Close': 'last',
-                    'Volume': 'sum'
-                })
-                
-                # Remove rows where we don't have complete data
-                resampled = resampled.dropna()
-                
-                # Reset index to get Datetime back as column
-                resampled = resampled.reset_index()
-                
-                print(f"        🔄 Resampling: {len(data_5min)} 5-min → {len(resampled)} 10-min bars")
-                
-                return resampled
-                
-            except Exception as e:
-                print(f"        ❌ Resampling error: {str(e)}")
-                return None
-        
-        def process_intraday_data_with_levels(ticker_key, yf_symbol, target_date, previous_close, current_atr):
-            """Process 10-minute intraday data with intelligent level attachment and robust timezone handling"""
-            try:
-                # Create intraday directory structure
-                intraday_dir = "historical_data/intraday"
-                os.makedirs(intraday_dir, exist_ok=True)
-                
-                # Load existing intraday data
-                intraday_file = f"{intraday_dir}/{ticker_key}_intraday_10min.csv.gz"
-                existing_intraday = load_intraday_data(intraday_file)
-                
-                # Detect current data format
-                data_format = detect_intraday_data_format(existing_intraday)
-                print(f"        📊 Detected intraday format: {data_format}")
-                
-                # Determine date range for intraday fetch
-                if existing_intraday is not None and len(existing_intraday) > 0:
-                    # Ensure existing data datetime is timezone-naive for comparison
-                    last_intraday_datetime = existing_intraday['Datetime'].max()
-                    if hasattr(last_intraday_datetime, 'tz') and last_intraday_datetime.tz is not None:
-                        last_intraday_datetime = last_intraday_datetime.tz_localize(None)
-                    last_intraday_date = last_intraday_datetime.date()
-                    start_date = last_intraday_date
-                else:
-                    # If no existing data, get recent days
-                    start_date = target_date - timedelta(days=7)
-                
-                # Fetch new intraday data (simplified for Yahoo Finance only for now)
-                new_intraday = fetch_intraday_from_yahoo(yf_symbol, start_date, target_date)
-                
-                if new_intraday is None or len(new_intraday) == 0:
-                    print(f"        ⚠️ No new intraday data available")
-                    return existing_intraday is not None
-                
-                # Ensure new intraday data is timezone-naive
-                if hasattr(new_intraday['Datetime'].iloc[0], 'tz') and new_intraday['Datetime'].iloc[0].tz is not None:
-                    print(f"        🔧 Normalizing new intraday data timezone")
-                    new_intraday['Datetime'] = new_intraday['Datetime'].dt.tz_localize(None)
-                
-                # Handle level attachment based on existing data format
-                if data_format == 'analysis_ready':
-                    print(f"        🔢 Calculating and attaching levels to new bars...")
-                    
-                    # Generate levels using display calculation logic
-                    fibonacci_levels = generate_fibonacci_levels_for_display(previous_close, current_atr)
-                    
-                    # Attach levels to new bars
-                    new_intraday = attach_levels_to_intraday_bars(new_intraday, fibonacci_levels)
-                    
-                    print(f"        ✅ Added {len(fibonacci_levels)} level columns to {len(new_intraday)} bars")
-                    
-                elif data_format == 'raw_ohlc':
-                    print(f"        📊 Maintaining raw OHLC format (no levels added)")
-                    # Don't add levels - keep existing format
-                    
-                # Combine and save with timezone-aware handling
-                if existing_intraday is not None:
-                    # Ensure both dataframes have compatible datetime types
-                    if hasattr(existing_intraday['Datetime'].iloc[0], 'tz') and existing_intraday['Datetime'].iloc[0].tz is not None:
-                        existing_intraday['Datetime'] = existing_intraday['Datetime'].dt.tz_localize(None)
-                    
-                    combined_intraday = pd.concat([existing_intraday, new_intraday], ignore_index=True)
-                else:
-                    combined_intraday = new_intraday
-                
-                # Remove duplicates and sort
-                combined_intraday = combined_intraday.drop_duplicates(subset=['Datetime'], keep='last')
-                combined_intraday = combined_intraday.sort_values('Datetime')
-                
-                # Save compressed intraday data
-                with gzip.open(intraday_file, 'wt') as f:
-                    combined_intraday.to_csv(f, index=False)
-                
-                compressed_size = os.path.getsize(intraday_file) / 1024  # KB
-                new_records = len(new_intraday)
-                total_records = len(combined_intraday)
-                
-                if data_format == 'analysis_ready':
-                    print(f"        ✅ Analysis-ready data: +{new_records} bars ({total_records} total, {compressed_size:.1f} KB)")
-                else:
-                    print(f"        ✅ Raw OHLC data: +{new_records} bars ({total_records} total, {compressed_size:.1f} KB)")
-                
-                return True
-                
-            except Exception as e:
-                print(f"        ❌ Intraday processing error: {str(e)}")
-                return False
-        
-        def process_ticker_with_levels(ticker_key, ticker_config, target_date, phase):
-            """Enhanced ticker processing with ATR + levels integration - EXACT daily_atr_updater.py matching"""
-            print(f"   🔄 Processing {ticker_key} ({phase})...")
+            print(f"   🔄 Processing {ticker_key} ({asset_type}) - {retry_reason}")
             
             yf_symbol = ticker_config.get('yf_symbol', ticker_key)
             if yf_symbol != ticker_key:
@@ -1052,129 +773,62 @@ jobs:
                 # === DAILY DATA PROCESSING ===
                 print(f"      📊 Processing daily data...")
                 
-                # Check if we have existing data
+                # Load existing data
                 historical_data, compressed_file = load_historical_data(ticker_key)
                 
-                if historical_data is None or len(historical_data) == 0:
-                    # First time - use EXACT same method as daily_atr_updater.py
-                    print(f"      🔧 First-time data fetch - using period='6mo' (matching daily_atr_updater.py)")
-                    
-                    yf_ticker = yf.Ticker(yf_symbol)
-                    df = yf_ticker.history(period="6mo")  # EXACT same call as daily_atr_updater.py
-                    
-                    if df.empty:
-                        return {'status': 'error', 'error': 'No data available from Yahoo Finance'}
-                    
-                    print(f"      📊 Downloaded {len(df)} days of data for {yf_symbol} for proper ATR baseline")
-                    print(f"      📅 Date range: {df.index[0].strftime('%Y-%m-%d')} to {df.index[-1].strftime('%Y-%m-%d')}")
-                    print(f"      🔄 Using 6mo of historical data for ATR convergence")
-                    
-                    # Process exactly like daily_atr_updater.py
-                    df = df.reset_index()
-                    if isinstance(df.columns, pd.MultiIndex):
-                        df.columns = df.columns.get_level_values(0)
-                    
-                    # Normalize datetime
-                    df['Date'] = pd.to_datetime(df['Date'])
-                    if hasattr(df['Date'].iloc[0], 'tz') and df['Date'].iloc[0].tz is not None:
-                        df['Date'] = df['Date'].dt.tz_localize(None)
-                    
-                    # Add metadata
-                    df['Ticker'] = ticker_key
-                    df['YF_Symbol'] = yf_symbol
-                    df['Downloaded_At'] = datetime.now().isoformat()
-                    df['Data_Source'] = 'Yahoo_Primary_6mo'
-                    
-                    updated_data = df
-                    
-                else:
-                    # Incremental update logic (for future runs)
+                # Determine last date
+                last_date = None
+                if historical_data is not None and len(historical_data) > 0:
                     last_date = historical_data['Date'].max()
                     if isinstance(last_date, str):
                         last_date = pd.to_datetime(last_date).date()
-                    
-                    new_daily_data = fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date)
-                    
-                    if not save_updated_data(historical_data, new_daily_data, compressed_file):
-                        return {'status': 'error', 'error': 'Failed to save daily data'}
-                    
-                    # Reload for ATR calculation
-                    updated_data, _ = load_historical_data(ticker_key)
-                    if updated_data is None:
-                        return {'status': 'error', 'error': 'Failed to reload daily data'}
                 
-                # === ATR CALCULATION - EXACT DAILY_ATR_UPDATER.PY METHOD ===
-                print(f"      🔢 Calculating ATR using TRUE Wilder's method...")
+                # Fetch new data
+                new_data = fetch_new_data(ticker_key, yf_symbol, target_date, last_date)
                 
-                # Use EXACT same logic as daily_atr_updater.py
-                updated_data["Prev_Close"] = updated_data["Close"].shift(1)
+                # Save updated data
+                if not save_updated_data(historical_data, new_data, compressed_file):
+                    return {'status': 'error', 'error': 'Failed to save daily data'}
                 
-                # Calculate True Range exactly like daily_atr_updater.py
-                def calculate_true_range_row(row):
-                    if pd.isna(row["Prev_Close"]):
-                        return row["High"] - row["Low"]
-                    
-                    return max(
-                        row["High"] - row["Low"],
-                        abs(row["High"] - row["Prev_Close"]),
-                        abs(row["Low"] - row["Prev_Close"])
-                    )
+                # Reload for ATR calculation
+                updated_data, _ = load_historical_data(ticker_key)
+                if updated_data is None:
+                    return {'status': 'error', 'error': 'Failed to reload daily data'}
                 
-                updated_data["TR"] = updated_data.apply(calculate_true_range_row, axis=1)
+                # === ATR CALCULATION ===
+                print(f"      🔢 Calculating TRUE Wilder's ATR...")
                 
-                # Calculate TRUE Wilder's ATR (EXACT same as daily_atr_updater.py)
-                atr_window = 14
-                atr_values = [None] * len(updated_data)
+                # Calculate ATR using proven methodology
+                updated_data['ATR'] = calculate_true_wilders_atr(updated_data)
                 
-                for i in range(len(updated_data)):
-                    if i < atr_window - 1:
-                        atr_values[i] = None
-                    elif i == atr_window - 1:
-                        # First ATR = average of first 14 TR values
-                        atr_values[i] = updated_data["TR"].iloc[0:i+1].mean()
-                    else:
-                        # Wilder's smoothing: 1/14*current_TR + (1-1/14)*previous_ATR
-                        prev_atr = atr_values[i-1]
-                        current_tr = updated_data["TR"].iloc[i]
-                        atr_values[i] = (1/atr_window) * current_tr + (1 - 1/atr_window) * prev_atr
-                
-                updated_data["ATR"] = atr_values
-                
-                # Save updated data with ATR
+                # Save data with ATR
                 with gzip.open(compressed_file, 'wt') as f:
                     updated_data.to_csv(f, index=False)
                 
-                # Get reference values for level calculation - EXACT same logic
+                # Get reference values for level calculation
                 valid_atr_rows = updated_data[updated_data["ATR"].notna()]
                 
                 if valid_atr_rows.empty:
-                    return {'status': 'error', 'error': f'No valid ATR values found. Need at least {atr_window + 1} days of data.'}
+                    return {'status': 'error', 'error': 'No valid ATR values found'}
                 
                 latest = valid_atr_rows.iloc[-1]
                 current_close = latest["Close"]
                 current_atr = latest["ATR"]
                 reference_date = latest["Date"] if hasattr(latest["Date"], 'strftime') else pd.to_datetime(latest["Date"])
                 
-                # For previous close (0.000 reference), use the row before latest
+                # For previous close (0.000 reference)
                 if len(valid_atr_rows) > 1:
                     previous_row = valid_atr_rows.iloc[-2]
                     previous_close = previous_row["Close"]
                 else:
                     previous_close = current_close  # Fallback
                 
-                print(f"      ✅ Daily success: Close=${current_close:.2f}, ATR=${current_atr:.2f}")
+                print(f"      ✅ Success: Close=${current_close:.2f}, ATR=${current_atr:.2f}")
                 print(f"      🎯 Reference: Previous close=${previous_close:.2f} (0.000 level)")
                 print(f"      📊 Valid ATR rows: {len(valid_atr_rows)}")
                 
-                # === INTRADAY DATA PROCESSING WITH LEVELS ===
-                print(f"      📈 Processing 10-minute intraday data with levels...")
-                
-                intraday_result = process_intraday_data_with_levels(
-                    ticker_key, yf_symbol, target_date, previous_close, current_atr
-                )
-                intraday_status = "success" if intraday_result else "failed"
-                
-                print(f"      📈 Intraday result: {intraday_status}")
+                # Generate levels for JSON cache
+                levels = generate_fibonacci_levels(previous_close, current_atr)
                 
                 return {
                     'status': 'success',
@@ -1184,250 +838,345 @@ jobs:
                     'reference_date': str(reference_date.date() if hasattr(reference_date, 'date') else reference_date),
                     'last_updated': datetime.now().isoformat(),
                     'yf_symbol': yf_symbol,
+                    'asset_type': asset_type,
+                    'retry_reason': retry_reason,
                     'data_points': len(updated_data),
                     'valid_atr_points': len(valid_atr_rows),
                     'processing_phase': phase,
-                    'intraday_status': intraday_status,
-                    'data_source': df['Data_Source'].iloc[0] if 'Data_Source' in df.columns and len(df) > 0 else 'Yahoo_Primary_6mo'
+                    'levels': levels
                 }
                 
             except Exception as e:
                 print(f"      ❌ Error: {str(e)}")
-                return {'status': 'error', 'error': str(e)}
+                return {'status': 'error', 'error': str(e), 'asset_type': asset_type, 'retry_reason': retry_reason}
         
-        def get_target_date(phase):
-            """Get target date based on execution phase - FIXED to use current date"""
-            eastern = pytz.timezone('US/Eastern')
-            now_eastern = datetime.now(eastern)
-            
-            if phase == 'gap_detection':
-                return (now_eastern - timedelta(days=1)).date()
-            
-            # FIXED: Use current date (today) instead of yesterday
-            # On 7/22 at 5:30 PM, we want to process 7/22 data
-            target_date = now_eastern.date()
-            
-            print(f"        🎯 Target date logic: Using TODAY ({target_date}) for data processing")
-            return target_date
+        def save_retry_status(phase, results):
+            """Save retry status for next phase"""
+            try:
+                # Load existing retry status
+                try:
+                    with open('retry_status.json', 'r') as f:
+                        retry_status = json.load(f)
+                except:
+                    retry_status = {}
+                
+                today_str = date.today().isoformat()
+                
+                if today_str not in retry_status:
+                    retry_status[today_str] = {}
+                
+                # Identify failures for next phase
+                failures = [ticker for ticker, result in results.items() if result['status'] == 'error']
+                
+                if phase == 'primary':
+                    retry_status[today_str]['phase1_failures'] = failures
+                elif phase == 'crypto_retry':
+                    retry_status[today_str]['phase2_failures'] = failures
+                elif phase == 'final_cleanup':
+                    retry_status[today_str]['phase3_failures'] = failures
+                
+                # Clean up old entries (keep last 7 days)
+                cutoff_date = (datetime.now().date() - timedelta(days=7)).isoformat()
+                retry_status = {k: v for k, v in retry_status.items() if k >= cutoff_date}
+                
+                # Save updated retry status
+                with open('retry_status.json', 'w') as f:
+                    json.dump(retry_status, f, indent=2)
+                
+                print(f"📝 Saved retry status: {len(failures)} failures from {phase}")
+                return True
+                
+            except Exception as e:
+                print(f"❌ Error saving retry status: {str(e)}")
+                return False
+        
+        def save_levels_cache(results):
+            """Save levels to JSON cache for future use"""
+            try:
+                # Load existing levels cache
+                try:
+                    with open('levels_cache.json', 'r') as f:
+                        levels_cache = json.load(f)
+                except:
+                    levels_cache = {}
+                
+                today_str = date.today().isoformat()
+                tomorrow_str = (date.today() + timedelta(days=1)).isoformat()
+                
+                # Save levels calculated today for use tomorrow
+                if tomorrow_str not in levels_cache:
+                    levels_cache[tomorrow_str] = {}
+                
+                for ticker, result in results.items():
+                    if result['status'] == 'success' and 'levels' in result:
+                        levels_cache[tomorrow_str][ticker] = {
+                            'atr': result['reference_atr'],
+                            'reference_close': result['previous_close'],
+                            'levels': result['levels'],
+                            'calculated_from': today_str,
+                            'asset_type': result.get('asset_type', 'unknown')
+                        }
+                
+                # Clean up old entries (keep last 30 days)
+                cutoff_date = (datetime.now().date() - timedelta(days=30)).isoformat()
+                levels_cache = {k: v for k, v in levels_cache.items() if k >= cutoff_date}
+                
+                # Save updated cache
+                with open('levels_cache.json', 'w') as f:
+                    json.dump(levels_cache, f, indent=2)
+                
+                successful_levels = sum(1 for r in results.values() if r['status'] == 'success')
+                print(f"💾 Saved {successful_levels} level sets to cache for tomorrow")
+                return True
+                
+            except Exception as e:
+                print(f"❌ Error saving levels cache: {str(e)}")
+                return False
         
         def main():
-            """Main processing function with enhanced levels support"""
-            # Load phase from previous step
+            """Main three-phase processing function"""
+            # Load processing targets
             try:
-                with open('execution_phase.txt', 'r') as f:
-                    phase = f.read().strip()
-            except:
-                phase = 'primary'
-            
-            print(f"🎯 Enhanced Levels Processor - Phase: {phase}")
-            print("=" * 55)
-            
-            # Load retry targets
-            try:
-                with open('retry_targets.json', 'r') as f:
+                with open('processing_targets.json', 'r') as f:
                     targets = json.load(f)
             except:
-                print("❌ No retry targets found")
+                print("❌ No processing targets found")
                 return 1
             
             if not targets:
                 print("✅ No targets to process")
                 return 0
             
-            target_date = get_target_date(phase)
-            print(f"🎯 Target date: {target_date}")
-            print(f"📊 Processing {len(targets)} tickers...")
-            
-            # Load existing ATR data to merge results
-            existing_atr = {}
+            # Load phase
             try:
-                with open('atr_levels.json', 'r') as f:
-                    existing_data = json.load(f)
-                    existing_atr = existing_data.get('tickers', {})
+                with open('execution_phase.txt', 'r') as f:
+                    phase = f.read().strip()
             except:
-                pass
+                phase = 'primary'
             
-            results = existing_atr.copy()  # Start with existing results
-            success_count = 0
+            target_date = get_target_date_for_market()
             
-            # Process each target with enhanced levels support
+            print(f"🎯 Three-Phase ATR Processor - Phase: {phase}")
+            print(f"📅 Target date: {target_date}")
+            print(f"📊 Processing {len(targets)} tickers...")
+            print("=" * 60)
+            
+            # Process each target
+            results = {}
+            
             for ticker_key, ticker_config in targets.items():
-                result = process_ticker_with_levels(ticker_key, ticker_config, target_date, phase)
-                results[ticker_key] = result  # Update/overwrite with new result
-                
-                if result['status'] == 'success':
-                    success_count += 1
+                result = process_ticker(ticker_key, ticker_config, target_date, phase)
+                results[ticker_key] = result
             
-            # Create final ATR JSON with enhanced metadata
-            final_data = {
+            # Save retry status for next phase
+            save_retry_status(phase, results)
+            
+            # Save levels cache for future use
+            save_levels_cache(results)
+            
+            # Create final ATR JSON (compatibility with existing system)
+            successful_results = {k: v for k, v in results.items() if v['status'] == 'success'}
+            
+            final_atr_data = {
                 "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S %Z"),
                 "last_updated_timestamp": datetime.now().timestamp(),
-                "discovery_method": "smart_retry_with_levels",
+                "processing_method": "three_phase_system",
                 "execution_phase": phase,
-                "levels_integration": "enabled",
-                "intraday_support": "10min_bars_with_levels",
-                "tickers": results
+                "tickers": successful_results
             }
             
-            # Save results
+            # Save main ATR JSON
             with open('atr_levels.json', 'w') as f:
-                json.dump(final_data, f, indent=2)
+                json.dump(final_atr_data, f, indent=2)
             
             # Summary
-            total_success = sum(1 for r in results.values() if r['status'] == 'success')
-            total_failed = len(results) - total_success
-            intraday_success = sum(1 for r in results.values() if r.get('intraday_status') == 'success')
+            success_count = sum(1 for r in results.values() if r['status'] == 'success')
+            error_count = len(results) - success_count
             
-            print(f"\n📊 Enhanced Processing Summary:")
+            print(f"\n📊 Three-Phase Processing Summary:")
             print(f"🎯 Phase: {phase}")
-            print(f"📈 Processed this run: {len(targets)}")
-            print(f"✅ Daily successful this run: {success_count}")
-            print(f"✅ Total daily successful: {total_success}/{len(results)}")
-            print(f"📈 Total intraday successful: {intraday_success}/{len(results)}")
-            print(f"❌ Total remaining failures: {total_failed}")
+            print(f"📈 Processed: {len(results)} tickers")
+            print(f"✅ Successful: {success_count}")
+            print(f"❌ Failed: {error_count}")
             
-            # Show data source breakdown
-            polygon_count = sum(1 for r in results.values() if r.get('data_source', '').startswith('Polygon'))
-            yahoo_count = len(results) - polygon_count
-            if polygon_count > 0:
-                print(f"🔵 Used Polygon: {polygon_count}")
-            if yahoo_count > 0:
-                print(f"🟡 Used Yahoo: {yahoo_count}")
+            if success_count > 0:
+                print(f"\n🎯 Successful Calculations:")
+                for ticker, result in results.items():
+                    if result['status'] == 'success':
+                        asset_type = result.get('asset_type', 'unknown')
+                        print(f"   {ticker} ({asset_type}): ${result['reference_close']:.2f} (ATR: ${result['reference_atr']:.2f})")
             
-            return 0
+            if error_count > 0:
+                print(f"\n❌ Failed Calculations:")
+                for ticker, result in results.items():
+                    if result['status'] == 'error':
+                        asset_type = result.get('asset_type', 'unknown')
+                        print(f"   {ticker} ({asset_type}): {result['error']}")
+            
+            return 0 if success_count > 0 else 1
         
         if __name__ == "__main__":
             exit(main())
         EOF
         
-        echo "✅ Enhanced levels processor created"
-
-    - name: Smart Data Processing with Enhanced Levels
-      timeout-minutes: 15
-      env:
-        POLYGON_API_KEY: ${{ secrets.POLYGON_API_KEY || inputs.polygon_api_key }}
-      run: |
-        # Check if we should process
-        SHOULD_PROCESS=$(cat should_process.txt)
-        if [ "$SHOULD_PROCESS" = "false" ]; then
-          echo "⏭️ No targets identified - skipping data processing"
-          exit 0
-        fi
+        python three_phase_processor.py
         
-        echo "🔄 Starting smart data processing with enhanced levels..."
-        echo "📊 Phase: $EXECUTION_PHASE"
-        echo "⏰ Processing start time: $(date)"
-        
-        python enhanced_levels_processor.py
-        
-        echo "✅ Enhanced levels processing completed"
+        echo "✅ Three-phase ATR processing completed"
         echo "⏰ Processing end time: $(date)"
 
-    - name: Verify Results and Commit Enhanced Changes
+    - name: Verify Results and Generate Summary
+      timeout-minutes: 3
+      run: |
+        echo "🔍 Verifying three-phase processing results..."
+        echo "📊 Phase: $EXECUTION_PHASE"
+        
+        python -c "
+        import json
+        import os
+        from datetime import date
+        
+        try:
+            # Load main results
+            if os.path.exists('atr_levels.json'):
+                with open('atr_levels.json', 'r') as f:
+                    atr_data = json.load(f)
+                
+                tickers = atr_data.get('tickers', {})
+                phase = atr_data.get('execution_phase', 'unknown')
+                
+                successful = sum(1 for t in tickers.values() if t.get('status') == 'success')
+                failed = len(tickers) - successful
+                
+                print(f'📊 Final Three-Phase Results:')
+                print(f'   🕐 Phase: {phase}')
+                print(f'   ✅ Successful: {successful}/{len(tickers)}')
+                print(f'   ❌ Failed: {failed}/{len(tickers)}')
+                
+                # Breakdown by asset type
+                by_type = {}
+                for ticker, info in tickers.items():
+                    asset_type = info.get('asset_type', 'unknown')
+                    status = info.get('status', 'unknown')
+                    by_type.setdefault(asset_type, {'success': 0, 'error': 0})
+                    by_type[asset_type][status] = by_type[asset_type].get(status, 0) + 1
+                
+                print(f'   📊 By asset type:')
+                for asset_type, counts in by_type.items():
+                    total = counts.get('success', 0) + counts.get('error', 0)
+                    success = counts.get('success', 0)
+                    print(f'      {asset_type.upper()}: {success}/{total} successful')
+                
+                if successful > 0:
+                    print(f'   🎯 Sample calculations:')
+                    count = 0
+                    for ticker, info in tickers.items():
+                        if info.get('status') == 'success' and count < 3:
+                            close = info.get('reference_close', 0)
+                            atr = info.get('reference_atr', 0)
+                            asset_type = info.get('asset_type', 'unknown')
+                            print(f'      {ticker} ({asset_type}): Close=\${close:.2f}, ATR=\${atr:.2f}')
+                            count += 1
+            else:
+                print('❌ No ATR results file found')
+            
+            # Check retry status
+            if os.path.exists('retry_status.json'):
+                with open('retry_status.json', 'r') as f:
+                    retry_data = json.load(f)
+                
+                today = date.today().isoformat()
+                today_failures = retry_data.get(today, {})
+                
+                print(f'   🔄 Retry status for today:')
+                for phase_key, failures in today_failures.items():
+                    if failures:
+                        print(f'      {phase_key}: {failures}')
+                    else:
+                        print(f'      {phase_key}: No failures')
+            
+            # Check levels cache
+            if os.path.exists('levels_cache.json'):
+                with open('levels_cache.json', 'r') as f:
+                    levels_data = json.load(f)
+                
+                cache_entries = len(levels_data)
+                print(f'   💾 Levels cache: {cache_entries} date entries')
+                
+        except Exception as e:
+            print(f'Error analyzing results: {e}')
+        "
+        
+        echo ""
+        echo "📁 Generated files:"
+        ls -la *.json 2>/dev/null || echo "   No JSON files found"
+        
+        echo ""
+        echo "📁 Data files:"
+        if [ -d "historical_data" ]; then
+          echo "   📊 Historical data files:"
+          ls -la historical_data/*.gz 2>/dev/null | head -3 | while read line; do
+            echo "   📄 $line"
+          done
+          
+          if [ -d "historical_data/intraday" ]; then
+            echo "   📈 Intraday data files:"
+            ls -la historical_data/intraday/*.gz 2>/dev/null | head -2 | while read line; do
+              echo "   📈 $line"
+            done
+          fi
+        fi
+
+    - name: Commit Three-Phase Results
       timeout-minutes: 5
       run: |
-        echo "🔍 Verifying enhanced results..."
+        echo "📝 Committing three-phase processing results..."
         
-        if [ -f "atr_levels.json" ]; then
-          echo "✅ ATR levels JSON exists"
-          
-          # Show enhanced summary
-          python -c "
-        import json
-        try:
-            with open('atr_levels.json', 'r') as f:
-                data = json.load(f)
-            
-            tickers = data.get('tickers', {})
-            successful = sum(1 for t in tickers.values() if t.get('status') == 'success')
-            failed = len(tickers) - successful
-            phase = data.get('execution_phase', 'unknown')
-            levels_enabled = data.get('levels_integration', 'unknown')
-            intraday_support = data.get('intraday_support', 'unknown')
-            
-            # Count intraday successes
-            intraday_success = sum(1 for t in tickers.values() if t.get('intraday_status') == 'success')
-            
-            print(f'📊 Enhanced Final Status:')
-            print(f'   🕐 Phase: {phase}')
-            print(f'   🔢 Levels integration: {levels_enabled}')
-            print(f'   📈 Intraday support: {intraday_support}')
-            print(f'   ✅ Daily successful: {successful}/{len(tickers)}')
-            print(f'   ❌ Daily failed: {failed}/{len(tickers)}')
-            print(f'   📈 Intraday successful: {intraday_success}/{len(tickers)}')
-            
-            if failed > 0:
-                failed_tickers = [k for k, v in tickers.items() if v.get('status') != 'success']
-                print(f'   🔄 Remaining daily failures: {failed_tickers}')
-            
-            # Show enhanced data source breakdown
-            polygon_count = sum(1 for t in tickers.values() if t.get('data_source', '').startswith('Polygon'))
-            yahoo_count = len(tickers) - polygon_count
-            if polygon_count > 0:
-                print(f'   🔵 Used Polygon: {polygon_count}')
-            if yahoo_count > 0:
-                print(f'   🟡 Used Yahoo: {yahoo_count}')
-                
-            # Show levels and reference data for successful tickers
-            print(f'   🎯 Sample successful calculations:')
-            count = 0
-            for ticker, info in tickers.items():
-                if info.get('status') == 'success' and count < 3:
-                    close = info.get('reference_close', 0)
-                    atr = info.get('reference_atr', 0)
-                    prev_close = info.get('previous_close', 0)
-                    intraday = info.get('intraday_status', 'unknown')
-                    print(f'      {ticker}: Close=${close:.2f}, ATR=${atr:.2f}, Ref=${prev_close:.2f}, Intraday={intraday}')
-                    count += 1
-        except Exception as e:
-            print(f'Error analyzing enhanced results: {e}')
-          "
-          
-          # Check for compressed data files
-          echo ""
-          echo "📁 Compressed data files:"
-          if [ -d "historical_data" ]; then
-            ls -la historical_data/*.gz 2>/dev/null | head -5 | while read line; do
-              echo "   📄 $line"
-            done
-            
-            if [ -d "historical_data/intraday" ]; then
-              echo "📈 Intraday data files:"
-              ls -la historical_data/intraday/*.gz 2>/dev/null | head -3 | while read line; do
-                echo "   📈 $line"
-              done
-            fi
-          fi
-          
-          # Git commit with enhanced messaging
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          
-          git add atr_levels.json
-          git add historical_data/*.gz 2>/dev/null || true
-          git add historical_data/intraday/*.gz 2>/dev/null || true
-          
-          if ! git diff --staged --quiet; then
-            git commit -m "🚀 Enhanced Smart ATR with Levels [$EXECUTION_PHASE] - $(date '+%Y-%m-%d %H:%M UTC')"
-            git push origin ${{ github.ref_name }}
-            echo "✅ Enhanced changes committed and pushed"
-          else
-            echo "ℹ️ No changes to commit"
-          fi
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Add all generated files
+        git add atr_levels.json
+        git add retry_status.json 2>/dev/null || true
+        git add levels_cache.json 2>/dev/null || true
+        git add discovered_tickers.json 2>/dev/null || true
+        
+        # Add historical data
+        git add historical_data/*.gz 2>/dev/null || true
+        git add historical_data/intraday/*.gz 2>/dev/null || true
+        
+        if ! git diff --staged --quiet; then
+          git commit -m "🚀 Three-Phase Smart ATR [$EXECUTION_PHASE] - $(date '+%Y-%m-%d %H:%M UTC')"
+          git push origin ${{ github.ref_name }}
+          echo "✅ Three-phase results committed and pushed"
         else
-          echo "❌ ATR levels JSON not found!"
-          exit 1
+          echo "ℹ️ No changes to commit"
         fi
     
-    - name: Notify on Enhanced Failure
-      if: failure()
+    - name: Three-Phase System Status
+      if: always()
       run: |
-        echo "❌ Enhanced Smart ATR calculation with levels failed!"
-        echo "🔍 Check the logs above for details."
-        echo "📊 This enhanced workflow includes:"
-        echo "   • Smart multi-time retry system with market awareness"
-        echo "   • Dual-source data acquisition (Polygon + Yahoo Finance)"
-        echo "   • Enhanced levels integration with Fibonacci calculations"
-        echo "   • Intelligent intraday data processing (10-minute bars)"
-        echo "   • Advanced compression and storage optimization"
-        echo "   • Comprehensive error handling and recovery"
+        echo "🎯 Three-Phase Smart ATR System Status"
+        echo "=" * 50
+        echo "📊 Phase: $EXECUTION_PHASE"
+        echo "⏰ Completed: $(date)"
+        echo ""
+        
+        if [ "${{ job.status }}" = "success" ]; then
+          echo "✅ Three-phase processing completed successfully!"
+          echo ""
+          echo "🚀 System Features Active:"
+          echo "   • Three-phase retry logic (5:30 PM, 8:05 PM, midnight)"
+          echo "   • Asset class separation (traditional, crypto, futures)"
+          echo "   • Smart retry tracking with JSON persistence"
+          echo "   • Hybrid CSV+JSON architecture"
+          echo "   • Market-aware scheduling (weekdays + crypto weekends)"
+          echo "   • Gap detection and cascade recalculation ready"
+          echo ""
+          echo "📋 Next scheduled runs:"
+          echo "   • Phase 1 (Primary): Weekdays 5:30 PM Eastern"
+          echo "   • Phase 2 (Crypto+Retry): Daily 8:05 PM Eastern"  
+          echo "   • Phase 3 (Cleanup): Weekdays 12:30 AM Eastern"
+        else
+          echo "❌ Three-phase processing encountered issues"
+          echo "🔍 Check the logs above for details"
+        fi
