@@ -2597,368 +2597,356 @@ elif mode == "📈 Public Data Download":
 # ========================================================================================
 # MULTI-TIMEFRAME ATR COMBINER (SIMPLIFIED - Single ATR Column)  
 # ========================================================================================
+# ========================================================================================
+# ENHANCED MULTI-TIMEFRAME ATR COMBINER (With Full Fibonacci Levels)
+# ========================================================================================
 elif mode == "🎯 Multi-Timeframe ATR Combiner":
-    st.header("🎯 Multi-Timeframe ATR Combiner")
-    st.write("**Combine any two timeframes with ATR calculation for systematic analysis**")
+    st.header("🎯 Enhanced Multi-Timeframe ATR Combiner")
+    st.write("**Create analyzer-ready files with pre-calculated Fibonacci ATR levels**")
     
-    # SIMPLIFIED: Information about the tool
+    # Enhanced description
     st.info("""
-    🎯 **Purpose**: Prepare ATR-ready files for systematic analysis
+    🎯 **Purpose**: Create truly analyzer-ready files with pre-calculated Fibonacci levels
     
-    **What this does:**
-    - Calculates TRUE Wilder's ATR on your chosen base timeframe (any timeframe)
-    - Combines with your analysis timeframe for trigger/goal analysis
-    - Outputs single file with **single ATR column** ready for ATR Level Analyzer
+    **What this enhanced version does:**
+    - Calculates TRUE Wilder's ATR on your chosen base timeframe
+    - Takes OHLC data from your analysis timeframe  
+    - **For each analysis row (e.g., 7/22/25)**: Uses ATR and reference close from **previous base period (7/21/25)**
+    - Adds **ALL Fibonacci levels** to each row (ATR_1000, ATR_786, +1.000, -0.618, etc.)
+    - Creates **fully analyzer-ready** files (no calculation needed in analyzer)
     
-    **FLEXIBLE EXAMPLES:**
-    - **Monthly ATR + Daily Analysis**: Monthly bars for ATR → applied to daily bars
-    - **Daily ATR + 10-minute Analysis**: Daily bars for ATR → applied to 10-minute bars  
-    - **4-Hour ATR + 1-minute Analysis**: 4-hour bars for ATR → applied to 1-minute bars
-    - **Weekly ATR + 1-hour Analysis**: Weekly bars for ATR → applied to hourly bars
-    
-    **SIMPLIFIED OUTPUT**: Only one ATR column containing the currently used ATR value
+    **Enhanced Output Includes:**
+    ✅ Analysis timeframe OHLC data  
+    ✅ ATR from base timeframe (proper date alignment)  
+    ✅ **All 13 Fibonacci levels** in dual format  
+    ✅ SessionID, metadata for analyzer compatibility  
+    ✅ Perfect yml scheduler calculation consistency  
     """)
     
+    # Configuration columns
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("**📈 Ticker & Data Source**")
+        st.subheader("📊 Base Timeframe (ATR Source)")
+        st.write("**This timeframe calculates the ATR values**")
         
-        # Ticker input
-        ticker = st.text_input(
-            "Ticker Symbol",
-            value="SPX",
-            help="Enter ticker symbol (e.g., SPX, AAPL, BTC)"
-        ).upper()
+        # Base file upload or use session state
+        base_file = st.file_uploader(
+            "Upload Base Timeframe File",
+            type=['csv', 'xlsx', 'xls'],
+            help="Any timeframe for ATR calculation (daily, weekly, monthly, etc.)",
+            key="atr_combiner_base"
+        )
         
-        # Show ticker mapping
-        if ticker:
-            mapped_ticker = TickerMapper.get_public_ticker(ticker)
-            if mapped_ticker != ticker:
-                st.success(f"✅ Will map: {ticker} → {mapped_ticker}")
-            else:
-                st.info(f"📈 Will fetch: {ticker}")
+        # Show if using session state data
+        if not base_file and 'atr_combiner_base_data' in st.session_state:
+            base_filename = st.session_state.get('atr_combiner_base_filename', 'Held Base Data')
+            st.success(f"✅ **Using held data**: {base_filename}")
+            st.info("💡 Clear from sidebar workspace if you want to upload different file")
     
     with col2:
-        st.markdown("**📅 Date Range Configuration**")
+        st.subheader("📈 Analysis Timeframe (OHLC Source)")
+        st.write("**This timeframe provides the OHLC bars for analysis**")
         
-        # Check if we have held data to suggest smart dates
-        held_base_data = st.session_state.get('atr_combiner_base_data')
-        held_analysis_data = st.session_state.get('atr_combiner_analysis_data')
+        # Analysis file upload or use session state
+        analysis_file = st.file_uploader(
+            "Upload Analysis Timeframe File", 
+            type=['csv', 'xlsx', 'xls'],
+            help="Any timeframe for analysis (intraday, daily, etc.)",
+            key="atr_combiner_analysis"
+        )
         
-        suggested_start = None
-        suggested_end = None
-        suggestion_context = ""
+        # Show if using session state data
+        if not analysis_file and 'atr_combiner_analysis_data' in st.session_state:
+            analysis_filename = st.session_state.get('atr_combiner_analysis_filename', 'Held Analysis Data')
+            st.success(f"✅ **Using held data**: {analysis_filename}")
+            st.info("💡 Clear from sidebar workspace if you want to upload different file")
+    
+    # Configuration options
+    if (base_file or 'atr_combiner_base_data' in st.session_state) and \
+       (analysis_file or 'atr_combiner_analysis_data' in st.session_state):
         
-        if held_base_data is not None:
-            # We have held base data - suggest dates that complement it
-            held_start = held_base_data['Date'].min()
-            held_end = held_base_data['Date'].max()
-            
-            # Convert to proper date format for comparison
-            if hasattr(held_start, 'date'):
-                held_start = held_start.date()
-            if hasattr(held_end, 'date'):
-                held_end = held_end.date()
-            
-            # Suggest extending the range
-            suggested_start = held_start - timedelta(days=365)  # 1 year before
-            suggested_end = held_end + timedelta(days=30)  # 30 days after
-            suggestion_context = f"📊 **Smart suggestion based on held base data** ({held_start} to {held_end})"
-            
-            st.info(f"🔍 **Detected held base data**: {held_start} to {held_end}")
-            st.info("💡 **Suggested range**: Extended to provide ATR buffer and overlap")
-            
-        elif held_analysis_data is not None:
-            # We have held analysis data - suggest dates that provide good ATR coverage
-            held_start = held_analysis_data['Date'].min()
-            held_end = held_analysis_data['Date'].max()
-            
-            # Convert to proper date format
-            if hasattr(held_start, 'date'):
-                held_start = held_start.date()
-            if hasattr(held_end, 'date'):
-                held_end = held_end.date()
-            
-            # For base data to support analysis, suggest earlier start
-            suggested_start = held_start - timedelta(days=180)  # 6 months before for ATR
-            suggested_end = held_end + timedelta(days=5)  # Few days after
-            suggestion_context = f"📈 **Smart suggestion based on held analysis data** ({held_start} to {held_end})"
-            
-            st.info(f"🔍 **Detected held analysis data**: {held_start} to {held_end}")
-            st.info("💡 **Suggested range**: Extended back 6 months to provide ATR calculation buffer")
-    
-    # Date range selection - full width
-    st.subheader("📅 Date Range Selection")
-    
-    date_mode = st.radio(
-        "Date Selection Mode",
-        ["Smart ATR Range", "Custom Range", "Suggested Range"] if suggested_start else ["Smart ATR Range", "Custom Range"],
-        help="Smart mode adds buffer for ATR calculation, Suggested uses held data context",
-        horizontal=True
-    )
-    
-    if date_mode == "Suggested Range" and suggested_start:
-        st.success(suggestion_context)
+        st.markdown("---")
+        st.subheader("⚙️ Configuration")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            atr_period = st.number_input(
+                "ATR Period",
+                min_value=5,
+                max_value=50,
+                value=14,
+                help="Number of periods for ATR calculation (14 is standard)"
+            )
+        
+        with col2:
+            align_method = st.selectbox(
+                "Date Alignment",
+                ["date_match"],
+                help="How to align the two timeframes"
+            )
+        
+        with col3:
+            asset_type = st.selectbox(
+                "Asset Type",
+                ["STOCKS", "FUTURES", "CRYPTO", "FOREX"],
+                help="Asset type for session configuration"
+            )
+        
+        # Show data previews
+        st.markdown("---")
+        st.subheader("📋 Data Preview")
         
         col1, col2 = st.columns(2)
         
         with col1:
-            # Use suggested dates as defaults but allow modification
-            daily_start = st.date_input(
-                "Daily Data Start Date",
-                value=suggested_start,
-                min_value=date(1850, 1, 1),
-                max_value=date.today(),
-                help="Suggested based on your held data - extends back to provide ATR buffer"
-            )
-        
-        with col2:
-            daily_end = st.date_input(
-                "Daily Data End Date", 
-                value=suggested_end,
-                min_value=date(1850, 1, 1),
-                max_value=date.today(),
-                help="Suggested to complement your held data"
-            )
-        
-        # Show the logic
-        with st.expander("🎯 **Suggestion Logic**", expanded=False):
-            if held_base_data is not None:
-                st.info(f"   • Held base data: {held_base_data['Date'].min().date() if hasattr(held_base_data['Date'].min(), 'date') else held_base_data['Date'].min()} to {held_base_data['Date'].max().date() if hasattr(held_base_data['Date'].max(), 'date') else held_base_data['Date'].max()}")
-                st.info(f"   • Suggested: Extend 1 year back, 30 days forward")
-                st.info(f"   • Purpose: Provide overlap and additional data coverage")
-            elif held_analysis_data is not None:
-                st.info(f"   • Held intraday data: {held_analysis_data['Date'].min().date() if hasattr(held_analysis_data['Date'].min(), 'date') else held_analysis_data['Date'].min()} to {held_analysis_data['Date'].max().date() if hasattr(held_analysis_data['Date'].max(), 'date') else held_analysis_data['Date'].max()}")
-                st.info(f"   • Suggested: 6 months back for ATR buffer")
-                st.info(f"   • Purpose: Provide sufficient history for ATR calculation")
-        
-    elif date_mode == "Smart ATR Range":
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Simple date range with automatic buffer
-            analysis_start = st.date_input(
-                "Analysis Period Start Date",
-                value=suggested_start if suggested_start else date(2024, 1, 1),
-                min_value=date(1850, 1, 1),
-                max_value=date.today(),
-                help="When you want your analysis period to begin"
-            )
-            
-            analysis_end = st.date_input(
-                "Analysis Period End Date", 
-                value=suggested_end if suggested_end else date.today(),
-                min_value=date(1850, 1, 1),
-                max_value=date.today(),
-                help="When you want your analysis period to end"
-            )
-        
-        with col2:
-            # Auto-calculate buffer with extended range for larger timeframes
-            buffer_months = st.slider(
-                "Buffer for ATR Calculation", 
-                4, 300, 12,  # 4 months to 25 years, default 1 year
-                help="Historical data buffer based on target ATR timeframe"
-            )
-            data_start = analysis_start - timedelta(days=buffer_months * 30)
-            data_end = analysis_end + timedelta(days=5)
-            
-            buffer_years = buffer_months / 12
-            st.info(f"📊 Data will span: {data_start} to {data_end}")
-            st.info(f"📈 Buffer: {buffer_months} months ({buffer_years:.1f} years)")
-            
-            # Show ATR calculation guidance based on 84-period rule
-            if buffer_months >= 84:  # 7 years for monthly ATR
-                st.success("✅ **Excellent** for monthly ATR calculations (7+ years)")
-            elif buffer_months >= 20:  # ~1.6 years for weekly ATR  
-                st.success("✅ **Good** for weekly ATR calculations (1.6+ years)")
-            elif buffer_months >= 4:  # 4 months for daily ATR
-                st.success("✅ **Adequate** for daily ATR calculations (4+ months)")
-            else:
-                st.error("❌ **Insufficient** - Less than 4 months not recommended for any ATR calculation")
+            try:
+                if base_file:
+                    if base_file.name.endswith('.csv'):
+                        base_preview = pd.read_csv(base_file).head()
+                    else:
+                        base_preview = pd.read_excel(base_file).head()
+                else:
+                    base_preview = st.session_state['atr_combiner_base_data'].head()
                 
-            # Educational guidance
-            st.info("🎓 **ATR Buffer Requirements (84-period rule):**")
-            st.info("   • **Daily ATR**: 4+ months (84 days minimum)")
-            st.info("   • **Weekly ATR**: 20+ months (84 weeks ≈ 1.6 years)")
-            st.info("   • **Monthly ATR**: 84+ months (7 years)")  
-            st.info("   • **Quarterly ATR**: 252+ months (21 years)")
-            
-            if buffer_months >= 84:
-                st.info("🎯 **Your selection supports all ATR timeframes**")
-            elif buffer_months >= 20:
-                st.info("🎯 **Your selection supports daily & weekly ATR**")
-            elif buffer_months >= 4:
-                st.info("🎯 **Your selection supports daily ATR only**")
+                st.write("**Base Timeframe Preview:**")
+                st.dataframe(base_preview, use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"Error previewing base data: {str(e)}")
+        
+        with col2:
+            try:
+                if analysis_file:
+                    if analysis_file.name.endswith('.csv'):
+                        analysis_preview = pd.read_csv(analysis_file).head()
+                    else:
+                        analysis_preview = pd.read_excel(analysis_file).head()
+                else:
+                    analysis_preview = st.session_state['atr_combiner_analysis_data'].head()
+                
+                st.write("**Analysis Timeframe Preview:**")
+                st.dataframe(analysis_preview, use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"Error previewing analysis data: {str(e)}")
+        
+        # Enhanced process button
+        st.markdown("---")
+        if st.button("🚀 **Create Analyzer-Ready File with Fibonacci Levels**", type="primary", use_container_width=True):
+            with st.spinner("Processing enhanced multi-timeframe ATR combination with Fibonacci levels..."):
+                
+                # Use session state data if available, otherwise use uploaded files
+                daily_file_to_use = base_file if base_file else st.session_state['atr_combiner_base_data']
+                intraday_file_to_use = analysis_file if analysis_file else st.session_state['atr_combiner_analysis_data']
+                
+                # Use the enhanced function
+                combined_data = combine_timeframes_with_atr_enhanced(
+                    daily_file_to_use, 
+                    intraday_file_to_use, 
+                    atr_period=atr_period,
+                    align_method=align_method,
+                    asset_type=asset_type
+                )
+                
+                if combined_data is not None:
+                    st.balloons()
+                    st.success("🎉 **Enhanced analyzer-ready file created with full Fibonacci levels!**")
+                    
+                    # Show enhanced results summary
+                    st.subheader("📊 Enhanced Results Summary")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Total Records", f"{len(combined_data):,}")
+                    with col2:
+                        st.metric("Date Range", f"{combined_data['Date'].min()} to {combined_data['Date'].max()}")
+                    with col3:
+                        valid_atr = combined_data['ATR'].notna().sum()
+                        st.metric("Valid ATR Values", f"{valid_atr:,}")
+                    with col4:
+                        level_columns = [col for col in combined_data.columns if col.startswith('ATR_') or col.startswith('+') or col.startswith('-')]
+                        st.metric("Fibonacci Levels", f"{len(level_columns)}")
+                    
+                    # Show column breakdown
+                    st.subheader("📋 Enhanced Column Structure")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.write("**Core Data:**")
+                        core_columns = ['Date', 'Datetime', 'Open', 'High', 'Low', 'Close', 'Volume', 'ATR', 'Prior_Base_Close']
+                        for col in core_columns:
+                            if col in combined_data.columns:
+                                st.write(f"✅ {col}")
+                    
+                    with col2:
+                        st.write("**Positive Levels:**")
+                        positive_levels = [col for col in combined_data.columns if col.startswith('+') or (col.startswith('ATR_') and not col.startswith('ATR_neg') and col != 'ATR_000')]
+                        for col in sorted(positive_levels)[:8]:  # Show first 8
+                            st.write(f"✅ {col}")
+                        if len(positive_levels) > 8:
+                            st.write(f"... and {len(positive_levels) - 8} more")
+                    
+                    with col3:
+                        st.write("**Negative/Zero Levels:**")
+                        negative_levels = [col for col in combined_data.columns if col.startswith('-') or col.startswith('ATR_neg') or col == 'ATR_000']
+                        for col in sorted(negative_levels)[:8]:  # Show first 8
+                            st.write(f"✅ {col}")
+                        if len(negative_levels) > 8:
+                            st.write(f"... and {len(negative_levels) - 8} more")
+                    
+                    # Enhanced data preview with levels
+                    st.subheader("📊 Enhanced Data Preview (with Fibonacci Levels)")
+                    
+                    # Show first few rows with core columns + sample levels
+                    preview_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'ATR', 'Prior_Base_Close', 
+                                     '+1.000', '+0.786', '+0.000', '-0.786', '-1.000', 'ATR_1000', 'ATR_000', 'Daily_ATR']
+                    available_preview_columns = [col for col in preview_columns if col in combined_data.columns]
+                    
+                    preview_data = combined_data[available_preview_columns].head(10)
+                    st.dataframe(preview_data, use_container_width=True)
+                    
+                    # Generate enhanced filename
+                    if base_file:
+                        base_name = base_file.name.split('.')[0]
+                    else:
+                        base_name = "HeldBase"
+                    
+                    if analysis_file:
+                        analysis_name = analysis_file.name.split('.')[0]
+                    else:
+                        analysis_name = "HeldAnalysis"
+                    
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    enhanced_filename = f"AnalyzerReady_{base_name}_{analysis_name}_{atr_period}ATR_FibLevels_{timestamp}.csv"
+                    
+                    # Enhanced download button
+                    st.markdown("---")
+                    st.subheader("📥 Download Analyzer-Ready File")
+                    
+                    st.download_button(
+                        "📥 **Download Enhanced Analyzer-Ready CSV**",
+                        data=combined_data.to_csv(index=False),
+                        file_name=enhanced_filename,
+                        mime="text/csv",
+                        key="download_enhanced_atr_ready",
+                        use_container_width=True,
+                        type="primary"
+                    )
+                    
+                    st.success(f"✅ **Ready for analyzer**: {enhanced_filename}")
+                    
+                    # Enhanced workflow guidance
+                    st.markdown("---")
+                    st.subheader("🎯 Next Steps")
+                    st.success("""
+                    🚀 **Analyzer-Ready File Created!**
+                    
+                    **Your enhanced file now contains:**
+                    ✅ **Analysis timeframe OHLC** (your bars for analysis)  
+                    ✅ **Base timeframe ATR** (properly date-aligned)  
+                    ✅ **All 13 Fibonacci levels** in both formats (ATR_1000, +1.000, etc.)  
+                    ✅ **SessionID and metadata** for full analyzer compatibility  
+                    ✅ **YML scheduler consistency** (identical calculations)  
+                    
+                    **Perfect for:**
+                    - Direct upload to ATR Level Analyzer (no calculation needed)
+                    - Systematic trigger/goal analysis
+                    - Level-based trading strategies
+                    - Backtesting with pre-calculated levels
+                    
+                    **The analyzer will receive pre-calculated levels - maximum performance!**
+                    """)
+                    
+                    # Add to workspace option
+                    st.markdown("---")
+                    st.subheader("💾 Workspace Actions")
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if st.button("💾 **Store Enhanced Result**", use_container_width=True):
+                            st.session_state['last_enhanced_result'] = combined_data.copy()
+                            st.session_state['last_enhanced_filename'] = enhanced_filename
+                            st.success("✅ Enhanced result stored in workspace!")
+                    
+                    with col2:
+                        if st.button("📊 **View Level Statistics**", use_container_width=True):
+                            # Show level statistics
+                            with st.expander("📊 Fibonacci Level Statistics", expanded=True):
+                                sample_row = combined_data[combined_data['ATR'].notna()].iloc[0]
+                                
+                                st.write("**Sample Level Values (First Valid Row):**")
+                                level_data = []
+                                for col in combined_data.columns:
+                                    if col.startswith('+') or col.startswith('-') or col.startswith('ATR_'):
+                                        if col != 'ATR' and col in sample_row and pd.notna(sample_row[col]):
+                                            level_data.append({
+                                                'Level': col,
+                                                'Value': sample_row[col],
+                                                'Distance from Close': sample_row[col] - sample_row['Close']
+                                            })
+                                
+                                level_df = pd.DataFrame(level_data)
+                                if not level_df.empty:
+                                    st.dataframe(level_df, use_container_width=True)
+                
+                else:
+                    st.error("❌ Failed to create enhanced analyzer-ready file. Check the processing information above.")
     
     else:
-        # Manual date range
-        col1, col2 = st.columns(2)
+        # Show enhanced instructions when files aren't uploaded
+        st.info("👆 **Please upload both base and analysis timeframe files to get started**")
         
-        with col1:
-            data_start = st.date_input(
-                "Data Start Date", 
-                value=suggested_start if suggested_start else date(2023, 1, 1),
-                min_value=date(1850, 1, 1),
-                max_value=date.today(),
-                help="Start date for data download"
-            )
-        
-        with col2:
-            data_end = st.date_input(
-                "Data End Date", 
-                value=suggested_end if suggested_end else date.today(),
-                min_value=date(1850, 1, 1),
-                max_value=date.today(),
-                help="End date for data download"
-            )
-    
-    if st.button("🚀 Download Data", type="primary"):
-        if not ticker:
-            st.error("❌ Please enter a ticker symbol")
-        else:
-            mapped_ticker = TickerMapper.get_public_ticker(ticker)
+        # Enhanced workflow explanation
+        with st.expander("🔧 Enhanced Multi-Timeframe ATR Workflow", expanded=True):
+            st.markdown("""
+            **🎯 What is Enhanced Multi-Timeframe ATR Analysis?**
             
-            with st.spinner(f'Downloading data for {mapped_ticker}...'):
-                try:
-                    downloaded_data = yf.download(mapped_ticker, start=data_start, end=data_end, interval='1d', progress=False)
-                    
-                    if not downloaded_data.empty:
-                        # Reset index and clean columns
-                        downloaded_data.reset_index(inplace=True)
-                        
-                        # Handle MultiIndex columns
-                        if isinstance(downloaded_data.columns, pd.MultiIndex):
-                            downloaded_data.columns = downloaded_data.columns.get_level_values(0)
-                        
-                        # Ensure Date column
-                        if 'Date' not in downloaded_data.columns and len(downloaded_data.columns) > 0:
-                            downloaded_data.rename(columns={downloaded_data.columns[0]: 'Date'}, inplace=True)
-                        
-                        # Validate date completeness
-                        downloaded_data['Date'] = pd.to_datetime(downloaded_data['Date'])
-                        actual_start = downloaded_data['Date'].min().date()
-                        actual_end = downloaded_data['Date'].max().date()
-                        
-                        st.success(f"✅ Downloaded {len(downloaded_data)} records")
-                        st.info(f"📅 **Requested range**: {data_start} to {data_end}")
-                        st.info(f"📅 **Actual range**: {actual_start} to {actual_end}")
-                        
-                        # Check for date gaps
-                        if actual_start > data_start:
-                            missing_days = (actual_start - data_start).days
-                            st.warning(f"⚠️ **Missing early data**: {missing_days} days missing from start of requested range")
-                            st.warning(f"Data starts {actual_start} instead of {data_start}")
-                        
-                        if actual_end < data_end:
-                            missing_days = (data_end - actual_end).days
-                            st.warning(f"⚠️ **Missing recent data**: {missing_days} days missing from end of requested range")
-                            st.warning(f"Data ends {actual_end} instead of {data_end}")
-                        
-                        # Check for weekends/holidays vs actual gaps
-                        requested_trading_days = pd.bdate_range(start=data_start, end=data_end)
-                        actual_trading_days = pd.to_datetime(downloaded_data['Date']).dt.date
-                        
-                        # Calculate trading day completeness (more accurate)
-                        trading_day_completeness = (len(actual_trading_days) / len(requested_trading_days)) * 100 if len(requested_trading_days) > 0 else 100
-                        
-                        # Calculate calendar day completeness (original method)
-                        requested_calendar_days = (data_end - data_start).days
-                        actual_calendar_days = len(downloaded_data)
-                        calendar_completeness = (actual_calendar_days / requested_calendar_days) * 100 if requested_calendar_days > 0 else 100
-                        
-                        st.info(f"📊 **Trading days analysis**: {len(actual_trading_days)} of {len(requested_trading_days)} trading days ({trading_day_completeness:.1f}%)")
-                        st.info(f"📅 **Calendar days analysis**: {actual_calendar_days} of {requested_calendar_days} calendar days ({calendar_completeness:.1f}%)")
-                        
-                        # Show the difference
-                        if abs(trading_day_completeness - calendar_completeness) > 10:
-                            st.info("💡 **Note**: Large difference between trading day vs calendar day completeness is normal (weekends/holidays)")
-                        
-                        # Use trading day completeness for quality assessment
-                        completeness = trading_day_completeness
-                        
-                        # More nuanced quality assessment
-                        if completeness >= 95:
-                            st.success(f"✅ **Excellent trading day completeness**: {completeness:.1f}%")
-                        elif completeness >= 85:
-                            st.info(f"✅ **Good trading day completeness**: {completeness:.1f}% - Some holidays/market closures missing")
-                        elif completeness >= 70:
-                            st.warning(f"⚠️ **Moderate trading day completeness**: {completeness:.1f}% - May include extended market closures")
-                        else:
-                            st.error(f"❌ **Low trading day completeness**: {completeness:.1f}% - Significant data gaps present")
-                            st.error("🚨 **CRITICAL**: This data may be insufficient for reliable analysis!")
-                            st.error("**Recommendation**: Check ticker symbol, adjust date range, or use alternative data source")
-                        
-                        # Show what might be missing
-                        if completeness < 95:
-                            missing_trading_days = len(requested_trading_days) - len(actual_trading_days)
-                            st.info(f"📊 **Missing trading days**: ~{missing_trading_days} days")
-                            
-                            # Common reasons for missing data
-                            st.info("**Common reasons for missing trading days:**")
-                            st.info("   • Market holidays (Christmas, New Year, etc.)")
-                            st.info("   • Extended market closures (9/11, extreme weather)")
-                            st.info("   • Data source limitations for older dates")
-                            st.info("   • Instrument-specific trading schedules")
-                            
-                            if ticker.upper() in ['SPX', '^GSPC', 'SPY']:
-                                st.info("   • S&P 500 index: Limited historical data availability")
-                            elif ticker.upper() in ['BTC', 'ETH', 'BTC-USD', 'ETH-USD']:
-                                st.info("   • Crypto: 24/7 trading, gaps likely indicate data source issues")
-                            elif '=F' in mapped_ticker:
-                                st.info("   • Futures: May have different trading schedules or contract rollovers")
-                        
-                        # Add data quality metrics to the dataframe for later reference
-                        downloaded_data.attrs['requested_start'] = data_start
-                        downloaded_data.attrs['requested_end'] = data_end
-                        downloaded_data.attrs['actual_start'] = actual_start
-                        downloaded_data.attrs['actual_end'] = actual_end
-                        downloaded_data.attrs['completeness'] = completeness
-                        downloaded_data.attrs['data_source'] = f"Yahoo Finance ({mapped_ticker})"
-                        
-                        # Show preview
-                        st.subheader("📋 Data Preview")
-                        st.dataframe(downloaded_data.head(), use_container_width=True)
-                        
-                        # Download button
-                        filename = f"{ticker}_data_{data_start.strftime('%Y%m%d')}_to_{data_end.strftime('%Y%m%d')}.csv"
-                        st.download_button(
-                            "📥 Download CSV",
-                            data=downloaded_data.to_csv(index=False),
-                            file_name=filename,
-                            mime="text/csv"
-                        )
-                        
-                        # Option to use in Multi-Timeframe ATR Combiner
-                        st.markdown("### 🔄 Or Use in Multi-Timeframe ATR Combiner")
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            if st.button("📊 Use as Base Timeframe (ATR Source)", key="yahoo_use_as_base"):
-                                st.session_state['atr_combiner_base_data'] = downloaded_data
-                                st.session_state['atr_combiner_base_filename'] = filename
-                                st.success("✅ Data saved as Base Timeframe for ATR Combiner!")
-                                st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
-                        
-                        with col2:
-                            if st.button("📈 Use as Analysis Timeframe", key="yahoo_use_as_analysis"):
-                                st.session_state['atr_combiner_analysis_data'] = downloaded_data
-                                st.session_state['atr_combiner_analysis_filename'] = filename
-                                st.success("✅ Data saved as Analysis Timeframe for ATR Combiner!")
-                                st.info("💡 Now switch to 'Multi-Timeframe ATR Combiner' mode to use this data.")
-                    else:
-                        st.error("❌ No data available for this ticker/range")
-                        
-                        # Suggest alternatives
-                        alternatives = TickerMapper.suggest_alternatives(ticker)
-                        if alternatives:
-                            st.info("💡 Try these alternative formats:")
-                            for alt in alternatives:
-                                st.info(f"   • {alt}")
-                                
-                except Exception as e:
-                    st.error(f"❌ Download failed: {str(e)}")
+            This creates **truly analyzer-ready files** with pre-calculated Fibonacci levels. The date alignment ensures proper level calculation.
+            
+            **Enhanced Examples:**
+            
+            **Example 1: Daily ATR + 10-Minute Analysis**
+            - **Base**: Daily OHLC data (calculates 14-day ATR)
+            - **Analysis**: 10-minute data (provides analysis bars)
+            - **Logic**: 10-minute bars on 7/22 get levels calculated from 7/21 daily ATR & close
+            - **Result**: Each 10-minute bar has ATR_1000, ATR_786, +1.000, -0.618, etc.
+            
+            **Example 2: Weekly ATR + Daily Analysis**
+            - **Base**: Weekly OHLC data (calculates 14-week ATR)
+            - **Analysis**: Daily data (provides analysis bars)
+            - **Logic**: Daily bars get levels from previous week's ATR & close
+            - **Result**: Each daily bar has full Fibonacci level set
+            
+            **🔧 Enhanced Process:**
+            1. **Upload base timeframe** (for ATR calculation)
+            2. **Upload analysis timeframe** (for OHLC analysis bars)
+            3. **Configure ATR period** (default: 14)
+            4. **Process** - system calculates ATR and aligns with proper date logic
+            5. **Download** analyzer-ready file with **ALL Fibonacci levels**
+            
+            **💡 Why This Enhanced Approach?**
+            - **Pre-calculated levels**: Analyzer runs faster (no computation needed)
+            - **Proper date alignment**: 7/22 analysis uses 7/21 base data (correct logic)
+            - **Full compatibility**: Works with existing analyzer system
+            - **YML scheduler consistency**: Identical calculation methods
+            - **Complete metadata**: SessionID, trading days, etc. included
+            
+            **🎯 Enhanced Output Columns:**
+            ```
+            Date, Open, High, Low, Close, Volume, ATR, Prior_Base_Close,
+            +1.000, +0.786, +0.618, +0.500, +0.382, +0.236, +0.000,
+            -0.236, -0.382, -0.500, -0.618, -0.786, -1.000,
+            ATR_1000, ATR_786, ATR_618, ATR_500, ATR_382, ATR_236, ATR_000,
+            ATR_neg236, ATR_neg382, ATR_neg500, ATR_neg618, ATR_neg786, ATR_neg1000,
+            Daily_ATR, Daily_Close, SessionID, Trading_Days_Count, ATR_Period
+            ```
+            
+            **🚀 Perfect for systematic trading analysis with pre-calculated levels!**
+            """)
 
 # ========================================================================================
 # SINGLE FILE RESAMPLER (FIXED - Real Custom Candle Generator)
