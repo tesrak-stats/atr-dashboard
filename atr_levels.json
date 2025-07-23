@@ -1,75 +1,30 @@
 {
-  "last_updated": "2025-07-23 01:34:02 ",
-  "last_updated_timestamp": 1753234442.380979,
+  "last_updated": "2025-07-23 03:14:48 ",
+  "last_updated_timestamp": 1753240488.08181,
   "discovery_method": "smart_retry_with_levels",
   "execution_phase": "primary",
   "levels_integration": "enabled",
   "intraday_support": "10min_bars_with_levels",
   "tickers": {
     "ES": {
-      "status": "success",
-      "reference_close": 6344.75,
-      "reference_atr": 60.88722439912032,
-      "previous_close": 6334.75,
-      "reference_date": "2025-07-21",
-      "last_updated": "2025-07-23T01:34:01.237041",
-      "yf_symbol": "ES=F",
-      "data_points": 125,
-      "processing_phase": "primary",
-      "intraday_status": "success",
-      "data_source": "No_New_Data"
+      "status": "error",
+      "error": "'list' object has no attribute 'iloc'"
     },
     "IWM": {
-      "status": "success",
-      "reference_close": 221.43,
-      "reference_atr": 3.4593977426758427,
-      "previous_close": 222.33,
-      "reference_date": "2025-07-21",
-      "last_updated": "2025-07-23T01:34:01.419573",
-      "yf_symbol": "IWM",
-      "data_points": 124,
-      "processing_phase": "primary",
-      "intraday_status": "success",
-      "data_source": "No_New_Data"
+      "status": "error",
+      "error": "'list' object has no attribute 'iloc'"
     },
     "NVDA": {
-      "status": "success",
-      "reference_close": 171.38,
-      "reference_atr": 3.775636097883601,
-      "previous_close": 172.41,
-      "reference_date": "2025-07-21",
-      "last_updated": "2025-07-23T01:34:01.778603",
-      "yf_symbol": "NVDA",
-      "data_points": 124,
-      "processing_phase": "primary",
-      "intraday_status": "success",
-      "data_source": "No_New_Data"
+      "status": "error",
+      "error": "'list' object has no attribute 'iloc'"
     },
     "QQQ": {
-      "status": "success",
-      "reference_close": 564.17,
-      "reference_atr": 5.930429719034391,
-      "previous_close": 561.26,
-      "reference_date": "2025-07-21",
-      "last_updated": "2025-07-23T01:34:02.182373",
-      "yf_symbol": "QQQ",
-      "data_points": 124,
-      "processing_phase": "primary",
-      "intraday_status": "success",
-      "data_source": "No_New_Data"
+      "status": "error",
+      "error": "'list' object has no attribute 'iloc'"
     },
     "SPX": {
-      "status": "success",
-      "reference_close": 6305.60009765625,
-      "reference_atr": 51.7881062292376,
-      "previous_close": 6296.7900390625,
-      "reference_date": "2025-07-21",
-      "last_updated": "2025-07-23T01:34:02.380935",
-      "yf_symbol": "^GSPC",
-      "data_points": 124,
-      "processing_phase": "primary",
-      "intraday_status": "success",
-      "data_source": "No_New_Data"
+      "status": "error",
+      "error": "'list' object has no attribute 'iloc'"
     }
   }
 }
