@@ -1,8 +1,8 @@
 {
-  "last_updated": "2025-07-23 00:55:13 ",
-  "last_updated_timestamp": 1753232113.753145,
+  "last_updated": "2025-07-23 00:59:02 ",
+  "last_updated_timestamp": 1753232342.842821,
   "discovery_method": "smart_retry_with_levels",
-  "execution_phase": "primary",
+  "execution_phase": "crypto_retry",
   "levels_integration": "enabled",
   "intraday_support": "10min_bars_with_levels",
   "tickers": {
