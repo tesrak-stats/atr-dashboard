@@ -2592,12 +2592,6 @@ elif mode == "📈 Public Data Download":
                         st.error(f"❌ Download failed: {str(e)}")
 
 # ========================================================================================
-# SINGLE FILE RESAMPLER (FIXED - Real Custom Candle Generator)
-# ========================================================================================
-# ========================================================================================
-# MULTI-TIMEFRAME ATR COMBINER (SIMPLIFIED - Single ATR Column)  
-# ========================================================================================
-# ========================================================================================
 # ENHANCED MULTI-TIMEFRAME ATR COMBINER (With Full Fibonacci Levels)
 # ========================================================================================
 elif mode == "🎯 Multi-Timeframe ATR Combiner":
@@ -2732,6 +2726,200 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             except Exception as e:
                 st.error(f"Error previewing analysis data: {str(e)}")
         
+        # RESTORED: Smart Timeframe Detection and Rolling Analysis Configuration
+        st.markdown("---")
+        st.subheader("🕐 Smart Timeframe Detection & Rolling Configuration")
+        
+        # NEW: Interval Detection & Configuration
+        try:
+            if analysis_file:
+                if analysis_file.name.endswith('.csv'):
+                    analysis_preview = pd.read_csv(analysis_file)
+                else:
+                    analysis_preview = pd.read_excel(analysis_file)
+            else:
+                analysis_preview = st.session_state['atr_combiner_analysis_data']
+            
+            # Standardize columns for analysis
+            from complete_csv_handler import CSVProcessor
+            analysis_preview = CSVProcessor.standardize_columns(analysis_preview)
+            analysis_preview = CSVProcessor.create_datetime_column(analysis_preview)
+            
+            # 1. AUTO-DETECT ANALYSIS CANDLE INTERVAL
+            st.write("**1. Analysis Candle Interval Detection**")
+            
+            if len(analysis_preview) > 1:
+                # Calculate timestamp gaps
+                analysis_preview['Datetime'] = pd.to_datetime(analysis_preview['Datetime'])
+                analysis_preview = analysis_preview.sort_values('Datetime')
+                
+                # Calculate differences between consecutive timestamps
+                time_diffs = analysis_preview['Datetime'].diff().dropna()
+                
+                # Get the most common interval (mode)
+                most_common_diff = time_diffs.mode().iloc[0] if not time_diffs.mode().empty else time_diffs.median()
+                interval_minutes = int(most_common_diff.total_seconds() / 60)
+                
+                # Show detection results
+                if interval_minutes < 60:
+                    interval_display = f"{interval_minutes}-minute"
+                elif interval_minutes == 60:
+                    interval_display = "1-hour"
+                elif interval_minutes < 1440:
+                    hours = interval_minutes / 60
+                    interval_display = f"{hours:.1f}-hour" if hours != int(hours) else f"{int(hours)}-hour"
+                elif interval_minutes == 1440:
+                    interval_display = "daily"
+                else:
+                    days = interval_minutes / 1440
+                    interval_display = f"{days:.1f}-day" if days != int(days) else f"{int(days)}-day"
+                
+                st.success(f"🔍 **Auto-detected**: {interval_display} candles ({interval_minutes} minutes)")
+                
+                # Allow manual correction
+                col1, col2 = st.columns(2)
+                with col1:
+                    manual_override = st.checkbox("Manual Override", help="Override auto-detection")
+                
+                if manual_override:
+                    with col2:
+                        interval_minutes = st.number_input(
+                            "Interval (minutes)",
+                            min_value=1,
+                            max_value=10080,  # 1 week
+                            value=interval_minutes,
+                            help="Enter interval in minutes"
+                        )
+                        st.info(f"📝 **Manual setting**: {interval_minutes} minutes")
+                
+            else:
+                st.warning("⚠️ Insufficient data for interval detection")
+                interval_minutes = st.number_input("Interval (minutes)", min_value=1, value=10)
+            
+            # 2. AUTO-DETECT BASE TIMEFRAME INTERVAL
+            st.write("**2. Base Timeframe Interval Detection**")
+            
+            try:
+                if base_file:
+                    if base_file.name.endswith('.csv'):
+                        base_for_detection = pd.read_csv(base_file)
+                    else:
+                        base_for_detection = pd.read_excel(base_file)
+                else:
+                    base_for_detection = st.session_state['atr_combiner_base_data']
+                
+                base_for_detection = CSVProcessor.standardize_columns(base_for_detection)
+                base_for_detection = CSVProcessor.create_datetime_column(base_for_detection)
+                
+                if len(base_for_detection) > 1:
+                    base_for_detection['Datetime'] = pd.to_datetime(base_for_detection['Datetime'])
+                    base_for_detection = base_for_detection.sort_values('Datetime')
+                    
+                    base_time_diffs = base_for_detection['Datetime'].diff().dropna()
+                    base_most_common_diff = base_time_diffs.mode().iloc[0] if not base_time_diffs.mode().empty else base_time_diffs.median()
+                    base_interval_minutes = int(base_most_common_diff.total_seconds() / 60)
+                    
+                    if base_interval_minutes < 60:
+                        base_interval_display = f"{base_interval_minutes}-minute"
+                    elif base_interval_minutes == 60:
+                        base_interval_display = "1-hour"
+                    elif base_interval_minutes < 1440:
+                        base_hours = base_interval_minutes / 60
+                        base_interval_display = f"{base_hours:.1f}-hour" if base_hours != int(base_hours) else f"{int(base_hours)}-hour"
+                    elif base_interval_minutes == 1440:
+                        base_interval_display = "daily"
+                    else:
+                        base_days = base_interval_minutes / 1440
+                        base_interval_display = f"{base_days:.1f}-day" if base_days != int(base_days) else f"{int(base_days)}-day"
+                    
+                    st.success(f"🔍 **Base timeframe**: {base_interval_display} ({base_interval_minutes} minutes)")
+                else:
+                    base_interval_minutes = 1440  # Default to daily
+                    st.warning("⚠️ Insufficient base data for interval detection - assuming daily")
+            
+            except Exception as e:
+                base_interval_minutes = 1440  # Default to daily
+                st.warning(f"⚠️ Base interval detection failed - assuming daily: {str(e)}")
+            
+            # 3. SMART PERIOD RECOMMENDATIONS & ROLLING CONFIGURATION
+            st.write("**3. Rolling Period Configuration**")
+            
+            # Smart defaults based on candle interval - ALWAYS 8 PERIODS
+            if interval_minutes <= 5:  # 1-5 minute candles
+                default_period_type = "hourly"
+                default_period_count = 8
+                recommendation = "8-hour periods (8 × 1-hour rolling analysis)"
+            elif interval_minutes <= 60:  # 6-60 minute candles
+                default_period_type = "4hour"
+                default_period_count = 8
+                recommendation = "8 × 4-hour periods (32-hour rolling analysis)"
+            elif interval_minutes <= 1440:  # 1-24 hour candles
+                default_period_type = "daily"
+                default_period_count = 8
+                recommendation = "8-day periods (8-day rolling analysis)"
+            else:  # Daily+ candles
+                default_period_type = "weekly"
+                default_period_count = 8
+                recommendation = "8-week periods (8-week rolling analysis)"
+            
+            st.info(f"💡 **Smart recommendation**: {recommendation}")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                rolling_period_type = st.selectbox(
+                    "Rolling Period Type",
+                    ["hourly", "4hour", "daily", "weekly", "monthly"],
+                    index=["hourly", "4hour", "daily", "weekly", "monthly"].index(default_period_type),
+                    help="Type of periods for rolling analysis"
+                )
+            
+            with col2:
+                rolling_period_count = st.number_input(
+                    "Period Count",
+                    min_value=1,
+                    max_value=50,
+                    value=default_period_count,
+                    help="Number of periods to use for rolling analysis"
+                )
+            
+            # Show final configuration
+            period_display = f"{rolling_period_count} × {rolling_period_type}"
+            st.success(f"⚙️ **Rolling configuration**: {period_display}")
+            
+            # 4. ANALYSIS TIMEFRAME SELECTION
+            st.write("**4. Analysis Timeframe Selection**")
+            
+            analysis_timeframe = st.selectbox(
+                "Analysis Timeframe",
+                ["Intraday", "Weekly", "Monthly", "Other"],
+                help="Select analysis timeframe type (Other = skip rolling analysis)"
+            )
+            
+            if analysis_timeframe == "Other":
+                st.info("ℹ️ **Other selected**: Rolling analysis will be skipped in downstream apps")
+            else:
+                st.success(f"📊 **Analysis timeframe**: {analysis_timeframe}")
+            
+            # Store configuration in session state for processing
+            st.session_state['interval_config'] = {
+                'candle_interval_minutes': interval_minutes,
+                'rolling_period_type': rolling_period_type,
+                'rolling_period_count': rolling_period_count,
+                'analysis_timeframe': analysis_timeframe,
+                'base_interval_minutes': base_interval_minutes
+            }
+            
+        except Exception as e:
+            st.error(f"❌ Error analyzing timeframe: {str(e)}")
+            # Fallback configuration
+            st.session_state['interval_config'] = {
+                'candle_interval_minutes': 10,
+                'rolling_period_type': 'hourly',
+                'rolling_period_count': 8,
+                'analysis_timeframe': 'Intraday',
+                'base_interval_minutes': 1440
+            }
+        
         # Enhanced process button
         st.markdown("---")
         if st.button("🚀 **Create Analyzer-Ready File with Fibonacci Levels**", type="primary", use_container_width=True):
@@ -2741,13 +2929,23 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                 daily_file_to_use = base_file if base_file else st.session_state['atr_combiner_base_data']
                 intraday_file_to_use = analysis_file if analysis_file else st.session_state['atr_combiner_analysis_data']
                 
-                # Use the enhanced function
+                # Get interval configuration
+                interval_config = st.session_state.get('interval_config', {
+                    'candle_interval_minutes': 10,
+                    'rolling_period_type': 'hourly',
+                    'rolling_period_count': 8,
+                    'analysis_timeframe': 'Intraday',
+                    'base_interval_minutes': 1440
+                })
+                
+                # Use the enhanced function with interval configuration
                 combined_data = combine_timeframes_with_atr_enhanced(
                     daily_file_to_use, 
                     intraday_file_to_use, 
                     atr_period=atr_period,
                     align_method=align_method,
-                    asset_type=asset_type
+                    asset_type=asset_type,
+                    interval_config=interval_config  # Pass the configuration
                 )
                 
                 if combined_data is not None:
@@ -2947,6 +3145,7 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             
             **🚀 Perfect for systematic trading analysis with pre-calculated levels!**
             """)
+
 
 # ========================================================================================
 # SINGLE FILE RESAMPLER (FIXED - Real Custom Candle Generator)
