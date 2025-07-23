@@ -706,7 +706,7 @@ jobs:
                 return None
         
         def save_updated_data(historical_data, new_data, compressed_file):
-            """Save updated historical data with compression"""
+            """Save updated historical data with compression and proper date handling"""
             try:
                 if new_data is None or len(new_data) == 0:
                     return True
@@ -716,6 +716,12 @@ jobs:
                 else:
                     combined_data = new_data
                 
+                # Fix date type consistency before sorting
+                # Convert all dates to same type (date objects)
+                if 'Date' in combined_data.columns:
+                    combined_data['Date'] = pd.to_datetime(combined_data['Date']).dt.date
+                
+                # Now sort and deduplicate
                 combined_data = combined_data.sort_values('Date').drop_duplicates(subset=['Date'], keep='last')
                 
                 with gzip.open(compressed_file, 'wt') as f:
