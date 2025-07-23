@@ -431,7 +431,7 @@ jobs:
             return atr
         
         def load_historical_data(ticker_key):
-            """Load existing compressed historical data"""
+            """Load existing compressed historical data with robust date handling"""
             historical_dir = "historical_data"
             os.makedirs(historical_dir, exist_ok=True)
             
@@ -441,10 +441,30 @@ jobs:
                 try:
                     with gzip.open(compressed_file, 'rt') as f:
                         df = pd.read_csv(f)
-                    df['Date'] = pd.to_datetime(df['Date']).dt.date
+                    
+                    # Robust date parsing with multiple fallback strategies
+                    try:
+                        df['Date'] = pd.to_datetime(df['Date']).dt.date
+                    except (ValueError, AttributeError, TypeError):
+                        try:
+                            # Fallback 1: Force string conversion first
+                            df['Date'] = pd.to_datetime(df['Date'].astype(str), errors='coerce').dt.date
+                        except:
+                            try:
+                                # Fallback 2: Handle mixed date formats
+                                df['Date'] = pd.to_datetime(df['Date'], infer_datetime_format=True, errors='coerce').dt.date
+                            except:
+                                # Fallback 3: Manual parsing
+                                print(f"        🔧 Using manual date parsing for {ticker_key}")
+                                df['Date'] = df['Date'].apply(lambda x: pd.to_datetime(str(x), errors='coerce').date() if pd.notna(x) else None)
+                    
+                    # Remove any rows with failed date parsing
+                    df = df.dropna(subset=['Date'])
+                    
+                    print(f"        📊 Loaded {len(df)} historical records")
                     return df, compressed_file
                 except Exception as e:
-                    print(f"        ⚠️ Error loading {compressed_file}: {e}")
+                    print(f"        ❌ Error loading {compressed_file}: {e}")
             
             return None, compressed_file
         
@@ -497,7 +517,7 @@ jobs:
             return polygon_mappings.get(ticker_key, ticker_key)
         
         def fetch_from_polygon(symbol, start_date, end_date):
-            """Fetch data from Polygon.io API"""
+            """Fetch data from Polygon.io API with consistent date handling"""
             try:
                 import requests
                 
@@ -522,10 +542,13 @@ jobs:
                 if data.get('status') != 'OK' or not data.get('results'):
                     return None
                 
-                # Convert Polygon format to standard format
+                # Convert Polygon format to standard format with consistent date handling
                 records = []
                 for bar in data['results']:
-                    date = datetime.fromtimestamp(bar['t'] / 1000).date()
+                    # Polygon timestamps are in milliseconds, convert to naive datetime
+                    dt = datetime.fromtimestamp(bar['t'] / 1000)
+                    # Ensure we store as naive datetime (no timezone)
+                    date = dt.replace(tzinfo=None)
                     
                     records.append({
                         'Date': date,
@@ -549,7 +572,7 @@ jobs:
                 return None
         
         def fetch_from_yahoo(yf_symbol, start_date, end_date):
-            """Fetch data from Yahoo Finance"""
+            """Fetch data from Yahoo Finance with consistent date handling"""
             try:
                 yf_ticker = yf.Ticker(yf_symbol)
                 data = yf_ticker.history(start=start_date, end=end_date + timedelta(days=1))
@@ -557,7 +580,7 @@ jobs:
                 if data.empty:
                     return None
                 
-                # Process data
+                # Process data with consistent date handling
                 data = data.reset_index()
                 if isinstance(data.columns, pd.MultiIndex):
                     data.columns = data.columns.get_level_values(0)
@@ -565,7 +588,11 @@ jobs:
                 standard_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
                 available_columns = [col for col in standard_columns if col in data.columns]
                 data = data[available_columns]
+                
+                # Normalize datetime handling - remove timezone info for consistency
                 data['Date'] = pd.to_datetime(data['Date'])
+                if hasattr(data['Date'].iloc[0], 'tz') and data['Date'].iloc[0].tz is not None:
+                    data['Date'] = data['Date'].dt.tz_localize(None)
                 
                 return data
                 
@@ -656,32 +683,51 @@ jobs:
                 return False
         
         def generate_fibonacci_levels_for_display(reference_close, atr):
-            """Generate Fibonacci-based ATR levels for display"""
-            multipliers = {
-                'fib_0618_below': -0.618,
-                'fib_0382_below': -0.382,
-                'reference_close': 0.000,
-                'fib_0382_above': 0.382,
-                'fib_0618_above': 0.618,
-                'fib_1000_above': 1.000,
-                'fib_1618_above': 1.618
-            }
+            """Generate Fibonacci levels using EXACT same logic as daily_atr_updater.py"""
+            # Use the same ratios as your existing system
+            fib_ratios = [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
+                          -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
             
             levels = {}
-            for level_name, multiplier in multipliers.items():
-                levels[level_name] = reference_close + (multiplier * atr)
+            for ratio in fib_ratios:
+                level_price = reference_close + (ratio * atr)
+                
+                # Use the EXACT format from daily_atr_updater.py
+                levels[f"{ratio:+.3f}"] = round(level_price, 2)
+                
+                # Also add ATR_ format for analyzer compatibility
+                if ratio == 0.0:
+                    levels['ATR_000'] = round(level_price, 2)
+                    levels['Daily_Close'] = round(level_price, 2)
+                elif ratio > 0:
+                    ratio_str = f"{int(ratio*1000):03d}"
+                    levels[f'ATR_{ratio_str}'] = round(level_price, 2)
+                else:
+                    ratio_str = f"{int(abs(ratio)*1000):03d}"  
+                    levels[f'ATR_neg{ratio_str}'] = round(level_price, 2)
+            
+            # Add the ATR value itself for reference
+            levels['Daily_ATR'] = round(atr, 2)
             
             return levels
         
         def load_intraday_data(intraday_file):
-            """Load existing intraday data"""
+            """Load existing intraday data with timezone normalization"""
             if not os.path.exists(intraday_file):
                 return None
                 
             try:
                 with gzip.open(intraday_file, 'rt') as f:
                     data = pd.read_csv(f)
+                
+                # Convert and normalize datetime column
                 data['Datetime'] = pd.to_datetime(data['Datetime'])
+                
+                # Normalize timezone - convert to naive datetime for consistency
+                if hasattr(data['Datetime'].iloc[0], 'tz') and data['Datetime'].iloc[0].tz is not None:
+                    print(f"        🔧 Removing timezone info from existing intraday data")
+                    data['Datetime'] = data['Datetime'].dt.tz_localize(None)
+                
                 return data
             except Exception as e:
                 print(f"        ⚠️ Error loading existing intraday data: {str(e)}")
@@ -692,11 +738,13 @@ jobs:
             if existing_intraday is None or len(existing_intraday) == 0:
                 return 'new_dataset'
             
-            # Check for fibonacci level columns
-            level_columns = ['fib_0618_below', 'fib_0382_below', 'fib_0382_above', 'fib_0618_above']
-            has_levels = any(col in existing_intraday.columns for col in level_columns)
+            # Check for your actual level column formats
+            level_columns = [col for col in existing_intraday.columns if col.startswith('ATR_')]
+            has_daily_atr = 'Daily_ATR' in existing_intraday.columns
+            has_daily_close = 'Daily_Close' in existing_intraday.columns
+            has_signed_levels = any(col for col in existing_intraday.columns if col.startswith(('+', '-')))
             
-            if has_levels:
+            if level_columns or has_daily_atr or has_daily_close or has_signed_levels:
                 return 'analysis_ready'
             else:
                 return 'raw_ohlc'
@@ -713,7 +761,7 @@ jobs:
             return new_intraday_bars
         
         def fetch_intraday_from_yahoo(yf_symbol, start_date, end_date):
-            """Fetch 5-minute intraday data from Yahoo Finance and resample to 10-minute"""
+            """Fetch 5-minute intraday data from Yahoo Finance and resample to 10-minute with timezone handling"""
             try:
                 # Yahoo Finance intraday is limited to recent periods
                 max_days = min(60, (end_date - start_date).days + 1)
@@ -732,7 +780,7 @@ jobs:
                     print(f"        ⚠️ No 5-minute data available from Yahoo")
                     return None
                 
-                # Process data
+                # Process data with timezone normalization
                 data = data.reset_index()
                 if isinstance(data.columns, pd.MultiIndex):
                     data.columns = data.columns.get_level_values(0)
@@ -744,6 +792,11 @@ jobs:
                 available_columns = [col for col in standard_columns if col in data.columns]
                 data = data[available_columns]
                 data['Datetime'] = pd.to_datetime(data['Datetime'])
+                
+                # Critical fix: Normalize timezone to avoid comparison errors
+                if hasattr(data['Datetime'].iloc[0], 'tz') and data['Datetime'].iloc[0].tz is not None:
+                    print(f"        🔧 Normalizing timezone from Yahoo Finance intraday data")
+                    data['Datetime'] = data['Datetime'].dt.tz_localize(None)
                 
                 print(f"        📊 Retrieved {len(data)} 5-minute bars, resampling to 10-minute...")
                 
@@ -794,7 +847,7 @@ jobs:
                 return None
         
         def process_intraday_data_with_levels(ticker_key, yf_symbol, target_date, previous_close, current_atr):
-            """Process 10-minute intraday data with intelligent level attachment"""
+            """Process 10-minute intraday data with intelligent level attachment and robust timezone handling"""
             try:
                 # Create intraday directory structure
                 intraday_dir = "historical_data/intraday"
@@ -810,7 +863,11 @@ jobs:
                 
                 # Determine date range for intraday fetch
                 if existing_intraday is not None and len(existing_intraday) > 0:
-                    last_intraday_date = existing_intraday['Datetime'].max().date()
+                    # Ensure existing data datetime is timezone-naive for comparison
+                    last_intraday_datetime = existing_intraday['Datetime'].max()
+                    if hasattr(last_intraday_datetime, 'tz') and last_intraday_datetime.tz is not None:
+                        last_intraday_datetime = last_intraday_datetime.tz_localize(None)
+                    last_intraday_date = last_intraday_datetime.date()
                     start_date = last_intraday_date
                 else:
                     # If no existing data, get recent days
@@ -822,6 +879,11 @@ jobs:
                 if new_intraday is None or len(new_intraday) == 0:
                     print(f"        ⚠️ No new intraday data available")
                     return existing_intraday is not None
+                
+                # Ensure new intraday data is timezone-naive
+                if hasattr(new_intraday['Datetime'].iloc[0], 'tz') and new_intraday['Datetime'].iloc[0].tz is not None:
+                    print(f"        🔧 Normalizing new intraday data timezone")
+                    new_intraday['Datetime'] = new_intraday['Datetime'].dt.tz_localize(None)
                 
                 # Handle level attachment based on existing data format
                 if data_format == 'analysis_ready':
@@ -839,8 +901,12 @@ jobs:
                     print(f"        📊 Maintaining raw OHLC format (no levels added)")
                     # Don't add levels - keep existing format
                     
-                # Combine and save
+                # Combine and save with timezone-aware handling
                 if existing_intraday is not None:
+                    # Ensure both dataframes have compatible datetime types
+                    if hasattr(existing_intraday['Datetime'].iloc[0], 'tz') and existing_intraday['Datetime'].iloc[0].tz is not None:
+                        existing_intraday['Datetime'] = existing_intraday['Datetime'].dt.tz_localize(None)
+                    
                     combined_intraday = pd.concat([existing_intraday, new_intraday], ignore_index=True)
                 else:
                     combined_intraday = new_intraday
