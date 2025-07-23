@@ -459,7 +459,8 @@ jobs:
             historical_dir = "historical_data"
             os.makedirs(historical_dir, exist_ok=True)
             
-            compressed_file = f"{historical_dir}/{ticker_key}_daily.csv.gz"
+            # Use the EXISTING filename pattern: {ticker}_historical.csv.gz
+            compressed_file = f"{historical_dir}/{ticker_key}_historical.csv.gz"
             
             if os.path.exists(compressed_file):
                 try:
@@ -1040,7 +1041,7 @@ jobs:
                 return False
         
         def process_ticker_with_levels(ticker_key, ticker_config, target_date, phase):
-            """Enhanced ticker processing with ATR + levels integration"""
+            """Enhanced ticker processing with ATR + levels integration - EXACT daily_atr_updater.py matching"""
             print(f"   🔄 Processing {ticker_key} ({phase})...")
             
             yf_symbol = ticker_config.get('yf_symbol', ticker_key)
@@ -1051,59 +1052,119 @@ jobs:
                 # === DAILY DATA PROCESSING ===
                 print(f"      📊 Processing daily data...")
                 
-                # Load existing daily data
+                # Check if we have existing data
                 historical_data, compressed_file = load_historical_data(ticker_key)
                 
-                # Determine last date
-                last_date = None
-                if historical_data is not None and len(historical_data) > 0:
-                    last_date = historical_data['Date'].max()
-                
-                # Fetch new daily data
-                new_daily_data = fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date)
-                
-                # Update historical daily data
-                if not save_updated_data(historical_data, new_daily_data, compressed_file):
-                    return {'status': 'error', 'error': 'Failed to save daily data'}
-                
-                # Reload for ATR calculation
-                updated_data, _ = load_historical_data(ticker_key)
-                if updated_data is None:
-                    return {'status': 'error', 'error': 'Failed to reload daily data'}
-                
-                # === ATR CALCULATION & LEVEL GENERATION ===
-                print(f"      🔢 Calculating ATR and levels...")
-                
-                # Bootstrap ATR column if missing
-                if 'ATR' not in updated_data.columns:
-                    print(f"      🔧 Bootstrapping ATR column...")
-                    updated_data['ATR'] = calculate_atr(updated_data)
+                if historical_data is None or len(historical_data) == 0:
+                    # First time - use EXACT same method as daily_atr_updater.py
+                    print(f"      🔧 First-time data fetch - using period='6mo' (matching daily_atr_updater.py)")
                     
-                    # Save with ATR column
-                    with gzip.open(compressed_file, 'wt') as f:
-                        updated_data.to_csv(f, index=False)
+                    yf_ticker = yf.Ticker(yf_symbol)
+                    df = yf_ticker.history(period="6mo")  # EXACT same call as daily_atr_updater.py
+                    
+                    if df.empty:
+                        return {'status': 'error', 'error': 'No data available from Yahoo Finance'}
+                    
+                    print(f"      📊 Downloaded {len(df)} days of data for {yf_symbol} for proper ATR baseline")
+                    print(f"      📅 Date range: {df.index[0].strftime('%Y-%m-%d')} to {df.index[-1].strftime('%Y-%m-%d')}")
+                    print(f"      🔄 Using 6mo of historical data for ATR convergence")
+                    
+                    # Process exactly like daily_atr_updater.py
+                    df = df.reset_index()
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df.columns = df.columns.get_level_values(0)
+                    
+                    # Normalize datetime
+                    df['Date'] = pd.to_datetime(df['Date'])
+                    if hasattr(df['Date'].iloc[0], 'tz') and df['Date'].iloc[0].tz is not None:
+                        df['Date'] = df['Date'].dt.tz_localize(None)
+                    
+                    # Add metadata
+                    df['Ticker'] = ticker_key
+                    df['YF_Symbol'] = yf_symbol
+                    df['Downloaded_At'] = datetime.now().isoformat()
+                    df['Data_Source'] = 'Yahoo_Primary_6mo'
+                    
+                    updated_data = df
+                    
                 else:
-                    # Calculate incremental ATR
-                    updated_data['ATR'] = calculate_atr(updated_data)
+                    # Incremental update logic (for future runs)
+                    last_date = historical_data['Date'].max()
+                    if isinstance(last_date, str):
+                        last_date = pd.to_datetime(last_date).date()
                     
-                    # Save updated data with ATR
-                    with gzip.open(compressed_file, 'wt') as f:
-                        updated_data.to_csv(f, index=False)
+                    new_daily_data = fetch_new_daily_data(ticker_key, yf_symbol, target_date, last_date)
+                    
+                    if not save_updated_data(historical_data, new_daily_data, compressed_file):
+                        return {'status': 'error', 'error': 'Failed to save daily data'}
+                    
+                    # Reload for ATR calculation
+                    updated_data, _ = load_historical_data(ticker_key)
+                    if updated_data is None:
+                        return {'status': 'error', 'error': 'Failed to reload daily data'}
                 
-                # Get reference values for level calculation
-                latest_row = updated_data.iloc[-1]
-                previous_row = updated_data.iloc[-2] if len(updated_data) > 1 else latest_row
+                # === ATR CALCULATION - EXACT DAILY_ATR_UPDATER.PY METHOD ===
+                print(f"      🔢 Calculating ATR using TRUE Wilder's method...")
                 
-                current_atr = latest_row['ATR']
-                previous_close = previous_row['Close']  # Reference point (0.000)
-                current_close = latest_row['Close']
-                reference_date = latest_row['Date']
+                # Use EXACT same logic as daily_atr_updater.py
+                updated_data["Prev_Close"] = updated_data["Close"].shift(1)
                 
-                if pd.isna(current_atr):
-                    return {'status': 'error', 'error': 'ATR calculation failed'}
+                # Calculate True Range exactly like daily_atr_updater.py
+                def calculate_true_range_row(row):
+                    if pd.isna(row["Prev_Close"]):
+                        return row["High"] - row["Low"]
+                    
+                    return max(
+                        row["High"] - row["Low"],
+                        abs(row["High"] - row["Prev_Close"]),
+                        abs(row["Low"] - row["Prev_Close"])
+                    )
+                
+                updated_data["TR"] = updated_data.apply(calculate_true_range_row, axis=1)
+                
+                # Calculate TRUE Wilder's ATR (EXACT same as daily_atr_updater.py)
+                atr_window = 14
+                atr_values = [None] * len(updated_data)
+                
+                for i in range(len(updated_data)):
+                    if i < atr_window - 1:
+                        atr_values[i] = None
+                    elif i == atr_window - 1:
+                        # First ATR = average of first 14 TR values
+                        atr_values[i] = updated_data["TR"].iloc[0:i+1].mean()
+                    else:
+                        # Wilder's smoothing: 1/14*current_TR + (1-1/14)*previous_ATR
+                        prev_atr = atr_values[i-1]
+                        current_tr = updated_data["TR"].iloc[i]
+                        atr_values[i] = (1/atr_window) * current_tr + (1 - 1/atr_window) * prev_atr
+                
+                updated_data["ATR"] = atr_values
+                
+                # Save updated data with ATR
+                with gzip.open(compressed_file, 'wt') as f:
+                    updated_data.to_csv(f, index=False)
+                
+                # Get reference values for level calculation - EXACT same logic
+                valid_atr_rows = updated_data[updated_data["ATR"].notna()]
+                
+                if valid_atr_rows.empty:
+                    return {'status': 'error', 'error': f'No valid ATR values found. Need at least {atr_window + 1} days of data.'}
+                
+                latest = valid_atr_rows.iloc[-1]
+                current_close = latest["Close"]
+                current_atr = latest["ATR"]
+                reference_date = latest["Date"] if hasattr(latest["Date"], 'strftime') else pd.to_datetime(latest["Date"])
+                
+                # For previous close (0.000 reference), use the row before latest
+                if len(valid_atr_rows) > 1:
+                    previous_row = valid_atr_rows.iloc[-2]
+                    previous_close = previous_row["Close"]
+                else:
+                    previous_close = current_close  # Fallback
                 
                 print(f"      ✅ Daily success: Close=${current_close:.2f}, ATR=${current_atr:.2f}")
                 print(f"      🎯 Reference: Previous close=${previous_close:.2f} (0.000 level)")
+                print(f"      📊 Valid ATR rows: {len(valid_atr_rows)}")
                 
                 # === INTRADAY DATA PROCESSING WITH LEVELS ===
                 print(f"      📈 Processing 10-minute intraday data with levels...")
@@ -1120,13 +1181,14 @@ jobs:
                     'reference_close': float(current_close),
                     'reference_atr': float(current_atr),
                     'previous_close': float(previous_close),
-                    'reference_date': str(reference_date),
+                    'reference_date': str(reference_date.date() if hasattr(reference_date, 'date') else reference_date),
                     'last_updated': datetime.now().isoformat(),
                     'yf_symbol': yf_symbol,
                     'data_points': len(updated_data),
+                    'valid_atr_points': len(valid_atr_rows),
                     'processing_phase': phase,
                     'intraday_status': intraday_status,
-                    'data_source': new_daily_data.get('Data_Source', 'No_New_Data').iloc[0] if new_daily_data is not None and len(new_daily_data) > 0 else 'No_New_Data'
+                    'data_source': updated_data.get('Data_Source', ['Unknown']).iloc[0] if len(updated_data) > 0 else 'Unknown'
                 }
                 
             except Exception as e:
