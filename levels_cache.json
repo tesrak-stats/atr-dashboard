@@ -1,22 +1,8 @@
 {
-  "last_updated": "2025-07-23 12:09:18 ",
-  "last_updated_timestamp": 1753272558.458374,
-  "processing_method": "three_phase_system",
-  "execution_phase": "manual_test",
-  "tickers": {
+  "2025-07-24": {
     "ES": {
-      "status": "success",
-      "reference_close": 6348.25,
-      "reference_atr": 57.734565513468866,
-      "previous_close": 6344.75,
-      "reference_date": "2025-07-22",
-      "last_updated": "2025-07-23T12:09:18.082113",
-      "yf_symbol": "ES=F",
-      "asset_type": "futures",
-      "retry_reason": "manual_test",
-      "data_points": 126,
-      "valid_atr_points": 113,
-      "processing_phase": "manual_test",
+      "atr": 57.734565513468866,
+      "reference_close": 6344.75,
       "levels": {
         "+1.000": 6402.48,
         "ATR_1000": 6402.48,
@@ -46,7 +32,9 @@
         "-1.000": 6287.02,
         "ATR_neg1000": 6287.02,
         "Daily_ATR": 57.73
-      }
+      },
+      "calculated_from": "2025-07-23",
+      "asset_type": "futures"
     }
   }
 }
