@@ -1,14 +1,23 @@
 {
-  "last_updated": "2025-07-23 00:59:02 ",
-  "last_updated_timestamp": 1753232342.842821,
+  "last_updated": "2025-07-23 01:09:03 ",
+  "last_updated_timestamp": 1753232943.339618,
   "discovery_method": "smart_retry_with_levels",
-  "execution_phase": "crypto_retry",
+  "execution_phase": "primary",
   "levels_integration": "enabled",
   "intraday_support": "10min_bars_with_levels",
   "tickers": {
     "ES": {
-      "status": "error",
-      "error": "Failed to reload daily data"
+      "status": "success",
+      "reference_close": 6344.75,
+      "reference_atr": 53.089285714285715,
+      "previous_close": 6334.75,
+      "reference_date": "2025-07-21",
+      "last_updated": "2025-07-23T01:09:02.644306",
+      "yf_symbol": "ES=F",
+      "data_points": 125,
+      "processing_phase": "primary",
+      "intraday_status": "success",
+      "data_source": "No_New_Data"
     },
     "IWM": {
       "status": "success",
@@ -16,12 +25,12 @@
       "reference_atr": 3.630885714285717,
       "previous_close": 222.33,
       "reference_date": "2025-07-21",
-      "last_updated": "2025-07-23T00:55:12.619810",
+      "last_updated": "2025-07-23T01:09:02.811833",
       "yf_symbol": "IWM",
       "data_points": 124,
       "processing_phase": "primary",
-      "intraday_status": "failed",
-      "data_source": "Polygon"
+      "intraday_status": "success",
+      "data_source": "No_New_Data"
     },
     "NVDA": {
       "status": "success",
@@ -29,12 +38,12 @@
       "reference_atr": 3.8512857142857087,
       "previous_close": 172.41,
       "reference_date": "2025-07-21",
-      "last_updated": "2025-07-23T00:55:13.060897",
+      "last_updated": "2025-07-23T01:09:02.960238",
       "yf_symbol": "NVDA",
       "data_points": 124,
       "processing_phase": "primary",
-      "intraday_status": "failed",
-      "data_source": "Polygon"
+      "intraday_status": "success",
+      "data_source": "No_New_Data"
     },
     "QQQ": {
       "status": "success",
@@ -42,16 +51,25 @@
       "reference_atr": 5.327942857142846,
       "previous_close": 561.26,
       "reference_date": "2025-07-21",
-      "last_updated": "2025-07-23T00:55:13.488451",
+      "last_updated": "2025-07-23T01:09:03.114356",
       "yf_symbol": "QQQ",
       "data_points": 124,
       "processing_phase": "primary",
-      "intraday_status": "failed",
-      "data_source": "Polygon"
+      "intraday_status": "success",
+      "data_source": "No_New_Data"
     },
     "SPX": {
-      "status": "error",
-      "error": "Failed to reload daily data"
+      "status": "success",
+      "reference_close": 6305.60009765625,
+      "reference_atr": 45.068568638392854,
+      "previous_close": 6296.7900390625,
+      "reference_date": "2025-07-21",
+      "last_updated": "2025-07-23T01:09:03.339574",
+      "yf_symbol": "^GSPC",
+      "data_points": 124,
+      "processing_phase": "primary",
+      "intraday_status": "success",
+      "data_source": "No_New_Data"
     }
   }
 }
