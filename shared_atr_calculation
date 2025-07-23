@@ -1,0 +1,393 @@
+#!/usr/bin/env python3
+"""
+Shared ATR Calculation Module
+Single source of truth for ATR and Fibonacci level calculations
+Used by both enhanced_csv_handler and yml scheduler for consistency
+"""
+
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+# ========================================================================================
+# CORE ATR CALCULATION FUNCTIONS
+# ========================================================================================
+
+def calculate_true_range_row(row):
+    """
+    Calculate True Range for a single row
+    Extracted from proven yml scheduler implementation
+    """
+    if pd.isna(row["Prev_Close"]):
+        return row["High"] - row["Low"]
+    
+    return max(
+        row["High"] - row["Low"],
+        abs(row["High"] - row["Prev_Close"]),
+        abs(row["Low"] - row["Prev_Close"])
+    )
+
+def calculate_true_wilders_atr(df, period=14):
+    """
+    Calculate TRUE Wilder's ATR exactly matching yml scheduler methodology
+    This is the proven function from the three-phase system
+    
+    Args:
+        df: DataFrame with OHLC data
+        period: ATR period (default 14)
+    
+    Returns:
+        pd.Series: ATR values with same index as input df
+    """
+    if len(df) < period:
+        return pd.Series([np.nan] * len(df), index=df.index)
+    
+    # Calculate True Range components exactly like proven system
+    df_copy = df.copy()
+    df_copy["Prev_Close"] = df_copy["Close"].shift(1)
+    
+    # Calculate True Range for each row
+    df_copy["TR"] = df_copy.apply(calculate_true_range_row, axis=1)
+    
+    # Calculate TRUE Wilder's ATR using EXACT same logic as daily_atr_updater.py
+    atr_values = [None] * len(df_copy)
+    
+    for i in range(len(df_copy)):
+        if i < period - 1:
+            # No ATR until we have enough data
+            atr_values[i] = None
+        elif i == period - 1:
+            # First ATR = average of first period TR values
+            atr_values[i] = df_copy["TR"].iloc[0:i+1].mean()
+        else:
+            # Subsequent ATR = 1/period*current_TR + (1-1/period)*previous_ATR
+            prev_atr = atr_values[i-1]
+            current_tr = df_copy["TR"].iloc[i]
+            atr_values[i] = (1/period) * current_tr + (1 - 1/period) * prev_atr
+    
+    return pd.Series(atr_values, index=df.index)
+
+def calculate_atr_with_validation(df, period=14, min_rows_required=None):
+    """
+    Calculate ATR with validation and detailed reporting
+    
+    Args:
+        df: DataFrame with OHLC data
+        period: ATR period
+        min_rows_required: Minimum rows needed (default: period + 10 for stability)
+    
+    Returns:
+        dict: {
+            'atr_series': pd.Series with ATR values,
+            'valid_count': int number of valid ATR values,
+            'validation_passed': bool,
+            'messages': list of validation messages
+        }
+    """
+    if min_rows_required is None:
+        min_rows_required = period + 10
+    
+    messages = []
+    validation_passed = True
+    
+    # Validate input data
+    if df is None or len(df) == 0:
+        return {
+            'atr_series': pd.Series([]),
+            'valid_count': 0,
+            'validation_passed': False,
+            'messages': ['Input dataframe is empty or None']
+        }
+    
+    # Check required columns
+    required_cols = ['Open', 'High', 'Low', 'Close']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        return {
+            'atr_series': pd.Series([np.nan] * len(df), index=df.index),
+            'valid_count': 0,
+            'validation_passed': False,
+            'messages': [f'Missing required columns: {missing_cols}']
+        }
+    
+    # Check data sufficiency
+    if len(df) < period:
+        validation_passed = False
+        messages.append(f'Insufficient data: {len(df)} rows, need at least {period}')
+    elif len(df) < min_rows_required:
+        messages.append(f'Limited data: {len(df)} rows, recommended {min_rows_required}+ for stability')
+    
+    # Calculate ATR
+    atr_series = calculate_true_wilders_atr(df, period)
+    valid_count = atr_series.notna().sum()
+    
+    if valid_count == 0:
+        validation_passed = False
+        messages.append('No valid ATR values generated')
+    else:
+        messages.append(f'Generated {valid_count} valid ATR values from {len(df)} rows')
+    
+    return {
+        'atr_series': atr_series,
+        'valid_count': valid_count,
+        'validation_passed': validation_passed,
+        'messages': messages
+    }
+
+# ========================================================================================
+# FIBONACCI LEVEL GENERATION
+# ========================================================================================
+
+def get_standard_fibonacci_ratios():
+    """Get the standard Fibonacci ratios used across the system"""
+    return [1.0, 0.786, 0.618, 0.5, 0.382, 0.236, 0.0,
+            -0.236, -0.382, -0.5, -0.618, -0.786, -1.0]
+
+def generate_fibonacci_levels(reference_close, atr, custom_ratios=None):
+    """
+    Generate Fibonacci levels using EXACT same logic as yml scheduler
+    Matches the proven three-phase system perfectly
+    
+    Args:
+        reference_close: Reference price (usually previous close)
+        atr: ATR value
+        custom_ratios: Optional custom ratios (uses standard if None)
+    
+    Returns:
+        dict: All level formats for maximum compatibility
+    """
+    if custom_ratios is None:
+        fib_ratios = get_standard_fibonacci_ratios()
+    else:
+        fib_ratios = custom_ratios
+    
+    levels = {}
+    
+    for ratio in fib_ratios:
+        level_price = reference_close + (ratio * atr)
+        
+        # Format 1: Exact yml scheduler format (+1.000, -0.618, etc.)
+        levels[f"{ratio:+.3f}"] = round(level_price, 2)
+        
+        # Format 2: ATR_ format for analyzer compatibility
+        if ratio == 0.0:
+            levels['ATR_000'] = round(level_price, 2)
+            levels['Daily_Close'] = round(level_price, 2)
+        elif ratio > 0:
+            ratio_str = f"{int(ratio*1000):03d}"
+            levels[f'ATR_{ratio_str}'] = round(level_price, 2)
+        else:
+            ratio_str = f"{int(abs(ratio)*1000):03d}"  
+            levels[f'ATR_neg{ratio_str}'] = round(level_price, 2)
+    
+    # Add the ATR value itself for reference
+    levels['Daily_ATR'] = round(atr, 2)
+    
+    return levels
+
+def generate_fibonacci_levels_batch(df, atr_column='ATR', close_column='Close', 
+                                   reference_close_method='previous'):
+    """
+    Generate Fibonacci levels for entire dataframe
+    
+    Args:
+        df: DataFrame with OHLC and ATR data
+        atr_column: Name of ATR column
+        close_column: Name of close price column
+        reference_close_method: 'previous' (use previous close) or 'current' (use current close)
+    
+    Returns:
+        pd.DataFrame: Original data with level columns added
+    """
+    result_df = df.copy()
+    
+    # Get all possible level column names from one calculation
+    if len(df) > 0 and not pd.isna(df[atr_column].iloc[0]):
+        sample_levels = generate_fibonacci_levels(df[close_column].iloc[0], df[atr_column].iloc[0])
+        level_columns = list(sample_levels.keys())
+    else:
+        # Fallback - create empty columns
+        fib_ratios = get_standard_fibonacci_ratios()
+        level_columns = []
+        for ratio in fib_ratios:
+            level_columns.append(f"{ratio:+.3f}")
+            if ratio == 0.0:
+                level_columns.extend(['ATR_000', 'Daily_Close'])
+            elif ratio > 0:
+                ratio_str = f"{int(ratio*1000):03d}"
+                level_columns.append(f'ATR_{ratio_str}')
+            else:
+                ratio_str = f"{int(abs(ratio)*1000):03d}"
+                level_columns.append(f'ATR_neg{ratio_str}')
+        level_columns.append('Daily_ATR')
+    
+    # Initialize level columns
+    for col in level_columns:
+        result_df[col] = np.nan
+    
+    # Calculate levels for each row
+    for i, row in df.iterrows():
+        if pd.isna(row[atr_column]):
+            continue
+            
+        # Determine reference close
+        if reference_close_method == 'previous' and i > 0:
+            reference_close = df.iloc[i-1][close_column]
+        else:
+            reference_close = row[close_column]
+        
+        # Generate levels
+        levels = generate_fibonacci_levels(reference_close, row[atr_column])
+        
+        # Assign to result dataframe
+        for level_name, level_value in levels.items():
+            if level_name in result_df.columns:
+                result_df.loc[i, level_name] = level_value
+    
+    return result_df
+
+# ========================================================================================
+# DATA VALIDATION AND UTILITIES
+# ========================================================================================
+
+def validate_ohlc_data(df, check_logical_consistency=True):
+    """
+    Validate OHLC data for ATR calculation
+    
+    Args:
+        df: DataFrame with OHLC data
+        check_logical_consistency: Check if High >= Low, etc.
+    
+    Returns:
+        dict: Validation results
+    """
+    issues = []
+    warnings = []
+    
+    # Check required columns
+    required_cols = ['Open', 'High', 'Low', 'Close']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        issues.append(f'Missing required columns: {missing_cols}')
+        return {'valid': False, 'issues': issues, 'warnings': warnings}
+    
+    # Check for null values
+    null_counts = df[required_cols].isnull().sum()
+    for col, count in null_counts.items():
+        if count > 0:
+            warnings.append(f'{col} has {count} null values')
+    
+    # Check data types
+    for col in required_cols:
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            issues.append(f'{col} is not numeric type: {df[col].dtype}')
+    
+    if check_logical_consistency:
+        # Check High >= Low
+        invalid_high_low = (df['High'] < df['Low']).sum()
+        if invalid_high_low > 0:
+            issues.append(f'{invalid_high_low} rows where High < Low')
+        
+        # Check High >= Open, Close and Low <= Open, Close
+        invalid_high_open = (df['High'] < df['Open']).sum()
+        invalid_high_close = (df['High'] < df['Close']).sum()
+        invalid_low_open = (df['Low'] > df['Open']).sum()
+        invalid_low_close = (df['Low'] > df['Close']).sum()
+        
+        for check, count in [
+            ('High < Open', invalid_high_open),
+            ('High < Close', invalid_high_close), 
+            ('Low > Open', invalid_low_open),
+            ('Low > Close', invalid_low_close)
+        ]:
+            if count > 0:
+                warnings.append(f'{count} rows where {check}')
+    
+    # Check for zero or negative prices
+    negative_prices = (df[required_cols] <= 0).any(axis=1).sum()
+    if negative_prices > 0:
+        issues.append(f'{negative_prices} rows with zero or negative prices')
+    
+    return {
+        'valid': len(issues) == 0,
+        'issues': issues,
+        'warnings': warnings,
+        'total_rows': len(df),
+        'null_counts': null_counts.to_dict()
+    }
+
+def create_session_identifiers(df, date_column='Date', method='sequential'):
+    """
+    Create session identifiers for compatibility with analyzer
+    
+    Args:
+        df: DataFrame
+        date_column: Column containing dates
+        method: 'sequential' or 'datetime_based'
+    
+    Returns:
+        pd.Series: Session identifiers
+    """
+    if method == 'sequential':
+        # Simple sequential numbering within each date
+        return df.groupby(date_column).cumcount().apply(lambda x: f"{df.loc[x, date_column]}_{x:04d}")
+    else:
+        # Datetime-based if available
+        if 'Datetime' in df.columns:
+            return df['Datetime'].dt.strftime('%Y%m%d_%H%M%S')
+        else:
+            # Fallback to sequential
+            return create_session_identifiers(df, date_column, 'sequential')
+
+# ========================================================================================
+# TESTING AND VALIDATION FUNCTIONS
+# ========================================================================================
+
+def test_atr_calculation_accuracy(test_data=None):
+    """
+    Test ATR calculation against known reference values
+    Useful for validating the implementation
+    """
+    if test_data is None:
+        # Create simple test data
+        test_data = pd.DataFrame({
+            'Date': pd.date_range('2024-01-01', periods=20),
+            'Open': [100 + i for i in range(20)],
+            'High': [102 + i for i in range(20)], 
+            'Low': [98 + i for i in range(20)],
+            'Close': [101 + i for i in range(20)]
+        })
+    
+    # Calculate ATR
+    atr_result = calculate_atr_with_validation(test_data, period=14)
+    
+    # Basic validation
+    print("ATR Calculation Test Results:")
+    print(f"Valid ATR values: {atr_result['valid_count']}")
+    print(f"Validation passed: {atr_result['validation_passed']}")
+    for msg in atr_result['messages']:
+        print(f"  - {msg}")
+    
+    if atr_result['valid_count'] > 0:
+        atr_series = atr_result['atr_series']
+        print(f"ATR range: {atr_series.min():.4f} to {atr_series.max():.4f}")
+        
+        # Test level generation
+        last_valid_idx = atr_series.last_valid_index()
+        if last_valid_idx is not None:
+            test_close = test_data.loc[last_valid_idx, 'Close']
+            test_atr = atr_series.loc[last_valid_idx]
+            levels = generate_fibonacci_levels(test_close, test_atr)
+            
+            print(f"\nFibonacci Levels Test (Close={test_close}, ATR={test_atr:.4f}):")
+            for level_name, level_value in sorted(levels.items()):
+                if level_name.startswith('+') or level_name.startswith('-'):
+                    print(f"  {level_name}: {level_value}")
+    
+    return atr_result
+
+if __name__ == "__main__":
+    # Run basic tests if executed directly
+    print("🧪 Testing Shared ATR Calculation Module")
+    print("=" * 50)
+    test_atr_calculation_accuracy()
