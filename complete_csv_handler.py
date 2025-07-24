@@ -111,9 +111,7 @@ def combine_timeframes_with_atr_enhanced(daily_file, intraday_file, atr_period=1
             else:
                 intraday_df = pd.read_excel(intraday_file)
         
-        # Import standardization functions from existing code
-        from complete_csv_handler import CSVProcessor
-        
+   
         # Standardize both dataframes
         daily_df = CSVProcessor.standardize_columns(daily_df)
         daily_df = CSVProcessor.create_datetime_column(daily_df)
