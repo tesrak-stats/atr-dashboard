@@ -175,7 +175,10 @@ def combine_timeframes_with_atr_enhanced(daily_file, intraday_file, atr_period=1
             
             # Also handle case where analysis data might be on same date
             # but we want to use previous day's values
-            atr_lookup[current_date] = current_atr if i == 0 else valid_atr.iloc[i-1]['ATR']
+            if i == 0:
+                atr_lookup[current_date] = current_atr
+            else:
+                atr_lookup[current_date] = valid_atr.iloc[i-1]['ATR']
             reference_close_lookup[current_date] = current_close if i == 0 else valid_atr.iloc[i-1]['Close']
         
         st.info(f"📊 Created lookups for {len(atr_lookup)} dates")
