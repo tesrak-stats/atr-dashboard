@@ -175,17 +175,30 @@ def combine_timeframes_with_atr_enhanced(daily_file, intraday_file, atr_period=1
             
             # Also handle case where analysis data might be on same date
             # but we want to use previous day's values
-           
-            if i == 0:
-                atr_lookup[current_date] = current_atr
-            else:
-                st.info(f"Debug: i={i}, len(valid_atr)={len(valid_atr)}, trying to access index {i-1}")
-                atr_lookup[current_date] = valid_atr.iloc[i-1]['ATR']
-            if i == 0:
-                reference_close_lookup[current_date] = current_close
-            else:
-                
-                reference_close_lookup[current_date] = valid_atr.iloc[i-1]['Close']
+            # Get valid ATR data
+            valid_atr = daily_with_atr[daily_with_atr['ATR'].notna()]
+            valid_atr = valid_atr.reset_index(drop=True)  # ✅ Keep this
+
+# Process each base timeframe row
+            for i, row in valid_atr.iterrows():
+                current_date = row['Date']
+                current_atr = row['ATR']
+                current_close = row['Close']
+    
+    # Find next date in the dataset to assign this ATR to
+                next_idx = i + 1
+                if next_idx < len(valid_atr):
+                    next_date = valid_atr.iloc[next_idx]['Date']
+                    atr_lookup[next_date] = current_atr
+                    reference_close_lookup[next_date] = current_close
+    
+    # Also handle case where analysis data might be on same date
+                if i == 0:
+                    atr_lookup[current_date] = current_atr
+                    reference_close_lookup[current_date] = current_close
+                else:
+                    atr_lookup[current_date] = valid_atr.iloc[i-1]['ATR']
+                    reference_close_lookup[current_date] = valid_atr.iloc[i-1]['Close']
         
         st.info(f"📊 Created lookups for {len(atr_lookup)} dates")
         
