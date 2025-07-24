@@ -3136,6 +3136,9 @@ elif mode == "📈 Public Data Download":
 # ========================================================================================
 # ENHANCED MULTI-TIMEFRAME ATR COMBINER (With Full Fibonacci Levels)
 # ========================================================================================
+# ========================================================================================
+# UNIFIED ENHANCED MULTI-TIMEFRAME ATR COMBINER
+# ========================================================================================
 elif mode == "🎯 Multi-Timeframe ATR Combiner":
     st.header("🎯 Enhanced Multi-Timeframe ATR Combiner")
     st.write("**Create analyzer-ready files with pre-calculated Fibonacci ATR levels**")
@@ -3159,19 +3162,23 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
     ✅ Perfect yml scheduler calculation consistency  
     """)
     
-    # Configuration columns
+    # =================================================================================
+    # STEP 1: FILE UPLOADS
+    # =================================================================================
+    st.subheader("📁 Step 1: Upload Data Files")
+    
     col1, col2 = st.columns(2)
     
     with col1:
-        st.subheader("📊 Base Timeframe (ATR Source)")
-        st.write("**This timeframe calculates the ATR values**")
+        st.write("**📊 Base Timeframe (ATR Source)**")
+        st.write("This timeframe calculates the ATR values")
         
         # Base file upload or use session state
         base_file = st.file_uploader(
             "Upload Base Timeframe File",
             type=['csv', 'xlsx', 'xls'],
             help="Any timeframe for ATR calculation (daily, weekly, monthly, etc.)",
-            key="atr_combiner_base"
+            key="enhanced_base_file"
         )
         
         # Show if using session state data
@@ -3181,15 +3188,15 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             st.info("💡 Clear from sidebar workspace if you want to upload different file")
     
     with col2:
-        st.subheader("📈 Analysis Timeframe (OHLC Source)")
-        st.write("**This timeframe provides the OHLC bars for analysis**")
+        st.write("**📈 Analysis Timeframe (OHLC Source)**")
+        st.write("This timeframe provides the OHLC bars for analysis")
         
         # Analysis file upload or use session state
         analysis_file = st.file_uploader(
             "Upload Analysis Timeframe File", 
             type=['csv', 'xlsx', 'xls'],
             help="Any timeframe for analysis (intraday, daily, etc.)",
-            key="atr_combiner_analysis"
+            key="enhanced_analysis_file"
         )
         
         # Show if using session state data
@@ -3198,12 +3205,14 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             st.success(f"✅ **Using held data**: {analysis_filename}")
             st.info("💡 Clear from sidebar workspace if you want to upload different file")
     
-    # Configuration options
+    # =================================================================================
+    # STEP 2: BASIC CONFIGURATION (Always show if we have files)
+    # =================================================================================
     if (base_file or 'atr_combiner_base_data' in st.session_state) and \
        (analysis_file or 'atr_combiner_analysis_data' in st.session_state):
         
         st.markdown("---")
-        st.subheader("⚙️ Configuration")
+        st.subheader("⚙️ Step 2: Basic Configuration")
         
         col1, col2, col3 = st.columns(3)
         
@@ -3230,9 +3239,11 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                 help="Asset type for session configuration"
             )
         
-        # Show data previews
+        # =================================================================================
+        # STEP 3: DATA PREVIEW
+        # =================================================================================
         st.markdown("---")
-        st.subheader("📋 Data Preview")
+        st.subheader("📋 Step 3: Data Preview")
         
         col1, col2 = st.columns(2)
         
@@ -3240,7 +3251,7 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             try:
                 if base_file:
                     if base_file.name.endswith('.csv'):
-                        base_preview = pd.read_csv(base_file).head()
+                        base_preview = CSVProcessor.robust_csv_reader(base_file, base_file.name).head()
                     else:
                         base_preview = pd.read_excel(base_file).head()
                 else:
@@ -3256,7 +3267,7 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             try:
                 if analysis_file:
                     if analysis_file.name.endswith('.csv'):
-                        analysis_preview = pd.read_csv(analysis_file).head()
+                        analysis_preview = CSVProcessor.robust_csv_reader(analysis_file, analysis_file.name).head()
                     else:
                         analysis_preview = pd.read_excel(analysis_file).head()
                 else:
@@ -3268,128 +3279,236 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             except Exception as e:
                 st.error(f"Error previewing analysis data: {str(e)}")
         
-       # Replace the timeframe detection section with this fixed version:
-
-    # REPLACE the timeframe detection section with this fixed version:
-
-    # RESTORED: Smart Timeframe Detection and Rolling Analysis Configuration
-    st.markdown("---")
-    st.subheader("🕐 Smart Timeframe Detection & Rolling Configuration")
-
-    # NEW: Interval Detection & Configuration
-    try:
-        # FIXED: Use robust CSV reader instead of plain pandas
-        if analysis_file:
-            st.info("🔄 **Reading analysis file for timeframe detection...**")
-            if analysis_file.name.endswith('.csv'):
-                analysis_preview = CSVProcessor.robust_csv_reader(analysis_file, analysis_file.name)
-            else:
-                analysis_preview = pd.read_excel(analysis_file)
-        elif 'atr_combiner_analysis_data' in st.session_state:
-            analysis_preview = st.session_state['atr_combiner_analysis_data'].copy()
-            st.info("🔄 **Using session data for timeframe detection...**")
-        else:
-            st.warning("⚠️ No analysis data available for timeframe detection")
-            # Set fallback configuration
-            st.session_state['interval_config'] = {
-                'candle_interval_minutes': 10,
-                'rolling_period_type': 'hourly',
-                'rolling_period_count': 8,
-                'analysis_timeframe': 'Intraday',
-                'base_interval_minutes': 1440
-            }
-            analysis_preview = None
+        # =================================================================================
+        # STEP 4: SMART TIMEFRAME DETECTION & ROLLING CONFIGURATION
+        # =================================================================================
+        st.markdown("---")
+        st.subheader("🕐 Step 4: Smart Timeframe Detection & Rolling Configuration")
         
-        if analysis_preview is not None and len(analysis_preview) > 1:
-            st.info("🔄 **Standardizing columns for timeframe detection...**")
-            
-            # FIXED: Better error handling for standardization
-            try:
-                analysis_preview = CSVProcessor.standardize_columns(analysis_preview)
-                st.success("✅ **Column standardization successful**")
-            except Exception as e:
-                st.warning(f"⚠️ **Column standardization issue**: {str(e)}")
-                st.info("Proceeding with original column names...")
-            
-            # FIXED: Better error handling for datetime creation
-            try:
-                analysis_preview = CSVProcessor.create_datetime_column(analysis_preview)
-                st.success("✅ **Datetime column creation successful**")
-            except Exception as e:
-                st.warning(f"⚠️ **Datetime creation issue**: {str(e)}")
-                st.info("Proceeding without datetime column...")
-                # Try to use Date column if available
-                if 'Date' in analysis_preview.columns:
-                    analysis_preview['Datetime'] = pd.to_datetime(analysis_preview['Date'])
-                elif 'Datetime' in analysis_preview.columns:
-                    analysis_preview['Datetime'] = pd.to_datetime(analysis_preview['Datetime'])
+        try:
+            # FIXED: Use robust CSV reader for timeframe detection
+            if analysis_file:
+                st.info("🔄 **Reading analysis file for timeframe detection...**")
+                if analysis_file.name.endswith('.csv'):
+                    analysis_preview = CSVProcessor.robust_csv_reader(analysis_file, analysis_file.name)
                 else:
-                    st.warning("⚠️ **No date/datetime column found** - using first column")
-                    first_col = analysis_preview.columns[0]
-                    try:
-                        analysis_preview['Datetime'] = pd.to_datetime(analysis_preview[first_col])
-                    except:
-                        st.error("❌ **Cannot create datetime column** - skipping timeframe detection")
-                        raise ValueError("Cannot process datetime information")
-            
-            # 1. AUTO-DETECT ANALYSIS CANDLE INTERVAL
-            st.write("**1. Analysis Candle Interval Detection**")
-            
-            # Show what we're working with
-            st.info(f"📊 **Analysis data**: {len(analysis_preview)} rows, columns: {list(analysis_preview.columns)}")
-            
-            if 'Datetime' in analysis_preview.columns and len(analysis_preview) > 1:
-                try:
-                    # Sort by datetime and calculate intervals
-                    analysis_preview_sorted = analysis_preview.sort_values('Datetime')
-                    time_diffs = analysis_preview_sorted['Datetime'].diff().dropna()
-                    
-                    if not time_diffs.empty:
-                        most_common_diff = time_diffs.mode().iloc[0] if not time_diffs.mode().empty else time_diffs.median()
-                        interval_minutes = int(most_common_diff.total_seconds() / 60)
-                        
-                        # Format display
-                        if interval_minutes < 60:
-                            interval_display = f"{interval_minutes}-minute"
-                        elif interval_minutes == 60:
-                            interval_display = "1-hour"
-                        elif interval_minutes < 1440:
-                            hours = interval_minutes / 60
-                            interval_display = f"{hours:.1f}-hour" if hours != int(hours) else f"{int(hours)}-hour"
-                        elif interval_minutes == 1440:
-                            interval_display = "daily"
-                        else:
-                            days = interval_minutes / 1440
-                            interval_display = f"{days:.1f}-day" if days != int(days) else f"{int(days)}-day"
-                        
-                        st.success(f"🔍 **Analysis interval detected**: {interval_display} ({interval_minutes} minutes)")
-                    else:
-                        interval_minutes = 10  # Default
-                        st.warning("⚠️ **Cannot detect interval** - defaulting to 10 minutes")
-                        
-                except Exception as e:
-                    interval_minutes = 10  # Default
-                    st.warning(f"⚠️ **Interval detection failed**: {str(e)} - defaulting to 10 minutes")
+                    analysis_preview = pd.read_excel(analysis_file)
+            elif 'atr_combiner_analysis_data' in st.session_state:
+                analysis_preview = st.session_state['atr_combiner_analysis_data'].copy()
+                st.info("🔄 **Using session data for timeframe detection...**")
             else:
-                interval_minutes = 10  # Default
-                st.warning("⚠️ **Insufficient datetime data** - defaulting to 10 minutes")
+                st.warning("⚠️ No analysis data available for timeframe detection")
+                analysis_preview = None
             
-            # Continue with the rest of your timeframe detection logic...
-            # (Rolling period configuration, etc.)
+            if analysis_preview is not None and len(analysis_preview) > 1:
+                st.info("🔄 **Standardizing columns for timeframe detection...**")
+                
+                # Better error handling for standardization
+                try:
+                    analysis_preview = CSVProcessor.standardize_columns(analysis_preview)
+                    st.success("✅ **Column standardization successful**")
+                except Exception as e:
+                    st.warning(f"⚠️ **Column standardization issue**: {str(e)}")
+                    st.info("Proceeding with original column names...")
+                
+                # Better error handling for datetime creation
+                try:
+                    analysis_preview = CSVProcessor.create_datetime_column(analysis_preview)
+                    st.success("✅ **Datetime column creation successful**")
+                except Exception as e:
+                    st.warning(f"⚠️ **Datetime creation issue**: {str(e)}")
+                    st.info("Proceeding without datetime column...")
+                    # Try to use Date column if available
+                    if 'Date' in analysis_preview.columns:
+                        analysis_preview['Datetime'] = pd.to_datetime(analysis_preview['Date'])
+                    elif 'Datetime' in analysis_preview.columns:
+                        analysis_preview['Datetime'] = pd.to_datetime(analysis_preview['Datetime'])
+                    else:
+                        st.warning("⚠️ **No date/datetime column found** - using first column")
+                        first_col = analysis_preview.columns[0]
+                        try:
+                            analysis_preview['Datetime'] = pd.to_datetime(analysis_preview[first_col])
+                        except:
+                            st.error("❌ **Cannot create datetime column** - using defaults")
+                            raise ValueError("Cannot process datetime information")
+                
+                # 4.1 AUTO-DETECT ANALYSIS CANDLE INTERVAL
+                st.write("**4.1 Analysis Candle Interval Detection**")
+                
+                # Show what we're working with
+                st.info(f"📊 **Analysis data**: {len(analysis_preview)} rows, columns: {list(analysis_preview.columns)}")
+                
+                if 'Datetime' in analysis_preview.columns and len(analysis_preview) > 1:
+                    try:
+                        # Sort by datetime and calculate intervals
+                        analysis_preview_sorted = analysis_preview.sort_values('Datetime')
+                        time_diffs = analysis_preview_sorted['Datetime'].diff().dropna()
+                        
+                        if not time_diffs.empty:
+                            most_common_diff = time_diffs.mode().iloc[0] if not time_diffs.mode().empty else time_diffs.median()
+                            interval_minutes = int(most_common_diff.total_seconds() / 60)
+                            
+                            # Format display
+                            if interval_minutes < 60:
+                                interval_display = f"{interval_minutes}-minute"
+                            elif interval_minutes == 60:
+                                interval_display = "1-hour"
+                            elif interval_minutes < 1440:
+                                hours = interval_minutes / 60
+                                interval_display = f"{hours:.1f}-hour" if hours != int(hours) else f"{int(hours)}-hour"
+                            elif interval_minutes == 1440:
+                                interval_display = "daily"
+                            else:
+                                days = interval_minutes / 1440
+                                interval_display = f"{days:.1f}-day" if days != int(days) else f"{int(days)}-day"
+                            
+                            st.success(f"🔍 **Analysis interval detected**: {interval_display} ({interval_minutes} minutes)")
+                        else:
+                            interval_minutes = 10  # Default
+                            st.warning("⚠️ **Cannot detect interval** - defaulting to 10 minutes")
+                            
+                    except Exception as e:
+                        interval_minutes = 10  # Default
+                        st.warning(f"⚠️ **Interval detection failed**: {str(e)} - defaulting to 10 minutes")
+                else:
+                    interval_minutes = 10  # Default
+                    st.warning("⚠️ **Insufficient datetime data** - defaulting to 10 minutes")
+                
+                # 4.2 AUTO-DETECT BASE TIMEFRAME INTERVAL
+                st.write("**4.2 Base Timeframe Interval Detection**")
+                
+                try:
+                    if base_file:
+                        if base_file.name.endswith('.csv'):
+                            base_for_detection = CSVProcessor.robust_csv_reader(base_file, base_file.name)
+                        else:
+                            base_for_detection = pd.read_excel(base_file)
+                    elif 'atr_combiner_base_data' in st.session_state:
+                        base_for_detection = st.session_state['atr_combiner_base_data'].copy()
+                    else:
+                        base_for_detection = None
+                    
+                    if base_for_detection is not None and len(base_for_detection) > 1:
+                        base_for_detection = CSVProcessor.standardize_columns(base_for_detection)
+                        base_for_detection = CSVProcessor.create_datetime_column(base_for_detection)
+                        
+                        base_for_detection['Datetime'] = pd.to_datetime(base_for_detection['Datetime'])
+                        base_for_detection = base_for_detection.sort_values('Datetime')
+                        
+                        base_time_diffs = base_for_detection['Datetime'].diff().dropna()
+                        base_most_common_diff = base_time_diffs.mode().iloc[0] if not base_time_diffs.mode().empty else base_time_diffs.median()
+                        base_interval_minutes = int(base_most_common_diff.total_seconds() / 60)
+                        
+                        if base_interval_minutes < 60:
+                            base_interval_display = f"{base_interval_minutes}-minute"
+                        elif base_interval_minutes == 60:
+                            base_interval_display = "1-hour"
+                        elif base_interval_minutes < 1440:
+                            base_hours = base_interval_minutes / 60
+                            base_interval_display = f"{base_hours:.1f}-hour" if base_hours != int(base_hours) else f"{int(base_hours)}-hour"
+                        elif base_interval_minutes == 1440:
+                            base_interval_display = "daily"
+                        else:
+                            base_days = base_interval_minutes / 1440
+                            base_interval_display = f"{base_days:.1f}-day" if base_days != int(base_days) else f"{int(base_days)}-day"
+                        
+                        st.success(f"🔍 **Base timeframe**: {base_interval_display} ({base_interval_minutes} minutes)")
+                    else:
+                        base_interval_minutes = 1440  # Default to daily
+                        st.warning("⚠️ Insufficient base data for interval detection - assuming daily")
+                
+                except Exception as e:
+                    base_interval_minutes = 1440  # Default to daily
+                    st.warning(f"⚠️ Base interval detection failed - assuming daily: {str(e)}")
+                
+                # 4.3 ROLLING PERIOD CONFIGURATION
+                st.write("**4.3 Rolling Period Configuration**")
+                
+                # Smart recommendations based on detected intervals
+                if interval_minutes <= 10:
+                    recommended_type = "hourly"
+                    recommended_count = 8
+                    recommendation_text = "8 x 4-hour periods (32-hour rolling analysis)"
+                elif interval_minutes <= 60:
+                    recommended_type = "hourly"
+                    recommended_count = 12
+                    recommendation_text = "12 x hourly periods (12-hour rolling analysis)"
+                else:
+                    recommended_type = "daily"
+                    recommended_count = 5
+                    recommendation_text = "5 x daily periods (5-day rolling analysis)"
+                
+                st.info(f"💡 **Smart recommendation**: {recommendation_text}")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    rolling_period_type = st.selectbox(
+                        "Rolling Period Type",
+                        ["hourly", "daily", "weekly"],
+                        index=["hourly", "daily", "weekly"].index(recommended_type),
+                        help="Type of periods for rolling analysis"
+                    )
+                
+                with col2:
+                    rolling_period_count = st.number_input(
+                        "Period Count",
+                        min_value=1,
+                        max_value=50,
+                        value=recommended_count,
+                        help="Number of periods to include in rolling analysis"
+                    )
+                
+                st.success(f"⚙️ **Rolling configuration**: {rolling_period_count} x {rolling_period_type}")
+                
+                # 4.4 ANALYSIS TIMEFRAME SELECTION
+                st.write("**4.4 Analysis Timeframe Selection**")
+                
+                analysis_timeframe = st.selectbox(
+                    "Analysis Timeframe",
+                    ["Intraday", "Weekly", "Monthly", "Other"],
+                    help="Select analysis timeframe type (Other = skip rolling analysis)"
+                )
+                
+                if analysis_timeframe == "Other":
+                    st.info("ℹ️ **Other selected**: Rolling analysis will be skipped in downstream apps")
+                else:
+                    st.success(f"📊 **Analysis timeframe**: {analysis_timeframe}")
+                
+                # Store configuration in session state for processing
+                st.session_state['interval_config'] = {
+                    'candle_interval_minutes': interval_minutes,
+                    'rolling_period_type': rolling_period_type,
+                    'rolling_period_count': rolling_period_count,
+                    'analysis_timeframe': analysis_timeframe,
+                    'base_interval_minutes': base_interval_minutes
+                }
+                
+                st.success("✅ **Timeframe detection and configuration completed successfully**")
+                
+            else:
+                st.warning("⚠️ Insufficient analysis data for timeframe detection")
+                # Manual fallback
+                interval_minutes = st.number_input("Analysis Interval (minutes)", min_value=1, value=10)
+                base_interval_minutes = 1440
+                
+                # Fallback configuration
+                st.session_state['interval_config'] = {
+                    'candle_interval_minutes': interval_minutes,
+                    'rolling_period_type': 'hourly',
+                    'rolling_period_count': 8,
+                    'analysis_timeframe': 'Intraday',
+                    'base_interval_minutes': base_interval_minutes
+                }
+                
+        except Exception as e:
+            st.error(f"❌ Error analyzing timeframe: {str(e)}")
             
-            # Store configuration
-            st.session_state['interval_config'] = {
-                'candle_interval_minutes': interval_minutes,
-                'rolling_period_type': 'hourly',  # You can make this dynamic
-                'rolling_period_count': 8,        # You can make this dynamic
-                'analysis_timeframe': 'Intraday', # You can make this dynamic
-                'base_interval_minutes': 1440     # You can make this dynamic
-            }
+            # Show detailed error info for debugging
+            import traceback
+            st.error("🔍 **Detailed error trace**:")
+            st.code(traceback.format_exc())
             
-            st.success("✅ **Timeframe detection completed successfully**")
-            
-        else:
-            st.warning("⚠️ Insufficient analysis data for timeframe detection")
             # Fallback configuration
             st.session_state['interval_config'] = {
                 'candle_interval_minutes': 10,
@@ -3398,32 +3517,19 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                 'analysis_timeframe': 'Intraday',
                 'base_interval_minutes': 1440
             }
-            
-    except Exception as e:
-        st.error(f"❌ Error analyzing timeframe: {str(e)}")
         
-        # Show more detailed error info for debugging
-        import traceback
-        st.error("🔍 **Detailed error trace**:")
-        st.code(traceback.format_exc())
-        
-        # Fallback configuration
-        st.session_state['interval_config'] = {
-            'candle_interval_minutes': 10,
-            'rolling_period_type': 'hourly',
-            'rolling_period_count': 8,
-            'analysis_timeframe': 'Intraday',
-            'base_interval_minutes': 1440
-        }
-        
-        # Enhanced process button
+        # =================================================================================
+        # STEP 5: ENHANCED PROCESSING
+        # =================================================================================
         st.markdown("---")
+        st.subheader("🚀 Step 5: Create Analyzer-Ready File")
+        
         if st.button("🚀 **Create Analyzer-Ready File with Fibonacci Levels**", type="primary", use_container_width=True):
             with st.spinner("Processing enhanced multi-timeframe ATR combination with Fibonacci levels..."):
                 
-                # Use session state data if available, otherwise use uploaded files
-                daily_file_to_use = base_file if base_file else st.session_state['atr_combiner_base_data']
-                intraday_file_to_use = analysis_file if analysis_file else st.session_state['atr_combiner_analysis_data']
+                # Get file references
+                base_file_to_use = base_file if base_file else st.session_state['atr_combiner_base_data']
+                analysis_file_to_use = analysis_file if analysis_file else st.session_state['atr_combiner_analysis_data']
                 
                 # Get interval configuration
                 interval_config = st.session_state.get('interval_config', {
@@ -3434,14 +3540,17 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     'base_interval_minutes': 1440
                 })
                 
-                # Use the enhanced function with interval configuration
+                st.info(f"🔧 **Configuration**: ATR Period={atr_period}, Asset Type={asset_type}")
+                st.info(f"🕐 **Intervals**: Analysis={interval_config['candle_interval_minutes']}min, Base={interval_config['base_interval_minutes']}min")
+                
+                # Use the enhanced function
                 combined_data = combine_timeframes_with_atr_enhanced(
-                    daily_file_to_use, 
-                    intraday_file_to_use, 
+                    base_file_to_use, 
+                    analysis_file_to_use, 
                     atr_period=atr_period,
                     align_method=align_method,
                     asset_type=asset_type,
-                    interval_config=interval_config  # Pass the configuration
+                    interval_config=interval_config
                 )
                 
                 if combined_data is not None:
@@ -3469,51 +3578,50 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     col1, col2, col3 = st.columns(3)
                     
                     with col1:
-                        st.write("**Core Data:**")
-                        core_columns = ['Date', 'Datetime', 'Open', 'High', 'Low', 'Close', 'Volume', 'ATR', 'Prior_Base_Close']
-                        for col in core_columns:
-                            if col in combined_data.columns:
-                                st.write(f"✅ {col}")
+                        st.write("**🔢 Core Data:**")
+                        core_cols = [col for col in combined_data.columns if col in ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'ATR']]
+                        for col in core_cols:
+                            st.info(f"✅ {col}")
                     
                     with col2:
-                        st.write("**Positive Levels:**")
-                        positive_levels = [col for col in combined_data.columns if col.startswith('+') or (col.startswith('ATR_') and not col.startswith('ATR_neg') and col != 'ATR_000')]
-                        for col in sorted(positive_levels)[:8]:  # Show first 8
-                            st.write(f"✅ {col}")
-                        if len(positive_levels) > 8:
-                            st.write(f"... and {len(positive_levels) - 8} more")
+                        st.write("**📊 Fibonacci Levels (+/-):**")
+                        fib_cols = [col for col in combined_data.columns if col.startswith('+') or col.startswith('-')]
+                        for col in sorted(fib_cols)[:8]:  # Show first 8
+                            st.info(f"✅ {col}")
+                        if len(fib_cols) > 8:
+                            st.info(f"... and {len(fib_cols) - 8} more")
                     
                     with col3:
-                        st.write("**Negative/Zero Levels:**")
-                        negative_levels = [col for col in combined_data.columns if col.startswith('-') or col.startswith('ATR_neg') or col == 'ATR_000']
-                        for col in sorted(negative_levels)[:8]:  # Show first 8
-                            st.write(f"✅ {col}")
-                        if len(negative_levels) > 8:
-                            st.write(f"... and {len(negative_levels) - 8} more")
+                        st.write("**🎯 ATR Format Levels:**")
+                        atr_cols = [col for col in combined_data.columns if col.startswith('ATR_')]
+                        for col in sorted(atr_cols)[:8]:  # Show first 8
+                            st.info(f"✅ {col}")
+                        if len(atr_cols) > 8:
+                            st.info(f"... and {len(atr_cols) - 8} more")
                     
-                    # Enhanced data preview with levels
-                    st.subheader("📊 Enhanced Data Preview (with Fibonacci Levels)")
+                    # Preview of enhanced data
+                    st.subheader("🔍 Enhanced Data Preview")
+                    preview_cols = ['Date', 'Open', 'High', 'Low', 'Close', 'ATR', '+1.000', '+0.618', '+0.000', '-0.618', '-1.000']
+                    available_preview_cols = [col for col in preview_cols if col in combined_data.columns]
+                    st.dataframe(combined_data[available_preview_cols].head(), use_container_width=True)
                     
-                    # Show first few rows with core columns + sample levels
-                    preview_columns = ['Date', 'Open', 'High', 'Low', 'Close', 'ATR', 'Prior_Base_Close', 
-                                     '+1.000', '+0.786', '+0.000', '-0.786', '-1.000', 'ATR_1000', 'ATR_000', 'Daily_ATR']
-                    available_preview_columns = [col for col in preview_columns if col in combined_data.columns]
-                    
-                    preview_data = combined_data[available_preview_columns].head(10)
-                    st.dataframe(preview_data, use_container_width=True)
-                    
-                    # Generate enhanced filename
-                    if base_file:
-                        base_name = base_file.name.split('.')[0]
-                    else:
-                        base_name = "HeldBase"
-                    
-                    if analysis_file:
-                        analysis_name = analysis_file.name.split('.')[0]
-                    else:
-                        analysis_name = "HeldAnalysis"
-                    
+                    # Generate download filename
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    
+                    try:
+                        if hasattr(base_file_to_use, 'name'):
+                            base_name = base_file_to_use.name.split('.')[0]
+                        else:
+                            base_name = "HeldBase"
+                        
+                        if hasattr(analysis_file_to_use, 'name'):
+                            analysis_name = analysis_file_to_use.name.split('.')[0] 
+                        else:
+                            analysis_name = "HeldAnalysis"
+                    except:
+                        base_name = "Base"
+                        analysis_name = "Analysis"
+                    
                     enhanced_filename = f"AnalyzerReady_{base_name}_{analysis_name}_{atr_period}ATR_FibLevels_{timestamp}.csv"
                     
                     # Enhanced download button
@@ -3554,44 +3662,11 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
                     **The analyzer will receive pre-calculated levels - maximum performance!**
                     """)
                     
-                    # Add to workspace option
-                    st.markdown("---")
-                    st.subheader("💾 Workspace Actions")
-                    
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        if st.button("💾 **Store Enhanced Result**", use_container_width=True):
-                            st.session_state['last_enhanced_result'] = combined_data.copy()
-                            st.session_state['last_enhanced_filename'] = enhanced_filename
-                            st.success("✅ Enhanced result stored in workspace!")
-                    
-                    with col2:
-                        if st.button("📊 **View Level Statistics**", use_container_width=True):
-                            # Show level statistics
-                            with st.expander("📊 Fibonacci Level Statistics", expanded=True):
-                                sample_row = combined_data[combined_data['ATR'].notna()].iloc[0]
-                                
-                                st.write("**Sample Level Values (First Valid Row):**")
-                                level_data = []
-                                for col in combined_data.columns:
-                                    if col.startswith('+') or col.startswith('-') or col.startswith('ATR_'):
-                                        if col != 'ATR' and col in sample_row and pd.notna(sample_row[col]):
-                                            level_data.append({
-                                                'Level': col,
-                                                'Value': sample_row[col],
-                                                'Distance from Close': sample_row[col] - sample_row['Close']
-                                            })
-                                
-                                level_df = pd.DataFrame(level_data)
-                                if not level_df.empty:
-                                    st.dataframe(level_df, use_container_width=True)
-                
                 else:
                     st.error("❌ Failed to create enhanced analyzer-ready file. Check the processing information above.")
-    
+        
     else:
-        # Show enhanced instructions when files aren't uploaded
+        # Show instructions when files aren't uploaded
         st.info("👆 **Please upload both base and analysis timeframe files to get started**")
         
         # Enhanced workflow explanation
@@ -3618,9 +3693,10 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             **🔧 Enhanced Process:**
             1. **Upload base timeframe** (for ATR calculation)
             2. **Upload analysis timeframe** (for OHLC analysis bars)
-            3. **Configure ATR period** (default: 14)
-            4. **Process** - system calculates ATR and aligns with proper date logic
-            5. **Download** analyzer-ready file with **ALL Fibonacci levels**
+            3. **Configure parameters** (ATR period, asset type, etc.)
+            4. **Smart timeframe detection** (automatic interval detection)
+            5. **Process** - system calculates ATR and aligns with proper date logic
+            6. **Download** analyzer-ready file with **ALL Fibonacci levels**
             
             **💡 Why This Enhanced Approach?**
             - **Pre-calculated levels**: Analyzer runs faster (no computation needed)
@@ -3642,6 +3718,7 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
             **🚀 Perfect for systematic trading analysis with pre-calculated levels!**
             """)
 
+# REMOVE THE SIMPLIFIED SECTION ENTIRELY - This unified version is the only Multi-Timeframe ATR Combiner
 
 # ========================================================================================
 # SINGLE FILE RESAMPLER (FIXED - Real Custom Candle Generator)
