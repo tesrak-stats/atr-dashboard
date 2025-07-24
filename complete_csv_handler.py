@@ -314,6 +314,190 @@ def combine_timeframes_with_atr_enhanced(daily_file, intraday_file, atr_period=1
         st.error(traceback.format_exc())
         return None
 
+# ADD THIS BUTTON SECTION right after the enhanced timeframe detection
+# and BEFORE it "rolls into" the simplified section
+
+# Enhanced Process Button (ADD THIS SECTION)
+st.markdown("---")
+if st.button("🚀 **Create Analyzer-Ready File with Fibonacci Levels**", type="primary", use_container_width=True):
+    with st.spinner("Processing enhanced multi-timeframe ATR combination with Fibonacci levels..."):
+        
+        # Use session state data if available, otherwise use uploaded files
+        daily_file_to_use = base_file if base_file else st.session_state.get('atr_combiner_base_data')
+        intraday_file_to_use = analysis_file if analysis_file else st.session_state.get('atr_combiner_analysis_data')
+        
+        # Validate we have both files
+        if daily_file_to_use is None:
+            st.error("❌ **Missing base timeframe data** - please upload base file or use held data")
+        elif intraday_file_to_use is None:
+            st.error("❌ **Missing analysis timeframe data** - please upload analysis file or use held data")
+        else:
+            # Get interval configuration
+            interval_config = st.session_state.get('interval_config', {
+                'candle_interval_minutes': 10,
+                'rolling_period_type': 'hourly',
+                'rolling_period_count': 8,
+                'analysis_timeframe': 'Intraday',
+                'base_interval_minutes': 1440
+            })
+            
+            # Use the enhanced function with interval configuration
+            combined_data = combine_timeframes_with_atr_enhanced(
+                daily_file_to_use, 
+                intraday_file_to_use, 
+                atr_period=atr_period,
+                align_method=align_method,
+                asset_type=asset_type,
+                interval_config=interval_config
+            )
+            
+            if combined_data is not None:
+                st.balloons()
+                st.success("🎉 **Enhanced analyzer-ready file created with full Fibonacci levels!**")
+                
+                # Show enhanced results summary
+                st.subheader("📊 Enhanced Results Summary")
+                
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Total Records", f"{len(combined_data):,}")
+                with col2:
+                    st.metric("Date Range", f"{combined_data['Date'].min()} to {combined_data['Date'].max()}")
+                with col3:
+                    valid_atr = combined_data['ATR'].notna().sum()
+                    st.metric("Valid ATR Values", f"{valid_atr:,}")
+                with col4:
+                    level_columns = [col for col in combined_data.columns if col.startswith('ATR_') or col.startswith('+') or col.startswith('-')]
+                    st.metric("Fibonacci Levels", f"{len(level_columns)}")
+                
+                # Show column breakdown
+                st.subheader("📋 Enhanced Column Structure")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.write("**🔢 Core Data:**")
+                    core_cols = [col for col in combined_data.columns if col in ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'ATR']]
+                    for col in core_cols:
+                        st.info(f"✅ {col}")
+                
+                with col2:
+                    st.write("**📊 Fibonacci Levels (+/-):**")
+                    fib_cols = [col for col in combined_data.columns if col.startswith('+') or col.startswith('-')]
+                    for col in sorted(fib_cols)[:8]:  # Show first 8
+                        st.info(f"✅ {col}")
+                    if len(fib_cols) > 8:
+                        st.info(f"... and {len(fib_cols) - 8} more")
+                
+                with col3:
+                    st.write("**🎯 ATR Format Levels:**")
+                    atr_cols = [col for col in combined_data.columns if col.startswith('ATR_')]
+                    for col in sorted(atr_cols)[:8]:  # Show first 8
+                        st.info(f"✅ {col}")
+                    if len(atr_cols) > 8:
+                        st.info(f"... and {len(atr_cols) - 8} more")
+                
+                # Preview of enhanced data
+                st.subheader("🔍 Enhanced Data Preview")
+                preview_cols = ['Date', 'Open', 'High', 'Low', 'Close', 'ATR', '+1.000', '+0.618', '+0.000', '-0.618', '-1.000']
+                available_preview_cols = [col for col in preview_cols if col in combined_data.columns]
+                st.dataframe(combined_data[available_preview_cols].head(), use_container_width=True)
+                
+                # Generate download filename
+                if base_file:
+                    base_name = base_file.name.split('.')[0]
+                else:
+                    base_name = "HeldBase"
+                
+                if analysis_file:
+                    analysis_name = analysis_file.name.split('.')[0]
+                else:
+                    analysis_name = "HeldAnalysis"
+                
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                enhanced_filename = f"AnalyzerReady_{base_name}_{analysis_name}_{atr_period}ATR_FibLevels_{timestamp}.csv"
+                
+                # Enhanced download button
+                st.markdown("---")
+                st.subheader("📥 Download Analyzer-Ready File")
+                
+                st.download_button(
+                    "📥 **Download Enhanced Analyzer-Ready CSV**",
+                    data=combined_data.to_csv(index=False),
+                    file_name=enhanced_filename,
+                    mime="text/csv",
+                    key="download_enhanced_atr_ready",
+                    use_container_width=True,
+                    type="primary"
+                )
+                
+                st.success(f"✅ **Ready for analyzer**: {enhanced_filename}")
+                
+                # Enhanced workflow guidance
+                st.markdown("---")
+                st.subheader("🎯 Next Steps")
+                st.success("""
+                🚀 **Analyzer-Ready File Created!**
+                
+                **Your enhanced file now contains:**
+                ✅ **Analysis timeframe OHLC** (your bars for analysis)  
+                ✅ **Base timeframe ATR** (properly date-aligned)  
+                ✅ **All 13 Fibonacci levels** in both formats (ATR_1000, +1.000, etc.)  
+                ✅ **SessionID and metadata** for full analyzer compatibility  
+                ✅ **YML scheduler consistency** (identical calculations)  
+                
+                **Perfect for:**
+                - Direct upload to ATR Level Analyzer (no calculation needed)
+                - Systematic trigger/goal analysis
+                - Level-based trading strategies
+                - Backtesting with pre-calculated levels
+                
+                **The analyzer will receive pre-calculated levels - maximum performance!**
+                """)
+                
+                # Add to workspace option
+                st.markdown("---")
+                st.subheader("💾 Workspace Actions")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("💾 **Store Enhanced Result**", use_container_width=True):
+                        st.session_state['last_enhanced_result'] = combined_data.copy()
+                        st.session_state['last_enhanced_filename'] = enhanced_filename
+                        st.success("✅ Enhanced result stored in workspace!")
+                
+                with col2:
+                    if st.button("📊 **View Level Statistics**", use_container_width=True):
+                        # Show level statistics
+                        with st.expander("📊 Fibonacci Level Statistics", expanded=True):
+                            sample_row = combined_data[combined_data['ATR'].notna()].iloc[0]
+                            
+                            st.write("**Sample Level Values (First Valid Row):**")
+                            level_data = []
+                            for col in combined_data.columns:
+                                if col.startswith('+') or col.startswith('-') or col.startswith('ATR_'):
+                                    if col != 'ATR' and col in sample_row and pd.notna(sample_row[col]):
+                                        level_data.append({
+                                            'Level': col,
+                                            'Value': sample_row[col],
+                                            'Distance from Close': sample_row[col] - sample_row['Close']
+                                        })
+                            
+                            level_df = pd.DataFrame(level_data)
+                            if not level_df.empty:
+                                st.dataframe(level_df, use_container_width=True)
+            
+            else:
+                st.error("❌ Failed to create enhanced analyzer-ready file. Check the processing information above.")
+
+# ADD A SEPARATOR before the simplified section
+st.markdown("---")
+st.markdown("---")
+st.header("🔧 Alternative: Simplified ATR Combiner")
+st.info("⚠️ **Note**: The section below creates files with only a single ATR column (no Fibonacci levels)")
+
+# (The simplified section continues after this...)
 
 def combine_timeframes_with_atr(daily_file, intraday_file, atr_period=14, align_method='date_match', asset_type='STOCKS'):
     """
