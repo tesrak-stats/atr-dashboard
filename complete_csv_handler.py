@@ -3088,124 +3088,141 @@ elif mode == "🎯 Multi-Timeframe ATR Combiner":
 
     # REPLACE the timeframe detection section with this fixed version:
 
-# RESTORED: Smart Timeframe Detection and Rolling Analysis Configuration
-st.markdown("---")
-st.subheader("🕐 Smart Timeframe Detection & Rolling Configuration")
+    # RESTORED: Smart Timeframe Detection and Rolling Analysis Configuration
+    st.markdown("---")
+    st.subheader("🕐 Smart Timeframe Detection & Rolling Configuration")
 
-# NEW: Interval Detection & Configuration
-try:
-    # FIXED: Use robust CSV reader instead of plain pandas
-    if analysis_file:
-        st.info("🔄 **Reading analysis file for timeframe detection...**")
-        if analysis_file.name.endswith('.csv'):
-            analysis_preview = CSVProcessor.robust_csv_reader(analysis_file, analysis_file.name)
-        else:
-            analysis_preview = pd.read_excel(analysis_file)
-    elif 'atr_combiner_analysis_data' in st.session_state:
-        analysis_preview = st.session_state['atr_combiner_analysis_data'].copy()
-        st.info("🔄 **Using session data for timeframe detection...**")
-    else:
-        st.warning("⚠️ No analysis data available for timeframe detection")
-        # Set fallback configuration
-        st.session_state['interval_config'] = {
-            'candle_interval_minutes': 10,
-            'rolling_period_type': 'hourly',
-            'rolling_period_count': 8,
-            'analysis_timeframe': 'Intraday',
-            'base_interval_minutes': 1440
-        }
-        analysis_preview = None
-    
-    if analysis_preview is not None and len(analysis_preview) > 1:
-        st.info("🔄 **Standardizing columns for timeframe detection...**")
-        
-        # FIXED: Better error handling for standardization
-        try:
-            analysis_preview = CSVProcessor.standardize_columns(analysis_preview)
-            st.success("✅ **Column standardization successful**")
-        except Exception as e:
-            st.warning(f"⚠️ **Column standardization issue**: {str(e)}")
-            st.info("Proceeding with original column names...")
-        
-        # FIXED: Better error handling for datetime creation
-        try:
-            analysis_preview = CSVProcessor.create_datetime_column(analysis_preview)
-            st.success("✅ **Datetime column creation successful**")
-        except Exception as e:
-            st.warning(f"⚠️ **Datetime creation issue**: {str(e)}")
-            st.info("Proceeding without datetime column...")
-            # Try to use Date column if available
-            if 'Date' in analysis_preview.columns:
-                analysis_preview['Datetime'] = pd.to_datetime(analysis_preview['Date'])
-            elif 'Datetime' in analysis_preview.columns:
-                analysis_preview['Datetime'] = pd.to_datetime(analysis_preview['Datetime'])
+    # NEW: Interval Detection & Configuration
+    try:
+        # FIXED: Use robust CSV reader instead of plain pandas
+        if analysis_file:
+            st.info("🔄 **Reading analysis file for timeframe detection...**")
+            if analysis_file.name.endswith('.csv'):
+                analysis_preview = CSVProcessor.robust_csv_reader(analysis_file, analysis_file.name)
             else:
-                st.warning("⚠️ **No date/datetime column found** - using first column")
-                first_col = analysis_preview.columns[0]
-                try:
-                    analysis_preview['Datetime'] = pd.to_datetime(analysis_preview[first_col])
-                except:
-                    st.error("❌ **Cannot create datetime column** - skipping timeframe detection")
-                    raise ValueError("Cannot process datetime information")
-        
-        # 1. AUTO-DETECT ANALYSIS CANDLE INTERVAL
-        st.write("**1. Analysis Candle Interval Detection**")
-        
-        # Show what we're working with
-        st.info(f"📊 **Analysis data**: {len(analysis_preview)} rows, columns: {list(analysis_preview.columns)}")
-        
-        if 'Datetime' in analysis_preview.columns and len(analysis_preview) > 1:
-            try:
-                # Sort by datetime and calculate intervals
-                analysis_preview_sorted = analysis_preview.sort_values('Datetime')
-                time_diffs = analysis_preview_sorted['Datetime'].diff().dropna()
-                
-                if not time_diffs.empty:
-                    most_common_diff = time_diffs.mode().iloc[0] if not time_diffs.mode().empty else time_diffs.median()
-                    interval_minutes = int(most_common_diff.total_seconds() / 60)
-                    
-                    # Format display
-                    if interval_minutes < 60:
-                        interval_display = f"{interval_minutes}-minute"
-                    elif interval_minutes == 60:
-                        interval_display = "1-hour"
-                    elif interval_minutes < 1440:
-                        hours = interval_minutes / 60
-                        interval_display = f"{hours:.1f}-hour" if hours != int(hours) else f"{int(hours)}-hour"
-                    elif interval_minutes == 1440:
-                        interval_display = "daily"
-                    else:
-                        days = interval_minutes / 1440
-                        interval_display = f"{days:.1f}-day" if days != int(days) else f"{int(days)}-day"
-                    
-                    st.success(f"🔍 **Analysis interval detected**: {interval_display} ({interval_minutes} minutes)")
-                else:
-                    interval_minutes = 10  # Default
-                    st.warning("⚠️ **Cannot detect interval** - defaulting to 10 minutes")
-                    
-            except Exception as e:
-                interval_minutes = 10  # Default
-                st.warning(f"⚠️ **Interval detection failed**: {str(e)} - defaulting to 10 minutes")
+                analysis_preview = pd.read_excel(analysis_file)
+        elif 'atr_combiner_analysis_data' in st.session_state:
+            analysis_preview = st.session_state['atr_combiner_analysis_data'].copy()
+            st.info("🔄 **Using session data for timeframe detection...**")
         else:
-            interval_minutes = 10  # Default
-            st.warning("⚠️ **Insufficient datetime data** - defaulting to 10 minutes")
+            st.warning("⚠️ No analysis data available for timeframe detection")
+            # Set fallback configuration
+            st.session_state['interval_config'] = {
+                'candle_interval_minutes': 10,
+                'rolling_period_type': 'hourly',
+                'rolling_period_count': 8,
+                'analysis_timeframe': 'Intraday',
+                'base_interval_minutes': 1440
+            }
+            analysis_preview = None
         
-        # Continue with the rest of your timeframe detection logic...
-        # (Rolling period configuration, etc.)
+        if analysis_preview is not None and len(analysis_preview) > 1:
+            st.info("🔄 **Standardizing columns for timeframe detection...**")
+            
+            # FIXED: Better error handling for standardization
+            try:
+                analysis_preview = CSVProcessor.standardize_columns(analysis_preview)
+                st.success("✅ **Column standardization successful**")
+            except Exception as e:
+                st.warning(f"⚠️ **Column standardization issue**: {str(e)}")
+                st.info("Proceeding with original column names...")
+            
+            # FIXED: Better error handling for datetime creation
+            try:
+                analysis_preview = CSVProcessor.create_datetime_column(analysis_preview)
+                st.success("✅ **Datetime column creation successful**")
+            except Exception as e:
+                st.warning(f"⚠️ **Datetime creation issue**: {str(e)}")
+                st.info("Proceeding without datetime column...")
+                # Try to use Date column if available
+                if 'Date' in analysis_preview.columns:
+                    analysis_preview['Datetime'] = pd.to_datetime(analysis_preview['Date'])
+                elif 'Datetime' in analysis_preview.columns:
+                    analysis_preview['Datetime'] = pd.to_datetime(analysis_preview['Datetime'])
+                else:
+                    st.warning("⚠️ **No date/datetime column found** - using first column")
+                    first_col = analysis_preview.columns[0]
+                    try:
+                        analysis_preview['Datetime'] = pd.to_datetime(analysis_preview[first_col])
+                    except:
+                        st.error("❌ **Cannot create datetime column** - skipping timeframe detection")
+                        raise ValueError("Cannot process datetime information")
+            
+            # 1. AUTO-DETECT ANALYSIS CANDLE INTERVAL
+            st.write("**1. Analysis Candle Interval Detection**")
+            
+            # Show what we're working with
+            st.info(f"📊 **Analysis data**: {len(analysis_preview)} rows, columns: {list(analysis_preview.columns)}")
+            
+            if 'Datetime' in analysis_preview.columns and len(analysis_preview) > 1:
+                try:
+                    # Sort by datetime and calculate intervals
+                    analysis_preview_sorted = analysis_preview.sort_values('Datetime')
+                    time_diffs = analysis_preview_sorted['Datetime'].diff().dropna()
+                    
+                    if not time_diffs.empty:
+                        most_common_diff = time_diffs.mode().iloc[0] if not time_diffs.mode().empty else time_diffs.median()
+                        interval_minutes = int(most_common_diff.total_seconds() / 60)
+                        
+                        # Format display
+                        if interval_minutes < 60:
+                            interval_display = f"{interval_minutes}-minute"
+                        elif interval_minutes == 60:
+                            interval_display = "1-hour"
+                        elif interval_minutes < 1440:
+                            hours = interval_minutes / 60
+                            interval_display = f"{hours:.1f}-hour" if hours != int(hours) else f"{int(hours)}-hour"
+                        elif interval_minutes == 1440:
+                            interval_display = "daily"
+                        else:
+                            days = interval_minutes / 1440
+                            interval_display = f"{days:.1f}-day" if days != int(days) else f"{int(days)}-day"
+                        
+                        st.success(f"🔍 **Analysis interval detected**: {interval_display} ({interval_minutes} minutes)")
+                    else:
+                        interval_minutes = 10  # Default
+                        st.warning("⚠️ **Cannot detect interval** - defaulting to 10 minutes")
+                        
+                except Exception as e:
+                    interval_minutes = 10  # Default
+                    st.warning(f"⚠️ **Interval detection failed**: {str(e)} - defaulting to 10 minutes")
+            else:
+                interval_minutes = 10  # Default
+                st.warning("⚠️ **Insufficient datetime data** - defaulting to 10 minutes")
+            
+            # Continue with the rest of your timeframe detection logic...
+            # (Rolling period configuration, etc.)
+            
+            # Store configuration
+            st.session_state['interval_config'] = {
+                'candle_interval_minutes': interval_minutes,
+                'rolling_period_type': 'hourly',  # You can make this dynamic
+                'rolling_period_count': 8,        # You can make this dynamic
+                'analysis_timeframe': 'Intraday', # You can make this dynamic
+                'base_interval_minutes': 1440     # You can make this dynamic
+            }
+            
+            st.success("✅ **Timeframe detection completed successfully**")
+            
+        else:
+            st.warning("⚠️ Insufficient analysis data for timeframe detection")
+            # Fallback configuration
+            st.session_state['interval_config'] = {
+                'candle_interval_minutes': 10,
+                'rolling_period_type': 'hourly',
+                'rolling_period_count': 8,
+                'analysis_timeframe': 'Intraday',
+                'base_interval_minutes': 1440
+            }
+            
+    except Exception as e:
+        st.error(f"❌ Error analyzing timeframe: {str(e)}")
         
-        # Store configuration
-        st.session_state['interval_config'] = {
-            'candle_interval_minutes': interval_minutes,
-            'rolling_period_type': 'hourly',  # You can make this dynamic
-            'rolling_period_count': 8,        # You can make this dynamic
-            'analysis_timeframe': 'Intraday', # You can make this dynamic
-            'base_interval_minutes': 1440     # You can make this dynamic
-        }
+        # Show more detailed error info for debugging
+        import traceback
+        st.error("🔍 **Detailed error trace**:")
+        st.code(traceback.format_exc())
         
-        st.success("✅ **Timeframe detection completed successfully**")
-        
-    else:
-        st.warning("⚠️ Insufficient analysis data for timeframe detection")
         # Fallback configuration
         st.session_state['interval_config'] = {
             'candle_interval_minutes': 10,
@@ -3214,23 +3231,6 @@ try:
             'analysis_timeframe': 'Intraday',
             'base_interval_minutes': 1440
         }
-        
-except Exception as e:
-    st.error(f"❌ Error analyzing timeframe: {str(e)}")
-    
-    # Show more detailed error info for debugging
-    import traceback
-    st.error("🔍 **Detailed error trace**:")
-    st.code(traceback.format_exc())
-    
-    # Fallback configuration
-    st.session_state['interval_config'] = {
-        'candle_interval_minutes': 10,
-        'rolling_period_type': 'hourly',
-        'rolling_period_count': 8,
-        'analysis_timeframe': 'Intraday',
-        'base_interval_minutes': 1440
-    }
         
         # Enhanced process button
         st.markdown("---")
