@@ -179,7 +179,10 @@ def combine_timeframes_with_atr_enhanced(daily_file, intraday_file, atr_period=1
                 atr_lookup[current_date] = current_atr
             else:
                 atr_lookup[current_date] = valid_atr.iloc[i-1]['ATR']
-            reference_close_lookup[current_date] = current_close if i == 0 else valid_atr.iloc[i-1]['Close']
+            if i == 0:
+                reference_close_lookup[current_date] = current_close
+            else:
+                reference_close_lookup[current_date] = valid_atr.iloc[i-1]['Close']
         
         st.info(f"📊 Created lookups for {len(atr_lookup)} dates")
         
