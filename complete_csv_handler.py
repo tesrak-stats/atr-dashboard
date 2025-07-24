@@ -968,186 +968,185 @@ class CSVProcessor:
         return None
     
     @staticmethod
-   @staticmethod
-def robust_csv_reader(file_input, filename="file"):
-    """
-    FIXED: Robust CSV reader that handles various delimiter and encoding issues
-    Now tries WITH headers first (which is what most CSV files have)
-    """
-    # Store original position
-    original_position = file_input.tell() if hasattr(file_input, 'tell') else 0
-    
-    # Common delimiters to try
-    delimiters = [',', ';', '\t', '|']
-    
-    # Common encodings to try
-    encodings = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
-    
-    # FIXED: Try WITH headers first (header=0), then header=None if that fails
-    header_modes = [0, None]  # Try with headers first, then without
-    
-    # Try different combinations
-    for encoding in encodings:
-        for delimiter in delimiters:
-            for header_mode in header_modes:
-                try:
-                    file_input.seek(0)
-                    
-                    # Try reading with current settings
-                    df = pd.read_csv(file_input, delimiter=delimiter, encoding=encoding, header=header_mode)
-                    
-                    # Check if we got meaningful data
-                    if df.empty:
+    def robust_csv_reader(file_input, filename="file"):
+        """
+        FIXED: Robust CSV reader that handles various delimiter and encoding issues
+        Now tries WITH headers first (which is what most CSV files have)
+        """
+        # Store original position
+        original_position = file_input.tell() if hasattr(file_input, 'tell') else 0
+        
+        # Common delimiters to try
+        delimiters = [',', ';', '\t', '|']
+        
+        # Common encodings to try
+        encodings = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1']
+        
+        # FIXED: Try WITH headers first (header=0), then header=None if that fails
+        header_modes = [0, None]  # Try with headers first, then without
+        
+        # Try different combinations
+        for encoding in encodings:
+            for delimiter in delimiters:
+                for header_mode in header_modes:
+                    try:
+                        file_input.seek(0)
+                        
+                        # Try reading with current settings
+                        df = pd.read_csv(file_input, delimiter=delimiter, encoding=encoding, header=header_mode)
+                        
+                        # Check if we got meaningful data
+                        if df.empty:
+                            continue
+                        
+                        # For header=0 (with headers), check if we got multiple columns
+                        if header_mode == 0:
+                            if df.shape[1] > 1:
+                                st.info(f"✅ **File read successfully**: {filename}")
+                                st.info(f"📊 **Format detected**: {df.shape[1]} columns, {df.shape[0]} rows")
+                                st.info(f"🔧 **Settings**: delimiter='{delimiter}', encoding='{encoding}', headers=True")
+                                st.info(f"📋 **Columns**: {list(df.columns)}")
+                                
+                                # Show sample of first row
+                                if len(df) > 0:
+                                    sample_values = df.iloc[0].head(5).to_dict()
+                                    st.info(f"🔍 **First row sample**: {sample_values}")
+                                
+                                return df
+                        
+                        # For header=None (no headers), need more validation
+                        elif header_mode is None:
+                            if df.shape[1] > 1:
+                                st.info(f"✅ **File read (no headers)**: {filename}")
+                                st.info(f"📊 **Format detected**: {df.shape[1]} columns, {df.shape[0]} rows")
+                                st.info(f"🔧 **Settings**: delimiter='{delimiter}', encoding='{encoding}', headers=False")
+                                
+                                # Check if first row might actually be headers
+                                first_row = df.iloc[0].astype(str)
+                                header_indicators = ['date', 'time', 'open', 'high', 'low', 'close', 'volume', 'datetime', 'timestamp']
+                                
+                                looks_like_header = any(
+                                    any(indicator in str(cell).lower() for indicator in header_indicators)
+                                    for cell in first_row
+                                )
+                                
+                                if looks_like_header:
+                                    st.info("🔍 **Headers detected in data** - converting first row to column names")
+                                    # Convert first row to headers
+                                    df.columns = df.iloc[0]
+                                    df = df.iloc[1:].reset_index(drop=True)
+                                    st.info(f"📋 **New columns**: {list(df.columns)}")
+                                else:
+                                    st.info("🔍 **No headers detected** - using numeric column names")
+                                    
+                                return df
+                        
+                    except Exception as e:
+                        # Continue to next combination
                         continue
                     
-                    # For header=0 (with headers), check if we got multiple columns
-                    if header_mode == 0:
-                        if df.shape[1] > 1:
-                            st.info(f"✅ **File read successfully**: {filename}")
-                            st.info(f"📊 **Format detected**: {df.shape[1]} columns, {df.shape[0]} rows")
-                            st.info(f"🔧 **Settings**: delimiter='{delimiter}', encoding='{encoding}', headers=True")
-                            st.info(f"📋 **Columns**: {list(df.columns)}")
-                            
-                            # Show sample of first row
-                            if len(df) > 0:
-                                sample_values = df.iloc[0].head(5).to_dict()
-                                st.info(f"🔍 **First row sample**: {sample_values}")
-                            
-                            return df
-                    
-                    # For header=None (no headers), need more validation
-                    elif header_mode is None:
-                        if df.shape[1] > 1:
-                            st.info(f"✅ **File read (no headers)**: {filename}")
-                            st.info(f"📊 **Format detected**: {df.shape[1]} columns, {df.shape[0]} rows")
-                            st.info(f"🔧 **Settings**: delimiter='{delimiter}', encoding='{encoding}', headers=False")
-                            
-                            # Check if first row might actually be headers
-                            first_row = df.iloc[0].astype(str)
-                            header_indicators = ['date', 'time', 'open', 'high', 'low', 'close', 'volume', 'datetime', 'timestamp']
-                            
-                            looks_like_header = any(
-                                any(indicator in str(cell).lower() for indicator in header_indicators)
-                                for cell in first_row
-                            )
-                            
-                            if looks_like_header:
-                                st.info("🔍 **Headers detected in data** - converting first row to column names")
-                                # Convert first row to headers
-                                df.columns = df.iloc[0]
-                                df = df.iloc[1:].reset_index(drop=True)
-                                st.info(f"📋 **New columns**: {list(df.columns)}")
-                            else:
-                                st.info("🔍 **No headers detected** - using numeric column names")
-                                
-                            return df
-                    
-                except Exception as e:
-                    # Continue to next combination
+                    finally:
+                        # Always reset file pointer
+                        if hasattr(file_input, 'seek'):
+                            file_input.seek(0)
+        
+        # If standard approaches fail, try pandas built-in detection
+        st.warning("🔄 **Standard methods failed** - trying pandas auto-detection...")
+        
+        try:
+            file_input.seek(0)
+            df = pd.read_csv(file_input, delimiter=None, engine='python')
+            
+            if not df.empty and df.shape[1] > 1:
+                st.warning(f"⚠️ **Auto-detection successful**: {filename}")
+                st.info(f"📊 **Result**: {df.shape[1]} columns, {df.shape[0]} rows")
+                st.info(f"📋 **Columns**: {list(df.columns)}")
+                return df
+                
+        except Exception as e:
+            st.warning(f"⚠️ **Auto-detection failed**: {str(e)}")
+        
+        # Final fallback - manual content inspection and splitting
+        st.warning("🔄 **Final fallback** - manual content parsing...")
+        
+        try:
+            file_input.seek(0)
+            
+            # Read raw content
+            raw_content = file_input.read()
+            
+            # Try different encodings for decoding
+            decoded_content = None
+            for encoding in encodings:
+                try:
+                    decoded_content = raw_content.decode(encoding)
+                    break
+                except:
                     continue
-                
-                finally:
-                    # Always reset file pointer
-                    if hasattr(file_input, 'seek'):
-                        file_input.seek(0)
-    
-    # If standard approaches fail, try pandas built-in detection
-    st.warning("🔄 **Standard methods failed** - trying pandas auto-detection...")
-    
-    try:
-        file_input.seek(0)
-        df = pd.read_csv(file_input, delimiter=None, engine='python')
-        
-        if not df.empty and df.shape[1] > 1:
-            st.warning(f"⚠️ **Auto-detection successful**: {filename}")
-            st.info(f"📊 **Result**: {df.shape[1]} columns, {df.shape[0]} rows")
-            st.info(f"📋 **Columns**: {list(df.columns)}")
-            return df
             
-    except Exception as e:
-        st.warning(f"⚠️ **Auto-detection failed**: {str(e)}")
-    
-    # Final fallback - manual content inspection and splitting
-    st.warning("🔄 **Final fallback** - manual content parsing...")
-    
-    try:
-        file_input.seek(0)
-        
-        # Read raw content
-        raw_content = file_input.read()
-        
-        # Try different encodings for decoding
-        decoded_content = None
-        for encoding in encodings:
-            try:
-                decoded_content = raw_content.decode(encoding)
-                break
-            except:
-                continue
-        
-        if decoded_content is None:
-            raise ValueError("Cannot decode file with any encoding")
-        
-        # Split into lines
-        lines = decoded_content.strip().split('\n')
-        if not lines:
-            raise ValueError("No lines found in file")
-        
-        st.info(f"📄 **Manual parsing**: Found {len(lines)} lines")
-        
-        # Try different separators on first line
-        for separator in delimiters:
-            first_line_split = lines[0].split(separator)
+            if decoded_content is None:
+                raise ValueError("Cannot decode file with any encoding")
             
-            if len(first_line_split) >= 4:  # Need at least 4 columns for OHLC
-                st.info(f"🔍 **Found working separator**: '{separator}' ({len(first_line_split)} columns)")
+            # Split into lines
+            lines = decoded_content.strip().split('\n')
+            if not lines:
+                raise ValueError("No lines found in file")
+            
+            st.info(f"📄 **Manual parsing**: Found {len(lines)} lines")
+            
+            # Try different separators on first line
+            for separator in delimiters:
+                first_line_split = lines[0].split(separator)
                 
-                # Parse all lines with this separator
-                parsed_data = []
-                for line in lines:
-                    row = line.split(separator)
-                    parsed_data.append(row)
-                
-                # Create DataFrame
-                if len(parsed_data) > 1:
-                    # Check if first row looks like headers
-                    first_row = parsed_data[0]
-                    header_indicators = ['date', 'time', 'open', 'high', 'low', 'close', 'volume', 'datetime', 'timestamp']
+                if len(first_line_split) >= 4:  # Need at least 4 columns for OHLC
+                    st.info(f"🔍 **Found working separator**: '{separator}' ({len(first_line_split)} columns)")
                     
-                    looks_like_header = any(
-                        any(indicator in str(cell).lower() for indicator in header_indicators)
-                        for cell in first_row
-                    )
+                    # Parse all lines with this separator
+                    parsed_data = []
+                    for line in lines:
+                        row = line.split(separator)
+                        parsed_data.append(row)
                     
-                    if looks_like_header:
-                        # Use first row as column names
-                        df = pd.DataFrame(parsed_data[1:], columns=parsed_data[0])
-                        st.success(f"✅ **Manual parse successful** (with headers): {df.shape}")
-                    else:
-                        # No headers, use all data
-                        df = pd.DataFrame(parsed_data)
-                        st.success(f"✅ **Manual parse successful** (no headers): {df.shape}")
-                    
-                    st.info(f"📋 **Final columns**: {list(df.columns)}")
-                    return df
+                    # Create DataFrame
+                    if len(parsed_data) > 1:
+                        # Check if first row looks like headers
+                        first_row = parsed_data[0]
+                        header_indicators = ['date', 'time', 'open', 'high', 'low', 'close', 'volume', 'datetime', 'timestamp']
+                        
+                        looks_like_header = any(
+                            any(indicator in str(cell).lower() for indicator in header_indicators)
+                            for cell in first_row
+                        )
+                        
+                        if looks_like_header:
+                            # Use first row as column names
+                            df = pd.DataFrame(parsed_data[1:], columns=parsed_data[0])
+                            st.success(f"✅ **Manual parse successful** (with headers): {df.shape}")
+                        else:
+                            # No headers, use all data
+                            df = pd.DataFrame(parsed_data)
+                            st.success(f"✅ **Manual parse successful** (no headers): {df.shape}")
+                        
+                        st.info(f"📋 **Final columns**: {list(df.columns)}")
+                        return df
+            
+            raise ValueError("No suitable separator found in manual parsing")
+            
+        except Exception as e:
+            st.error(f"❌ **Manual parsing failed**: {str(e)}")
         
-        raise ValueError("No suitable separator found in manual parsing")
+        finally:
+            file_input.seek(original_position)
         
-    except Exception as e:
-        st.error(f"❌ **Manual parsing failed**: {str(e)}")
-    
-    finally:
-        file_input.seek(original_position)
-    
-    # If we get here, nothing worked
-    st.error("🚨 **ALL PARSING METHODS FAILED**")
-    st.error("💡 **Suggestions**:")
-    st.error("   1. Verify the file is a valid CSV format")
-    st.error("   2. Check if file contains actual data (not empty)")
-    st.error("   3. Try opening file in text editor to inspect format")
-    st.error("   4. Ensure file is not corrupted or binary")
-    
-    raise ValueError(f"Could not read {filename} with any method - file may be corrupted or in unsupported format")
+        # If we get here, nothing worked
+        st.error("🚨 **ALL PARSING METHODS FAILED**")
+        st.error("💡 **Suggestions**:")
+        st.error("   1. Verify the file is a valid CSV format")
+        st.error("   2. Check if file contains actual data (not empty)")
+        st.error("   3. Try opening file in text editor to inspect format")
+        st.error("   4. Ensure file is not corrupted or binary")
+        
+        raise ValueError(f"Could not read {filename} with any method - file may be corrupted or in unsupported format")
 
     @staticmethod
     def smart_column_detection(df):
