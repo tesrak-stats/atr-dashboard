@@ -817,7 +817,7 @@ jobs:
                 if valid_atr_rows.empty:
                     return {'status': 'error', 'error': 'No valid ATR values found'}
                 
-                latest = valid_atr_rows.iloc[-1]
+                latest = updated_data.iloc[-1]
                 current_close = latest["Close"]
                 current_atr = latest["ATR"]
                 reference_date = latest["Date"] if hasattr(latest["Date"], 'strftime') else pd.to_datetime(latest["Date"])
