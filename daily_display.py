@@ -613,9 +613,9 @@ show_expanded_view = st.checkbox("🖥️ Show Full Matrix (All Times & Levels)"
 if analysis_type == "StateCheck":
     try:
         statecheck_files = discover_files_with_gz_support(f"statecheck_detailed_{selected_ticker}_*.csv")
-            if statecheck_files:
-                statecheck_file = statecheck_files[0]  # Get newest file
-                df_statecheck = read_csv_with_gz_support(statecheck_file)
+        if statecheck_files:
+            statecheck_file = statecheck_files[0]  # Get newest file
+            df_statecheck = read_csv_with_gz_support(statecheck_file)
         else:
             st.error(f"❌ No StateCheck data files found for {selected_ticker}")
             st.stop()
