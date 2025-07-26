@@ -857,9 +857,9 @@ elif analysis_type == "Rolling":
     # Load rolling data first - find most recent file
     try:
         rolling_files = discover_files_with_gz_support(f"atr_summary_{selected_ticker}_ROLLING_*.csv")
-            if rolling_files:
-                rolling_file = rolling_files[0]  # Get newest file
-                df_rolling = read_csv_with_gz_support(rolling_file)
+        if rolling_files:
+            rolling_file = rolling_files[0]  # Get newest file
+            df_rolling = read_csv_with_gz_support(rolling_file)
         else:
             st.error(f"❌ No rolling data files found for {selected_ticker}")
             st.stop()
@@ -1049,9 +1049,9 @@ else:  # Session
     # Load session data using glob pattern
     try:
         session_files = discover_files_with_gz_support(f"atr_summary_{selected_ticker}_SESSION_*.csv")
-            if session_files:
-                session_file = session_files[0]  # Get newest file
-                df = read_csv_with_gz_support(session_file)
+        if session_files:
+            session_file = session_files[0]  # Get newest file
+            df = read_csv_with_gz_support(session_file)
         else:
             st.error(f"❌ No session data files found for {selected_ticker}")
             st.stop()
