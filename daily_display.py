@@ -99,7 +99,7 @@ def discover_available_analyses(selected_ticker):
     }
     
     # Find all files for this ticker
-     ticker_files = []
+    ticker_files = []
     ticker_files.extend(discover_files_with_gz_support(f"atr_summary_{selected_ticker}_*.csv"))
     ticker_files.extend(discover_files_with_gz_support(f"statecheck_detailed_{selected_ticker}_*.csv"))
     ticker_files.extend(discover_files_with_gz_support(f"zonebaseline_detailed_{selected_ticker}_*.csv"))
