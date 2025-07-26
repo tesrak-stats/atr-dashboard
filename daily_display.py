@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 import json
 import os
 import glob
+import gzip
 from datetime import datetime, time
 try:
     from zoneinfo import ZoneInfo  # Python 3.9+
@@ -23,37 +24,73 @@ st.set_page_config(layout="wide")
 
 # Add this section right after the imports and before ticker configuration
 
+# Enhanced file discovery function
+def discover_files_with_gz_support(pattern):
+    """
+    Discover files matching pattern, supporting both .csv and .csv.gz files
+    Returns list of files sorted by modification time (newest first)
+    """
+    csv_files = glob.glob(pattern)
+    gz_files = glob.glob(pattern + ".gz")
+    
+    all_files = csv_files + gz_files
+    
+    # Sort by modification time (newest first)
+    if all_files:
+        all_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+    
+    return all_files
+
+def read_csv_with_gz_support(filepath):
+    """
+    Read CSV file, automatically handling .gz compression
+    """
+    if filepath.endswith('.gz'):
+        with gzip.open(filepath, 'rt') as f:
+            return pd.read_csv(f)
+    else:
+        return pd.read_csv(filepath)
+
 # --- DATA DISCOVERY SYSTEM ---
 def discover_available_tickers():
-    """Discover all tickers that have data files"""
-    # Look for all relevant CSV files
-    session_files = glob.glob("atr_summary_*_SESSION_*.csv")
-    rolling_files = glob.glob("atr_summary_*_ROLLING_*.csv") 
-    statecheck_files = glob.glob("statecheck_detailed_*.csv")
-    zonebaseline_detailed_files = glob.glob("zonebaseline_detailed_*.csv")
-    zonebaseline_hourly_files = glob.glob("zonebaseline_hourly_*.csv")
+    """Discover all tickers that have data files - ENHANCED with .gz support"""
+    # Look for all relevant CSV files (both .csv and .csv.gz)
+    session_files = discover_files_with_gz_support("atr_summary_*_SESSION_*.csv")
+    rolling_files = discover_files_with_gz_support("atr_summary_*_ROLLING_*.csv") 
+    statecheck_files = discover_files_with_gz_support("statecheck_detailed_*.csv")
+    zonebaseline_detailed_files = discover_files_with_gz_support("zonebaseline_detailed_*.csv")
+    zonebaseline_hourly_files = discover_files_with_gz_support("zonebaseline_hourly_*.csv")
     
     all_files = session_files + rolling_files + statecheck_files + zonebaseline_hourly_files + zonebaseline_detailed_files
     
     # Extract ticker symbols from filenames
     tickers = set()
     for file in all_files:
+        # Remove .gz extension for parsing if present
+        clean_file = file.replace('.csv.gz', '.csv')
+        
         # Extract ticker from patterns like "atr_summary_SPX_SESSION_*.csv"
-        if "atr_summary_" in file:
-            parts = file.split("_")
+        if "atr_summary_" in clean_file:
+            parts = clean_file.split("_")
             if len(parts) >= 3:
                 ticker = parts[2]  # SPX, ES, AAPL, etc.
                 tickers.add(ticker)
-        elif "statecheck_detailed_" in file:
-            parts = file.split("_")
+        elif "statecheck_detailed_" in clean_file:
+            parts = clean_file.split("_")
             if len(parts) >= 3:
                 ticker = parts[2]  # SPX, ES, AAPL, etc.
+                tickers.add(ticker)
+        elif "zonebaseline_" in clean_file:
+            parts = clean_file.split("_")
+            # Handle both "zonebaseline_detailed_TICKER" and "zonebaseline_hourly_TICKER"
+            if len(parts) >= 3:
+                ticker = parts[2]  # Extract ticker from third position
                 tickers.add(ticker)
     
     return sorted(list(tickers))
 
 def discover_available_analyses(selected_ticker):
-    """Discover which analysis types are available for the selected ticker"""
+    """Discover which analysis types are available for the selected ticker - ENHANCED with .gz support"""
     KNOWN_ANALYSIS_PATTERNS = {
         "SESSION": "Session",
         "ROLLING": "Rolling", 
@@ -62,14 +99,16 @@ def discover_available_analyses(selected_ticker):
     }
     
     # Find all files for this ticker
-    ticker_files = []
-    ticker_files.extend(glob.glob(f"atr_summary_{selected_ticker}_*.csv"))
-    ticker_files.extend(glob.glob(f"statecheck_detailed_{selected_ticker}_*.csv"))
-    ticker_files.extend(glob.glob(f"zonebaseline_*_{selected_ticker}_*.csv"))  # FIX: Add zonebaseline pattern
+     ticker_files = []
+    ticker_files.extend(discover_files_with_gz_support(f"atr_summary_{selected_ticker}_*.csv"))
+    ticker_files.extend(discover_files_with_gz_support(f"statecheck_detailed_{selected_ticker}_*.csv"))
+    ticker_files.extend(discover_files_with_gz_support(f"zonebaseline_detailed_{selected_ticker}_*.csv"))
+    ticker_files.extend(discover_files_with_gz_support(f"zonebaseline_hourly_{selected_ticker}_*.csv"))
     
     available_analyses = []
     for pattern, display_name in KNOWN_ANALYSIS_PATTERNS.items():
-        if any(pattern.upper() in f.upper() for f in ticker_files):
+        # Check against cleaned filenames (without .gz)
+        if any(pattern.upper() in f.replace('.csv.gz', '.csv').upper() for f in ticker_files):
             available_analyses.append(display_name)
     
     return available_analyses
@@ -573,10 +612,10 @@ show_expanded_view = st.checkbox("🖥️ Show Full Matrix (All Times & Levels)"
 # --- Analysis-Specific Processing ---
 if analysis_type == "StateCheck":
     try:
-        statecheck_files = glob.glob(f"statecheck_detailed_{selected_ticker}_*.csv")
-        if statecheck_files:
-            statecheck_file = max(statecheck_files)  # Most recent by filename
-            statecheck_df = pd.read_csv(statecheck_file)
+        statecheck_files = discover_files_with_gz_support(f"statecheck_detailed_{selected_ticker}_*.csv")
+            if statecheck_files:
+                statecheck_file = statecheck_files[0]  # Get newest file
+                df_statecheck = read_csv_with_gz_support(statecheck_file)
         else:
             st.error(f"❌ No StateCheck data files found for {selected_ticker}")
             st.stop()
@@ -716,9 +755,10 @@ if analysis_type == "StateCheck":
 elif analysis_type == "ZoneBaseline":
     # Find and load the appropriate file
     if show_expanded_view:
-        detailed_files = glob.glob(f"zonebaseline_detailed_{selected_ticker}_*.csv")
+        detailed_files = discover_files_with_gz_support(f"zonebaseline_detailed_{selected_ticker}_*.csv")
         if detailed_files:
-            zonebaseline_file = max(detailed_files)
+            zonebaseline_file = detailed_files[0]  # Get newest file
+            zonebaseline_df = read_csv_with_gz_support(zonebaseline_file)
         else:
             st.error(f"No detailed ZoneBaseline files found for {selected_ticker}")
             st.stop()
@@ -727,9 +767,10 @@ elif analysis_type == "ZoneBaseline":
             # Removed "Zone": "GoalLevel" to preserve Zone column
         }
     else:
-        hourly_files = glob.glob(f"zonebaseline_hourly_{selected_ticker}_*.csv")
+        hourly_files = discover_files_with_gz_support(f"zonebaseline_hourly_{selected_ticker}_*.csv")
         if hourly_files:
-            zonebaseline_file = max(hourly_files)
+            zonebaseline_file = hourly_files[0]  # Get newest file
+            zonebaseline_df = read_csv_with_gz_support(zonebaseline_file)
         else:
             st.error(f"No hourly ZoneBaseline files found for {selected_ticker}")
             st.stop()
@@ -815,10 +856,10 @@ elif analysis_type == "Rolling":
     
     # Load rolling data first - find most recent file
     try:
-        rolling_files = glob.glob(f"atr_summary_{selected_ticker}_ROLLING_*.csv")
-        if rolling_files:
-            rolling_file = max(rolling_files)  # Most recent by filename
-            df_rolling = pd.read_csv(rolling_file)
+        rolling_files = discover_files_with_gz_support(f"atr_summary_{selected_ticker}_ROLLING_*.csv")
+            if rolling_files:
+                rolling_file = rolling_files[0]  # Get newest file
+                df_rolling = read_csv_with_gz_support(rolling_file)
         else:
             st.error(f"❌ No rolling data files found for {selected_ticker}")
             st.stop()
@@ -1007,10 +1048,10 @@ elif analysis_type == "Rolling":
 else:  # Session
     # Load session data using glob pattern
     try:
-        session_files = glob.glob(f"atr_summary_{selected_ticker}_SESSION_*.csv")
-        if session_files:
-            session_file = max(session_files)  # Most recent by filename
-            df = pd.read_csv(session_file)
+        session_files = discover_files_with_gz_support(f"atr_summary_{selected_ticker}_SESSION_*.csv")
+            if session_files:
+                session_file = session_files[0]  # Get newest file
+                df = read_csv_with_gz_support(session_file)
         else:
             st.error(f"❌ No session data files found for {selected_ticker}")
             st.stop()
