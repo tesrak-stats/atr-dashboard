@@ -1,7 +1,8 @@
 {
-  "discovered_at": "2025-10-27T22:39:25.723715",
+  "discovered_at": "2025-10-28T01:37:20.602552",
   "method": "three_phase_asset_discovery",
   "target_classes": [
+    "crypto",
     "traditional",
     "futures"
   ],
@@ -11,28 +12,28 @@
       "yf_symbol": "IWM",
       "asset_type": "traditional",
       "data_available": true,
-      "discovered_at": "2025-10-27T22:39:23.800992"
+      "discovered_at": "2025-10-28T01:37:18.788149"
     },
     "NVDA": {
       "ticker": "NVDA",
       "yf_symbol": "NVDA",
       "asset_type": "traditional",
       "data_available": true,
-      "discovered_at": "2025-10-27T22:39:24.399653"
+      "discovered_at": "2025-10-28T01:37:19.279146"
     },
     "QQQ": {
       "ticker": "QQQ",
       "yf_symbol": "QQQ",
       "asset_type": "traditional",
       "data_available": true,
-      "discovered_at": "2025-10-27T22:39:24.931298"
+      "discovered_at": "2025-10-28T01:37:19.836172"
     },
     "SPX": {
       "ticker": "SPX",
       "yf_symbol": "^GSPC",
       "asset_type": "traditional",
       "data_available": true,
-      "discovered_at": "2025-10-27T22:39:25.423608"
+      "discovered_at": "2025-10-28T01:37:20.302428"
     }
   }
 }
