@@ -1,8 +1,1 @@
-{
-  "discovered_at": "2025-11-24T02:53:20.170697",
-  "method": "three_phase_asset_discovery",
-  "target_classes": [
-    "crypto"
-  ],
-  "tickers": {}
-}
+{"tickers": {}}
