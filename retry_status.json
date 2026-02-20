@@ -1,7 +1,4 @@
 {
-  "2026-02-12": {
-    "phase1_failures": []
-  },
   "2026-02-13": {
     "phase1_failures": []
   },
@@ -15,6 +12,9 @@
     "phase1_failures": []
   },
   "2026-02-19": {
+    "phase1_failures": []
+  },
+  "2026-02-20": {
     "phase1_failures": []
   }
 }
