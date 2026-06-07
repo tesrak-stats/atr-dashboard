@@ -1,8 +1,1 @@
-{
-  "discovered_at": "2026-06-07T04:03:45.928433",
-  "method": "three_phase_asset_discovery",
-  "target_classes": [
-    "crypto"
-  ],
-  "tickers": {}
-}
+{"tickers": {}}
